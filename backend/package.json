@@ -1,0 +1,30 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^1.38.0",
+    "@openrouter/sdk": "^0.5.1",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-validator": "^7.3.1",
+    "ioredis": "^5.8.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.20.0",
+    "morgan": "^1.10.1",
+    "socket.io": "^4.8.3"
+  }
+}

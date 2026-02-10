@@ -1,0 +1,152 @@
+FRONTEND STRUCTURE
+==================
+
+Root Files:
+- eslint.config.js
+- index.html
+- js.md
+- package.json
+- tailwind.config.js
+- vite.config.js
+
+public/
+  └── (static assets)
+
+src/
+  ├── App.jsx
+  ├── index.css
+  ├── main.jsx
+  │
+  ├── assets/
+  │   └── (image/media assets)
+  │
+  ├── components/
+  │   ├── AppHeader.jsx
+  │   ├── Footer.jsx
+  │   ├── LoginForm.jsx
+  │   ├── PublicHeader.jsx
+  │   ├── RegisterForm.jsx
+  │   ├── ThemeToggle.jsx
+  │   ├── Toast.jsx
+  │   ├── ToastContainer.jsx
+  │   │
+  │   ├── dashboard/
+  │   │   ├── ProjectFilter.jsx
+  │   │   ├── ProjectList.jsx
+  │   │   ├── ProjectList.Skeleton.jsx
+  │   │   ├── StatusBadge.jsx
+  │   │   │
+  │   │   ├── modals/
+  │   │   │   ├── CreateProjectModal.jsx
+  │   │   │   ├── DeleteProjectModal.jsx
+  │   │   │   ├── RenameProjectModal.jsx
+  │   │   │   └── index.js
+  │   │   │
+  │   │   └── ProjectCard/
+  │   │       ├── ProjectCard.jsx
+  │   │       ├── ProjectMenu.jsx
+  │   │       └── useProjectCard.js
+  │   │
+  │   ├── project/
+  │   │   ├── InviteUserModal.jsx
+  │   │   ├── MessageArea.jsx
+  │   │   ├── ProjectActions.jsx
+  │   │   ├── ProjectHeader.jsx
+  │   │   ├── ProjectMembers.jsx
+  │   │   └── SidePanel.jsx
+  │   │
+  │   ├── shared/
+  │   │   ├── ChatTextarea.jsx
+  │   │   ├── ErrorBoundary.jsx
+  │   │   ├── Message.jsx
+  │   │   ├── MessageGroup.jsx
+  │   │   └── UserTile.jsx
+  │   │
+  │   └── ui/
+  │       ├── Button.jsx
+  │       ├── InputField.jsx
+  │       └── Loader.jsx
+  │
+  ├── config/
+  │   ├── axios.js
+  │   └── socket.js
+  │
+  ├── constants/
+  │   ├── api.js
+  │   ├── index.js
+  │   └── options.js
+  │
+  ├── context/
+  │   ├── ThemeContext.jsx
+  │   ├── toast.context.jsx
+  │   └── user.context.jsx
+  │
+  ├── hooks/
+  │   ├── index.js
+  │   ├── useClickOutside.js
+  │   ├── useFormatDate.js
+  │   ├── useProjectList.js
+  │   ├── useSearchUsers.js
+  │   ├── useTypingIndicator.js
+  │   └── useUserSelection.js
+  │
+  ├── layouts/
+  │   ├── AppLayout.jsx
+  │   └── AuthLayout.jsx
+  │
+  ├── routes/
+  │   ├── AppRoutes.jsx
+  │   └── ProtectedRoute.jsx
+  │
+  ├── screens/
+  │   ├── Dashboard.jsx
+  │   ├── Home.jsx
+  │   ├── Login.jsx
+  │   ├── Project.jsx
+  │   └── Register.jsx
+  │
+  ├── services/
+  │   ├── message.service.js
+  │   ├── project.service.js
+  │   └── user.service.js
+  │
+  └── utils/
+      └── messageGrouping.js
+
+
+FOLDER DESCRIPTIONS
+===================
+
+components/
+  └── Reusable React components organized by feature/domain
+      - dashboard/: Project list, filters, status badges, modals
+      - project/: Project details, members, messaging, actions
+      - shared/: Shared UI components (Message, UserTile, etc.)
+      - ui/: Basic UI building blocks (Button, Input, Loader)
+
+config/
+  └── Application configuration files (API, Socket connections)
+
+constants/
+  └── Application constants and options
+
+context/
+  └── React Context API for state management (Theme, Toast, User)
+
+hooks/
+  └── Custom React hooks for reusable logic
+
+layouts/
+  └── Layout wrappers for different pages (App, Auth)
+
+routes/
+  └── Routing configuration and protected routes
+
+screens/
+  └── Page-level components (Dashboard, Login, Project, etc.)
+
+services/
+  └── API service modules for backend communication
+
+utils/
+  └── Utility functions and helpers

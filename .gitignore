@@ -1,0 +1,33 @@
+# ===============================
+# FRONTEND
+# ===============================
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+frontend/.vercel
+
+# ===============================
+# BACKEND
+# ===============================
+backend/node_modules/
+backend/.env
+backend/.env.*
+backend/logs
+backend/tmp
+
+# ===============================
+# COMMON 
+# ===============================
+node_modules/
+dist
+build
+coverage
+*.log
+
+# ===============================
+# IDE / OS
+# ===============================
+.vscode/
+.idea/
+.DS_Store

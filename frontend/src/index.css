@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+
+
+.auto-scrollbar {
+  scrollbar-width: thin;          /* Firefox: always thin, no layout shift */
+  scrollbar-color: var(--border-color) transparent; /* Firefox: thumb track */
+}
+
+/* Webkit (Chrome, Edge, Safari) */
+.auto-scrollbar::-webkit-scrollbar {
+  width: 6px;                     /* Vertical width */
+  height: 6px;                    /* Horizontal height */
+}
+
+.auto-scrollbar::-webkit-scrollbar-track {
+  background: transparent;        /* Always transparent track */
+}
+
+/* 2. Thumb (The moving part) */
+.auto-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--border-color); /* Matches your borders (Subtle) */
+  border-radius: 9999px;
+  border: 2px solid transparent; /* Creates padding effect */
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+
+/* 3. Hover State (Make it darker/more visible) */
+.auto-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: var(--text-secondary); /* Darker gray on hover */
+}
+
+/* 4. Active/Click State */
+.auto-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: var(--accent-primary); /* Brand color when grabbing! */
+}
+
+/* 5. Hide Arrows */
+.auto-scrollbar::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* ===== Utility to Hide Scrollbar but keep functionality ===== */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+
+
+/* ========================================= */
+/* GLOBAL THEME VARIABLES (Light & Dark)     */
+/* ========================================= */
+
+:root {
+  /* ---------------- LIGHT MODE (Slate Theme) ---------------- */
+  
+  /* BACKGROUNDS */
+  /* Apply to: <body>, <Dashboard>, <Home> main containers */
+  --bg-main: #f8fafc;       /* Slate-50: Softer than pure white for eyes */
+  
+  /* Apply to: <ProjectCard>, <SidePanel>, <AppHeader>, <FileExplorer> */
+  --bg-surface: #ffffff;    /* White: Creates contrast against bg-main */
+  
+  /* Apply to: <InputField>, <CodeEditor> background, active states */
+  --bg-element: #f1f5f9;    /* Slate-100: Input fields and hovered items */
+  
+  /* TEXT */
+  /* Apply to: <h1>, <h2>, Project Titles, Modal Headers */
+  --text-primary: #0f172a;  /* Slate-900: Deep dark blue-black for readability */
+  
+  /* Apply to: <p>, Descriptions, Metadata, File Tree inactive items */
+  --text-secondary: #64748b; /* Slate-500: Readable but subtle */
+  
+  /* Apply to: Placeholders, very subtle details */
+  --text-muted: #94a3b8;     /* Slate-400 */
+
+  /* BORDERS */
+  /* Apply to: All border-*, dividers */
+  --border-color: #e2e8f0;   /* Slate-200: Crisp visible borders */
+  
+  /* ACCENTS (Brand) */
+  /* Apply to: Primary Buttons, Active Links, Icons */
+  --accent-primary: #0d9488; /* Teal-600: Darker teal for visibility on white */
+  --accent-glow: rgba(13, 148, 136, 0.15); /* Soft teal shadow */
+
+  /* STATUS */
+  --status-error: #ef4444;   /* Red-500 */
+  --status-success: #10b981; /* Emerald-500 */
+}
+
+.dark {
+  /* ---------------- DARK MODE (Zinc/Black Theme) ---------------- */
+  
+  /* BACKGROUNDS */
+  /* Apply to: <body>, <Dashboard>, <Home> main containers */
+  --bg-main: #000000;       /* Pure Black: OLED friendly, your current look */
+  
+  /* Apply to: <ProjectCard>, <SidePanel>, <AppHeader>, <FileExplorer> */
+  --bg-surface: #18181b;    /* Zinc-900: Distinct from black background */
+  
+  /* Apply to: <InputField>, <CodeEditor> background, active states */
+  --bg-element: #27272a;    /* Zinc-800: Lighter than surface */
+  
+  /* TEXT */
+  /* Apply to: <h1>, <h2>, Project Titles */
+  --text-primary: #f4f4f5;  /* Zinc-100: Almost white */
+  
+  /* Apply to: <p>, Descriptions */
+  --text-secondary: #a1a1aa; /* Zinc-400: Classic dark mode gray */
+  
+  /* Apply to: Placeholders */
+  --text-muted: #52525b;     /* Zinc-600 */
+
+  /* BORDERS */
+  /* Apply to: All border-*, dividers */
+  --border-color: #27272a;   /* Zinc-800: Subtle separation */
+  
+  /* ACCENTS */
+  /* Apply to: Primary Buttons, Active Links */
+  --accent-primary: #14b8a6; /* Teal-500: Bright teal (glowing look) */
+  --accent-glow: rgba(20, 184, 166, 0.2); /* Teal glow */
+  
+  /* STATUS */
+  --status-error: #f87171;   /* Red-400 (Softer for dark mode) */
+  --status-success: #34d399; /* Emerald-400 */
+}
+
+/* ========================================= */
+/* UTILITY CLASS MAPPING                     */
+/* ========================================= */
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  /* Smooth transition when toggling themes */
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Optional: You can create utility classes to use in your JSX 
+   instead of hardcoding colors like 'bg-zinc-900' */
+
+.bg-theme-main { background-color: var(--bg-main); }
+.bg-theme-surface { background-color: var(--bg-surface); }
+.bg-theme-element { background-color: var(--bg-element); }
+
+.text-theme-primary { color: var(--text-primary); }
+.text-theme-secondary { color: var(--text-secondary); }
+
+.border-theme { border-color: var(--border-color); }

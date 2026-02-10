@@ -178,13 +178,17 @@ export const runWebcontainer = async (
     }
 };
 
-export const stopWebcontainer = () => {
+export const stopWebcontainer = async () => {
     if (runningProcess) {
         try {
-            runningProcess.kill();
-        } catch { }
-        runningProcess = null;
+            await runningProcess.kill();
+            runningProcess = null;
+            return true;
+        } catch (err) {
+            return false;
+        }
     }
+    return true;
 };
 
 //this code is for dynamic import

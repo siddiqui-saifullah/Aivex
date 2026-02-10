@@ -184,61 +184,140 @@ const Project = () => {
     }
   };
 
-  useEffect(() => {
-    if (!projectId) return;
+  // useEffect(() => {
+  //   if (!projectId) return;
 
+  //   setMessages([]);
+  //   setMessage("");
+  //   clearAllTypingUsers();
+
+  //   initializeSocket(projectId);
+  //   fetchProject().then((projectData) => {
+  //     if (projectData) {
+  //       fetchProjectChats(projectData);
+  //     }
+  //   });
+
+  //   if (!webContainer) {
+  //     getWebContainer().then((container) => {
+  //       setWebContainer(container);
+  //       console.log("Container Started");
+  //     });
+  //   }
+
+  //   const handleProjectMessage = (socketData) => {
+  //     const normalizedMessage = normalizeSocketMessage(
+  //       socketData,
+  //       user?._id,
+  //       project?.users,
+  //     );
+  //     console.log("[Project] Normalized message:", normalizedMessage);
+  //     setMessages((prev) => [...prev, normalizedMessage]);
+
+  //     if (normalizedMessage.fileTree) {
+  //       console.log("[Project] Setting fileTree:", normalizedMessage.fileTree);
+  //       setFlatFileTree(normalizedMessage.fileTree);
+  //     }
+
+  //     if (socketData.fileTree) {
+  //       console.log(
+  //         "[Project] Setting original fileTree:",
+  //         socketData.fileTree,
+  //       );
+  //       setOriginalFileTree(socketData.fileTree);
+  //     }
+  //   };
+
+  //   const handleUserJoined = (data) => {
+  //     console.log("User joined:", data.username);
+  //     const joinMessage = createSystemMessage(
+  //       `${data.username} joined the project`,
+  //       data.timestamp,
+  //     );
+  //     setMessages((prev) => [...prev, joinMessage]);
+  //   };
+
+  //   const handleUserTypingEvent = (data) => {
+  //     console.log("User typing:", data.username, data.isTyping);
+  //     handleUserTyping(data.userId, data.username, data.isTyping);
+  //   };
+
+  //   receiveMessage("project-message", handleProjectMessage);
+  //   receiveMessage("user-joined", handleUserJoined);
+  //   receiveMessage("user-typing", handleUserTypingEvent);
+
+  //   return () => {
+  //     removeMessageListener("project-message", handleProjectMessage);
+  //     removeMessageListener("user-joined", handleUserJoined);
+  //     removeMessageListener("user-typing", handleUserTypingEvent);
+  //     clearAllTypingUsers();
+  //   };
+  // }, [projectId, user?._id]);
+
+  useEffect(() => {
+    if (!projectId || !user?._id) return;
+
+    let isMounted = true;
+
+    /* ---------- RESET STATE ---------- */
     setMessages([]);
     setMessage("");
     clearAllTypingUsers();
 
+    /* ---------- SOCKET INIT ---------- */
     initializeSocket(projectId);
+
     fetchProject().then((projectData) => {
-      if (projectData) {
+      if (projectData && isMounted) {
         fetchProjectChats(projectData);
       }
     });
 
-    if (!webContainer) {
-      getWebContainer().then((container) => {
-        setWebContainer(container);
-        console.log("Container Started");
-      });
+    /* ---------- WEB CONTAINER (BROWSER ONLY, ONCE) ---------- */
+    if (!webContainer && typeof window !== "undefined") {
+      (async () => {
+        try {
+          const container = await getWebContainer();
+          if (!isMounted) return;
+
+          setWebContainer(container);
+          console.log("WebContainer started");
+        } catch (err) {
+          console.error("WebContainer failed:", err);
+        }
+      })();
     }
 
+    /* ---------- SOCKET HANDLERS ---------- */
     const handleProjectMessage = (socketData) => {
       const normalizedMessage = normalizeSocketMessage(
         socketData,
-        user?._id,
+        user._id,
         project?.users,
       );
-      console.log("[Project] Normalized message:", normalizedMessage);
+
       setMessages((prev) => [...prev, normalizedMessage]);
 
       if (normalizedMessage.fileTree) {
-        console.log("[Project] Setting fileTree:", normalizedMessage.fileTree);
         setFlatFileTree(normalizedMessage.fileTree);
       }
 
       if (socketData.fileTree) {
-        console.log(
-          "[Project] Setting original fileTree:",
-          socketData.fileTree,
-        );
         setOriginalFileTree(socketData.fileTree);
       }
     };
 
     const handleUserJoined = (data) => {
-      console.log("User joined:", data.username);
-      const joinMessage = createSystemMessage(
-        `${data.username} joined the project`,
-        data.timestamp,
-      );
-      setMessages((prev) => [...prev, joinMessage]);
+      setMessages((prev) => [
+        ...prev,
+        createSystemMessage(
+          `${data.username} joined the project`,
+          data.timestamp,
+        ),
+      ]);
     };
 
     const handleUserTypingEvent = (data) => {
-      console.log("User typing:", data.username, data.isTyping);
       handleUserTyping(data.userId, data.username, data.isTyping);
     };
 
@@ -246,13 +325,17 @@ const Project = () => {
     receiveMessage("user-joined", handleUserJoined);
     receiveMessage("user-typing", handleUserTypingEvent);
 
+    /* ---------- CLEANUP ---------- */
     return () => {
+      isMounted = false;
+
       removeMessageListener("project-message", handleProjectMessage);
       removeMessageListener("user-joined", handleUserJoined);
       removeMessageListener("user-typing", handleUserTypingEvent);
+
       clearAllTypingUsers();
     };
-  }, [projectId, user?._id]);
+  }, [projectId, user?._id, webContainer]);
 
   useEffect(() => {
     if (!webContainer || Object.keys(originalFileTree).length === 0) {

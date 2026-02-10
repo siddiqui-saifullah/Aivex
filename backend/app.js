@@ -13,7 +13,7 @@ connect();
 const app = express();
 
 app.use(corsMiddleware);
-app.options("*", corsMiddleware);
+app.options("/*", corsMiddleware);
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

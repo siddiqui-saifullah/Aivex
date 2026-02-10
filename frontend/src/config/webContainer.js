@@ -43,7 +43,7 @@
 //     if (runningProcess) {
 //         console.log("[WebContainer] Stopping previous server...");
 //         try {
-//             runningProcess.kill(); // 🔥 THIS STOPS NODE
+//             runningProcess.kill(); // STOPS NODE
 //         } catch (err) {
 //             console.warn("Failed to kill previous process", err);
 //         }
@@ -150,9 +150,10 @@ export const runWebcontainer = async (
 
     /* Stop previous process */
     if (runningProcess) {
+        console.log("Stopping previous process...");
         try {
-            runningProcess.kill();
-        } catch { }
+            await runningProcess.kill();
+        } catch (e) { console.error(e) }
         runningProcess = null;
     }
 
@@ -168,7 +169,8 @@ export const runWebcontainer = async (
 
     if (!portListenerAttached) {
         webContainer.on("port", (port, type, url) => {
-            if (type === "open") {
+
+            if (type === "open" && runningProcess) {
                 onPreviewReady?.({ port, url });
             }
         });

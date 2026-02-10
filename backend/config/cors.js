@@ -3,8 +3,8 @@ import cors from "cors";
 const allowedOrigins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    process.env.CORS_URL,
-    process.env.CORS_URL_T
+    "https://www.aivex.in",
+    "https://aivex.in"
 ].filter(Boolean);
 
 
@@ -19,10 +19,10 @@ const corsOptions = {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-    ],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 };
+
 
 export default cors(corsOptions);

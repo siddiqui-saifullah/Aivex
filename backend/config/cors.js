@@ -1,10 +1,12 @@
 import cors from "cors";
 
 const allowedOrigins = [
-    "http://localhost:5173", // frontend 
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
+    process.env.CORS_URL,
+    process.env.CORS_URL_T
+].filter(Boolean);
 
-];
 
 const corsOptions = {
     origin: function (origin, callback) {

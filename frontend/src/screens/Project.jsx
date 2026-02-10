@@ -34,7 +34,7 @@ import {
   getWebContainer,
   runWebcontainer,
   stopWebcontainer,
-} from "../config/webcontainer";
+} from "../config/webContainer";
 import { hasFileTreeChanges } from "../utils/fileTreeDetector";
 import { deleteProject, leaveProject } from "../services/project.service";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";

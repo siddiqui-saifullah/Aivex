@@ -118,7 +118,7 @@ const Home = () => {
           </div>
         </div>
       </section>
-      ``
+
       {/* --- WORKFLOW / CHAT SHOWCASE --- */}
       <section className="py-24 bg-zinc-900/30 relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center gap-16">

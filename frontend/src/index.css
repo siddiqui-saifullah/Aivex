@@ -154,3 +154,12 @@ body {
 .text-theme-secondary { color: var(--text-secondary); }
 
 .border-theme { border-color: var(--border-color); }
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.98); }
+}
+
+.animate-breathe {
+  animation: breathe 2s infinite ease-in-out;
+}

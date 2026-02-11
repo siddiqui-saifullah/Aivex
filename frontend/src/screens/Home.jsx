@@ -1,12 +1,27 @@
+import { useEffect } from "react";
 import { MessageSquare, Layout, ArrowRight, Play, Folder } from "lucide-react";
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
 import PublicHeader from "../components/PublicHeader";
+import axios from "../config/axios";
 import IDEImage from "../images/IDEimage.webp";
 import livedemo from "../images/livedemo.mp4";
 import ChatDemo from "../images/ChatDemo.mp4";
 
 const Home = () => {
+  useEffect(() => {
+    const awaikBackend = async () => {
+      try {
+        const result = await axios.get("/"); // To Wake render cooldown
+        console.log(result.data.message);
+      } catch (err) {
+        console.log(err);
+      }
+    };
+
+    awaikBackend();
+  }, []);
+
   return (
     <div className="min-h-screen bg-black text-zinc-100 selection:bg-teal-500/30 font-sans overflow-x-hidden">
       <PublicHeader />

@@ -11,14 +11,28 @@ export const createUser = async ({ name, username, email, password }) => {
         throw new AppError("All fields are required", 400);
     }
 
-    const hashedPassword = await userModel.hashPassword(password);
+    try {
+        const hashedPassword = await userModel.hashPassword(password);
 
-    return userModel.create({
-        name,
-        username,
-        email,
-        password: hashedPassword,
-    });
+        return await userModel.create({
+            name,
+            username,
+            email,
+            password: hashedPassword,
+        });
+
+    } catch (error) {
+        if (error.code === 11000) {
+            if (error.keyPattern.email) {
+                throw new AppError("Email is already registered", 400);
+            }
+            if (error.keyPattern.username) {
+                throw new AppError("Username is already taken", 400);
+            }
+        }
+        // Throw other errors as they are
+        throw error;
+    }
 };
 
 /* -------------------------------------------------------------------------- */
@@ -46,8 +60,7 @@ export const loginUser = async ({ email, password }) => {
 /* PROFILE                                                                    */
 /* -------------------------------------------------------------------------- */
 export const userProfiler = async ({ userID }) => {
-    return userModel
-        .findById(userID)
+    return userModel.findById(userID)
         .select("name username email createdAt updatedAt")
         .lean();
 };
@@ -84,12 +97,13 @@ export const logoutUser = async (req) => {
 export const searchUser = async ({ q, loggedInUserId }) => {
     if (!q) return [];
 
+    const sanitizedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return userModel
         .find({
             _id: { $ne: loggedInUserId },
             $or: [
-                { username: { $regex: q, $options: "i" } },
-                { name: { $regex: q, $options: "i" } },
+                { username: { $regex: sanitizedQuery, $options: "i" } },
+                { name: { $regex: sanitizedQuery, $options: "i" } },
             ],
         })
         .limit(20)

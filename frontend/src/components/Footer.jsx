@@ -85,7 +85,7 @@ const Footer = () => {
 
       <div className="max-w-7xl mx-auto px-6 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
         <p className="text-zinc-600 text-sm">
-          © 2024 Aivex AI Inc. All rights reserved.
+          © 2026 Aivex AI Inc. All rights reserved.
         </p>
         <div className="flex gap-4">
           <a href="#" className="text-zinc-500 hover:text-white">

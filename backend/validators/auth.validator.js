@@ -43,5 +43,4 @@ export const registerValidator = [
 
 export const loginValidator = [
     body("email").isEmail().withMessage("Email must be valid address"),
-    body("password").isLength({ min: 8 }).withMessage("Password must be at least 8 charecters long"),
 ]

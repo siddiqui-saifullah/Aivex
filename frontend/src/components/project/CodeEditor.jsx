@@ -26,6 +26,20 @@ const CodeEditor = ({
     );
   }
 
+  // Prevent editing system files
+  if (activeFile === ".aivex") {
+    return (
+      <div className="flex-1 bg-black flex flex-col items-center justify-center text-zinc-500 gap-4">
+        <div className="text-center">
+          <p className="text-lg font-semibold">System File</p>
+          <p className="text-sm">
+            .aivex is a system file and cannot be edited
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Get file content from fileTree
   const rawFile = fileTree?.[activeFile];
   language = getLanguageFromFilename(activeFile);

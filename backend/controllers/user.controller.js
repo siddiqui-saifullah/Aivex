@@ -7,11 +7,6 @@ import * as userService from "../services/user.service.js";
 /* REGISTER                                                                   */
 /* -------------------------------------------------------------------------- */
 export const createUserController = catchAsync(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        throw new AppError("Invalid input data", 400);
-    }
-
     const user = await userService.createUser(req.body);
     const token = user.generateJWT();
 
@@ -29,10 +24,6 @@ export const createUserController = catchAsync(async (req, res) => {
 /* LOGIN                                                                      */
 /* -------------------------------------------------------------------------- */
 export const loginController = catchAsync(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        throw new AppError("Invalid credentials", 400);
-    }
 
     const { email, password } = req.body;
 

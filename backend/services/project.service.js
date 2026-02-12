@@ -22,6 +22,9 @@ export const createProject = async ({ name, userId, stack }) => {
             owner: userId,
             users: [userId],
             stack: normalizedStack,
+            files: {
+                ".aivex": "//Aivex System File - Do not delete"
+            }
         });
     } catch (err) {
         if (err.code === 11000) {

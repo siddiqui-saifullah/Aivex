@@ -18,6 +18,7 @@ import InviteUserModal from "../components/project/InviteUserModal";
 import FileExplorer from "../components/project/FileExplorer";
 import CodeEditor from "../components/project/CodeEditor";
 import PreviewOverlay from "../components/project/PreviewOverlay";
+import DeleteConfirmModal from "../components/project/DeleteConfirmModal";
 import {
   DeleteProjectModal,
   LeaveProjectModal,
@@ -29,13 +30,18 @@ import {
   removeMessageListener,
 } from "../config/socket";
 import { UserContext } from "../context/user.context";
-import { useToast } from "../context/toast.context"; // 1. Fixed Import
+import { useToast } from "../context/toast.context";
 import {
   getWebContainer,
   runWebcontainer,
   stopWebcontainer,
 } from "../config/webContainer";
 import { hasFileTreeChanges } from "../utils/fileTreeDetector";
+import {
+  addFileToTree,
+  deleteFileFromTree,
+  pathExists,
+} from "../utils/buildFileTree";
 import { deleteProject, leaveProject } from "../services/project.service";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
 
@@ -60,6 +66,11 @@ const Project = () => {
   const [isLeaving, setIsLeaving] = useState(false);
   const [activeFile, setActiveFile] = useState(null);
 
+  // File management state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
+  const [selectedPath, setSelectedPath] = useState("");
+
   // Message state
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
@@ -68,6 +79,7 @@ const Project = () => {
   const [originalFileTree, setOriginalFileTree] = useState({});
   const [dbFileTree, setDbFileTree] = useState({});
   const [flatFileTree, setFlatFileTree] = useState({});
+  const [emptyFolders, setEmptyFolders] = useState(new Set());
 
   // Web Container State
   const [webContainer, setWebContainer] = useState(null);
@@ -299,7 +311,15 @@ const Project = () => {
       setMessages((prev) => [...prev, normalizedMessage]);
 
       if (normalizedMessage.fileTree) {
-        setFlatFileTree(normalizedMessage.fileTree);
+        setFlatFileTree((prev) => {
+          // Preserve .aivex system file when AI sends new fileTree
+          const aivex = prev[".aivex"];
+          return {
+            ...normalizedMessage.fileTree,
+            ...(aivex ? { ".aivex": aivex } : {}),
+          };
+        });
+        setIsSaved(false);
       }
 
       if (socketData.fileTree) {
@@ -452,9 +472,7 @@ const Project = () => {
   };
 
   const handleRun = async () => {
-    const hasChanges = hasFileTreeChanges(dbFileTree, flatFileTree);
-
-    if (hasChanges && !isSaved) {
+    if (!isSaved) {
       setRunProgress("Saving files...");
       setIsSaving(true);
 
@@ -536,6 +554,130 @@ const Project = () => {
     }
   };
 
+  const handleCreateFile = async ({ name, type, path }) => {
+    try {
+      const fullPath = path ? `${path}/${name}` : name;
+
+      // Check if file/folder already exists
+      if (pathExists(flatFileTree, fullPath, emptyFolders)) {
+        toast.error(`${capitalize(type)} already exists: ${fullPath}`);
+        return;
+      }
+
+      if (type === "file") {
+        // Add file to flatFileTree
+        const updated = addFileToTree(flatFileTree, fullPath, "");
+        setFlatFileTree(updated);
+        setActiveFile(fullPath);
+        setIsSaved(false);
+
+        // Remove parent folder from emptyFolders if it exists
+        if (path && emptyFolders.has(path)) {
+          const updatedEmptyFolders = new Set(emptyFolders);
+          updatedEmptyFolders.delete(path);
+          setEmptyFolders(updatedEmptyFolders);
+        }
+
+        // Auto-save to backend
+        try {
+          await updateProjectFiles(projectId, updated);
+          setDbFileTree(updated);
+          setIsSaved(true);
+          toast.success(`File created: ${fullPath}`);
+        } catch (error) {
+          console.error("Failed to save file:", error);
+          toast.warning(`File created locally. Save pending...`);
+        }
+      } else if (type === "folder") {
+        // Add folder to emptyFolders
+        const updated = new Set(emptyFolders);
+        updated.add(fullPath);
+        setEmptyFolders(updated);
+        toast.success(`Folder created: ${fullPath}`);
+      }
+    } catch (error) {
+      console.error("Failed to create file/folder:", error);
+      toast.error("Failed to create file/folder");
+    }
+  };
+
+  const handleDeleteFile = async (path, type) => {
+    // Prevent deletion of system files
+    if (path === ".aivex") {
+      toast.error("System file .aivex cannot be deleted");
+      return;
+    }
+    setDeleteConfirmItem({ path, type });
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDeleteFile = async () => {
+    if (!deleteConfirmItem) return;
+
+    const { path, type } = deleteConfirmItem;
+    console.log("[Project] Deleting:", {
+      path,
+      type,
+      treeKeys: Object.keys(flatFileTree),
+    });
+
+    try {
+      setIsDeleting(true);
+
+      // Deselect active file if it's being deleted
+      if (activeFile === path || activeFile?.startsWith(path + "/")) {
+        setActiveFile(null);
+      }
+
+      const updated = { ...flatFileTree };
+      console.log("[Project] Before delete:", Object.keys(updated));
+
+      if (type === "file") {
+        // Delete single file (both root and nested)
+        console.log(
+          "[Project] Deleting file:",
+          path,
+          "| Exists:",
+          path in updated,
+        );
+        delete updated[path];
+        console.log("[Project] After delete, exists:", path in updated);
+      } else if (type === "folder") {
+        // Delete all files in folder (route/h.js, route/p.js, etc.)
+        const deletedFiles = [];
+        Object.keys(updated).forEach((filePath) => {
+          if (filePath.startsWith(path + "/")) {
+            console.log("[Project] Deleting from folder:", filePath);
+            delete updated[filePath];
+            deletedFiles.push(filePath);
+          }
+        });
+        console.log("[Project] Deleted files from folder:", deletedFiles);
+      }
+
+      console.log("[Project] After delete:", Object.keys(updated));
+
+      // Update state
+      setFlatFileTree(updated);
+
+      // Save to backend
+      await updateProjectFiles(projectId, updated);
+      setDbFileTree(updated);
+      setIsSaved(true);
+
+      toast.success(`${type === "file" ? "File" : "Folder"} deleted: ${path}`);
+      setDeleteConfirmOpen(false);
+      setDeleteConfirmItem(null);
+    } catch (error) {
+      console.error("[Project] Failed to delete:", error);
+      toast.error("Failed to delete");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
+
   if (!project) {
     return <ProjectSkeleton />;
   }
@@ -599,6 +741,19 @@ const Project = () => {
           isLoading={isLeaving}
           isOwner={isOwner}
         />
+
+        {/* Delete File/Folder Confirmation Modal */}
+        <DeleteConfirmModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => {
+            setDeleteConfirmOpen(false);
+            setDeleteConfirmItem(null);
+          }}
+          onConfirm={handleConfirmDeleteFile}
+          itemName={deleteConfirmItem?.path}
+          itemType={deleteConfirmItem?.type}
+          isLoading={isDeleting}
+        />
       </section>
 
       <section className="right flex bg-amber-50 w-[77%]">
@@ -606,6 +761,9 @@ const Project = () => {
           fileTree={flatFileTree}
           activeFile={activeFile}
           onSelectFile={setActiveFile}
+          onCreateFile={handleCreateFile}
+          onDeleteFile={handleDeleteFile}
+          emptyFolders={emptyFolders}
         />
 
         <CodeEditor

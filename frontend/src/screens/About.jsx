@@ -1,13 +1,6 @@
-import {
-  Github,
-  Twitter,
-  Linkedin,
-  Coffee,
-  Heart,
-  Code,
-  Terminal,
-} from "lucide-react";
+import { Github, Linkedin, Coffee, Heart, Code, Terminal } from "lucide-react";
 import DevloperImage from "../assets/saifullahsiddique.webp";
+import { XIcon, GithubIcon } from "../assets/fileIcons";
 import PublicHeader from "../components/PublicHeader";
 import Footer from "../components/Footer";
 
@@ -130,7 +123,7 @@ const About = () => {
                 </p>
 
                 <a
-                  href="#" /* TODO: Add your Buy Me A Coffee Link Here */
+                  href="#"
                   className="inline-flex items-center gap-2 px-8 py-4 bg-teal-500 hover:bg-teal-400 text-black font-bold rounded-full transition-transform hover:scale-105 shadow-lg shadow-teal-500/25"
                 >
                   <Coffee size={20} />
@@ -154,10 +147,18 @@ const About = () => {
             Follow my journey building Aivex in public
           </p>
           <div className="flex justify-center gap-4">
-            <SocialLink href="#" icon={<Twitter size={20} />} label="Twitter" />
-            <SocialLink href="#" icon={<Github size={20} />} label="GitHub" />
             <SocialLink
-              href="#"
+              href="https://x.com/SaifLearns"
+              icon={XIcon()}
+              label="X"
+            />
+            <SocialLink
+              href="https://github.com/saifullah-siddique/Aivex"
+              icon={GithubIcon()}
+              label="GitHub"
+            />
+            <SocialLink
+              href="https://linkedin.com/in/siddique-saifullah"
               icon={<Linkedin size={20} />}
               label="LinkedIn"
             />

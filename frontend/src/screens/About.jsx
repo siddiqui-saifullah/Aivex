@@ -7,6 +7,7 @@ import {
   Code,
   Terminal,
 } from "lucide-react";
+import DevloperImage from "../assets/saifullahsiddique.webp";
 import PublicHeader from "../components/PublicHeader";
 import Footer from "../components/Footer";
 
@@ -39,14 +40,12 @@ const About = () => {
       <section className="py-16 px-6">
         <div className="max-w-4xl mx-auto bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl p-8 md:p-12 shadow-xl shadow-teal-900/5">
           <div className="flex flex-col md:flex-row gap-10 items-start">
-            {/* Profile Image */}
+            {/* Developer Image */}
             <div className="shrink-0 mx-auto md:mx-0">
               <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-[var(--bg-main)] shadow-lg overflow-hidden bg-zinc-800">
-                {/* REPLACE WITH YOUR IMAGE LATER. 
-                   For now, it's a placeholder.
-                */}
+                {/* Developer Image */}
                 <img
-                  src="https://via.placeholder.com/200?text=Saifullah"
+                  src={DevloperImage}
                   alt="Saifullah Siddique"
                   className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500"
                 />

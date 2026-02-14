@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useContext } from "react";
+import { useEffect, useState, useRef, useContext, lazy, Suspense } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   getProjectById,
@@ -14,15 +14,26 @@ import { useTypingIndicator } from "../hooks/useTypingIndicator";
 import ProjectHeader from "../components/project/ProjectHeader";
 import MessageArea from "../components/project/MessageArea";
 import SidePanel from "../components/project/SidePanel";
-import InviteUserModal from "../components/project/InviteUserModal";
 import FileExplorer from "../components/project/FileExplorer";
 import CodeEditor from "../components/project/CodeEditor";
 import PreviewOverlay from "../components/project/PreviewOverlay";
-import DeleteConfirmModal from "../components/project/DeleteConfirmModal";
-import {
-  DeleteProjectModal,
-  LeaveProjectModal,
-} from "../components/dashboard/modals";
+// Lazy load modals - they're only shown on specific user actions
+const InviteUserModal = lazy(
+  () => import("../components/project/InviteUserModal"),
+);
+const DeleteConfirmModal = lazy(
+  () => import("../components/project/DeleteConfirmModal"),
+);
+const DeleteProjectModal = lazy(() =>
+  import("../components/dashboard/modals").then((m) => ({
+    default: m.DeleteProjectModal,
+  })),
+);
+const LeaveProjectModal = lazy(() =>
+  import("../components/dashboard/modals").then((m) => ({
+    default: m.LeaveProjectModal,
+  })),
+);
 import {
   initializeSocket,
   receiveMessage,
@@ -715,45 +726,53 @@ const Project = () => {
         />
 
         {/* Invite User Modal */}
-        <InviteUserModal
-          isOpen={inviteModalOpen}
-          onClose={() => setInviteModalOpen(false)}
-          onSelectUser={handleSelectUser}
-          projectId={projectId}
-          existingMembers={project?.users || []}
-        />
+        <Suspense fallback={null}>
+          <InviteUserModal
+            isOpen={inviteModalOpen}
+            onClose={() => setInviteModalOpen(false)}
+            onSelectUser={handleSelectUser}
+            projectId={projectId}
+            existingMembers={project?.users || []}
+          />
+        </Suspense>
 
         {/* Delete Project Modal */}
-        <DeleteProjectModal
-          isOpen={deleteModalOpen}
-          onClose={() => setDeleteModalOpen(false)}
-          onConfirm={handleConfirmDelete}
-          projectName={project?.name}
-          isLoading={isDeleting}
-        />
+        <Suspense fallback={null}>
+          <DeleteProjectModal
+            isOpen={deleteModalOpen}
+            onClose={() => setDeleteModalOpen(false)}
+            onConfirm={handleConfirmDelete}
+            projectName={project?.name}
+            isLoading={isDeleting}
+          />
+        </Suspense>
 
         {/* Leave Project Modal */}
-        <LeaveProjectModal
-          isOpen={isLeaveOpen}
-          onClose={() => setIsLeaveOpen(false)}
-          onConfirm={handleConfirmLeave}
-          projectName={project?.name}
-          isLoading={isLeaving}
-          isOwner={isOwner}
-        />
+        <Suspense fallback={null}>
+          <LeaveProjectModal
+            isOpen={isLeaveOpen}
+            onClose={() => setIsLeaveOpen(false)}
+            onConfirm={handleConfirmLeave}
+            projectName={project?.name}
+            isLoading={isLeaving}
+            isOwner={isOwner}
+          />
+        </Suspense>
 
         {/* Delete File/Folder Confirmation Modal */}
-        <DeleteConfirmModal
-          isOpen={deleteConfirmOpen}
-          onClose={() => {
-            setDeleteConfirmOpen(false);
-            setDeleteConfirmItem(null);
-          }}
-          onConfirm={handleConfirmDeleteFile}
-          itemName={deleteConfirmItem?.path}
-          itemType={deleteConfirmItem?.type}
-          isLoading={isDeleting}
-        />
+        <Suspense fallback={null}>
+          <DeleteConfirmModal
+            isOpen={deleteConfirmOpen}
+            onClose={() => {
+              setDeleteConfirmOpen(false);
+              setDeleteConfirmItem(null);
+            }}
+            onConfirm={handleConfirmDeleteFile}
+            itemName={deleteConfirmItem?.path}
+            itemType={deleteConfirmItem?.type}
+            isLoading={isDeleting}
+          />
+        </Suspense>
       </section>
 
       <section className="right flex bg-amber-50 w-[77%]">

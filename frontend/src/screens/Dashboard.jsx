@@ -1,15 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Plus } from "lucide-react";
 
 import Button from "../components/ui/Button";
 import ProjectList from "../components/dashboard/ProjectList";
 import ProjectFilter from "../components/dashboard/ProjectFilter";
-import {
-  CreateProjectModal,
-  DeleteProjectModal,
-  RenameProjectModal,
-  LeaveProjectModal,
-} from "../components/dashboard/modals";
+
+// Lazy load modals - they're only shown on specific user actions
+const CreateProjectModal = lazy(() =>
+  import("../components/dashboard/modals").then((m) => ({
+    default: m.CreateProjectModal,
+  })),
+);
+const DeleteProjectModal = lazy(() =>
+  import("../components/dashboard/modals").then((m) => ({
+    default: m.DeleteProjectModal,
+  })),
+);
+const RenameProjectModal = lazy(() =>
+  import("../components/dashboard/modals").then((m) => ({
+    default: m.RenameProjectModal,
+  })),
+);
+const LeaveProjectModal = lazy(() =>
+  import("../components/dashboard/modals").then((m) => ({
+    default: m.LeaveProjectModal,
+  })),
+);
 
 import { useProjectList } from "../hooks/useProjectList";
 import { useUser } from "../context/user.context.jsx";
@@ -178,35 +194,43 @@ export default function Dashboard() {
         />
 
         {/* Modals */}
-        <CreateProjectModal
-          isOpen={createModalOpen}
-          onClose={() => setCreateModalOpen(false)}
-          onCreate={handleCreate}
-        />
+        <Suspense fallback={null}>
+          <CreateProjectModal
+            isOpen={createModalOpen}
+            onClose={() => setCreateModalOpen(false)}
+            onCreate={handleCreate}
+          />
+        </Suspense>
 
-        <DeleteProjectModal
-          isOpen={deleteModalOpen}
-          onClose={() => setDeleteModalOpen(false)}
-          onConfirm={handleConfirmDelete}
-          projectName={selectedProjectName}
-          isLoading={isDeleting}
-        />
+        <Suspense fallback={null}>
+          <DeleteProjectModal
+            isOpen={deleteModalOpen}
+            onClose={() => setDeleteModalOpen(false)}
+            onConfirm={handleConfirmDelete}
+            projectName={selectedProjectName}
+            isLoading={isDeleting}
+          />
+        </Suspense>
 
-        <RenameProjectModal
-          isOpen={renameModalOpen}
-          onClose={() => setRenameModalOpen(false)}
-          onConfirm={handleConfirmRename}
-          projectName={selectedProjectName}
-          isLoading={isRenaming}
-        />
+        <Suspense fallback={null}>
+          <RenameProjectModal
+            isOpen={renameModalOpen}
+            onClose={() => setRenameModalOpen(false)}
+            onConfirm={handleConfirmRename}
+            projectName={selectedProjectName}
+            isLoading={isRenaming}
+          />
+        </Suspense>
 
-        <LeaveProjectModal
-          isOpen={leaveModalOpen}
-          onClose={() => setLeaveModalOpen(false)}
-          onConfirm={handleConfirmLeave}
-          projectName={selectedProjectName}
-          isLoading={isLeaving}
-        />
+        <Suspense fallback={null}>
+          <LeaveProjectModal
+            isOpen={leaveModalOpen}
+            onClose={() => setLeaveModalOpen(false)}
+            onConfirm={handleConfirmLeave}
+            projectName={selectedProjectName}
+            isLoading={isLeaving}
+          />
+        </Suspense>
       </main>
     </div>
   );

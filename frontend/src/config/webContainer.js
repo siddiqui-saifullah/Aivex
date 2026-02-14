@@ -134,7 +134,7 @@ export const getWebContainer = async () => {
 
     if (webcontainerInstance) return webcontainerInstance;
 
-    const { WebContainer } = await import("@webcontainer/api"); // ✅ dynamic import
+    const { WebContainer } = await import("@webcontainer/api"); //dynamic import
     webcontainerInstance = await WebContainer.boot();
 
     return webcontainerInstance;
@@ -146,35 +146,40 @@ export const runWebcontainer = async (
     onPreviewReady,
     onProgress
 ) => {
-    if (!webContainer || !fileTree) return;
+    try {
+        if (!webContainer || !fileTree) return;
 
-    /* Stop previous process */
-    if (runningProcess) {
-        console.log("Stopping previous process...");
-        try {
-            await runningProcess.kill();
-        } catch (e) { console.error(e) }
-        runningProcess = null;
-    }
+        /* Stop previous process */
+        if (runningProcess) {
+            console.log("Stopping previous process...");
+            try {
+                await runningProcess.kill();
+            } catch (e) { console.error(e) }
+            runningProcess = null;
+        }
 
-    onProgress?.("Mounting files...");
-    await webContainer.mount(fileTree);
+        onProgress?.("Mounting files...");
+        await webContainer.mount(fileTree);
 
-    onProgress?.("Installing dependencies...");
-    const installProcess = await webContainer.spawn("npm", ["install"]);
-    await installProcess.exit;
+        onProgress?.("Installing dependencies...");
+        const installProcess = await webContainer.spawn("npm", ["install"]);
+        await installProcess.exit;
 
-    onProgress?.("Starting dev server...");
-    runningProcess = await webContainer.spawn("npm", ["start"]);
+        onProgress?.("Starting dev server...");
+        runningProcess = await webContainer.spawn("npm", ["start"]);
 
-    if (!portListenerAttached) {
-        webContainer.on("port", (port, type, url) => {
+        if (!portListenerAttached) {
+            webContainer.on("port", (port, type, url) => {
 
-            if (type === "open" && runningProcess) {
-                onPreviewReady?.({ port, url });
-            }
-        });
-        portListenerAttached = true;
+                if (type === "open" && runningProcess) {
+                    onPreviewReady?.({ port, url });
+                }
+            });
+            portListenerAttached = true;
+        }
+    } catch (error) {
+        console.log(error);
+        onProgress?.("Failed To Start")
     }
 };
 

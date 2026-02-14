@@ -1,4 +1,4 @@
-import { Github, Twitter } from "lucide-react";
+import { XIcon, GithubIcon } from "../assets/fileIcons";
 
 const Footer = () => {
   return (
@@ -23,20 +23,25 @@ const Footer = () => {
               </a>
             </li>
             <li>
+              <a href="/docs" className="hover:text-white">
+                Docs
+              </a>
+            </li>
+            {/* <li>
               <a href="#" className="hover:text-white">
                 Integrations
               </a>
-            </li>
+            </li> */}
             {/* <li>
               <a href="#" className="hover:text-white">
                 Pricing
               </a>
             </li> */}
-            <li>
+            {/* <li>
               <a href="#" className="hover:text-white">
                 Changelog
               </a>
-            </li>
+            </li> */}
           </ul>
         </div>
 
@@ -59,7 +64,7 @@ const Footer = () => {
               </a>
             </li> */}
             <li>
-              <a href="#" className="hover:text-white">
+              <a href="contact" className="hover:text-white">
                 Contact
               </a>
             </li>
@@ -70,12 +75,12 @@ const Footer = () => {
           <h4 className="font-bold mb-4">Legal</h4>
           <ul className="space-y-2 text-sm text-zinc-400">
             <li>
-              <a href="#" className="hover:text-white">
+              <a href="/privacy" className="hover:text-white">
                 Privacy
               </a>
             </li>
             <li>
-              <a href="#" className="hover:text-white">
+              <a href="/terms" className="hover:text-white">
                 Terms
               </a>
             </li>
@@ -89,10 +94,10 @@ const Footer = () => {
         </p>
         <div className="flex gap-4">
           <a href="#" className="text-zinc-500 hover:text-white">
-            <Github size={20} />
+            <GithubIcon size={22} />
           </a>
           <a href="#" className="text-zinc-500 hover:text-white">
-            <Twitter size={20} />
+            <XIcon size={20} />
           </a>
           {/* <a href="#" className="text-zinc-500 hover:text-white"><X size={20} /></a> */}
         </div>

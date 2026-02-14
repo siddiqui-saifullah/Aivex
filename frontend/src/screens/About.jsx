@@ -1,14 +1,11 @@
-import { Github, Linkedin, Coffee, Heart, Code, Terminal } from "lucide-react";
+import { Linkedin, Coffee, Heart, Code, Terminal } from "lucide-react";
 import DevloperImage from "../assets/saifullahsiddique.webp";
 import { XIcon, GithubIcon } from "../assets/fileIcons";
-import PublicHeader from "../components/PublicHeader";
-import Footer from "../components/Footer";
+import { GoalItem, SocialLink } from "../components/ui";
 
 const About = () => {
   return (
     <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)] transition-colors duration-300 font-sans selection:bg-teal-500/30">
-      <PublicHeader />
-
       {/* --- HERO SECTION --- */}
       <section className="relative pt-32 pb-12 px-6 overflow-hidden">
         <div className="max-w-3xl mx-auto text-center relative z-10">
@@ -165,36 +162,8 @@ const About = () => {
           </div>
         </div>
       </section>
-
-      <Footer />
     </div>
   );
 };
-
-/* --- SUB-COMPONENTS --- */
-
-const GoalItem = ({ icon, title, desc }) => (
-  <div className="flex gap-4">
-    <div className="shrink-0 w-12 h-12 rounded-xl bg-[var(--bg-element)] text-teal-500 flex items-center justify-center">
-      {icon}
-    </div>
-    <div>
-      <h3 className="font-bold text-[var(--text-primary)] mb-1">{title}</h3>
-      <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-        {desc}
-      </p>
-    </div>
-  </div>
-);
-
-const SocialLink = ({ href, icon, label }) => (
-  <a
-    href={href}
-    className="flex items-center gap-2 px-4 py-2 rounded-full border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-teal-500/50 hover:bg-[var(--bg-element)] transition-all"
-  >
-    {icon}
-    <span className="text-sm font-medium">{label}</span>
-  </a>
-);
 
 export default About;

@@ -4,7 +4,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/toast.context";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import ToastContainer from "./components/ToastContainer";
-import { Analytics } from "@vercel/analytics/react";
+// import { Analytics } from "@vercel/analytics/react";
 
 function App() {
   return (
@@ -14,7 +14,7 @@ function App() {
           <ToastProvider>
             <AppRoutes />
             <ToastContainer />
-            <Analytics />
+            {/* <Analytics /> */}
           </ToastProvider>
         </UserProvider>
       </ThemeProvider>

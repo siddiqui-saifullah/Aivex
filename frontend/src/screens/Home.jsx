@@ -1,9 +1,8 @@
 import { useEffect } from "react";
 import { MessageSquare, Layout, ArrowRight, Play, Folder } from "lucide-react";
 import { Link } from "react-router-dom";
-import Footer from "../components/Footer";
-import PublicHeader from "../components/PublicHeader";
 import axios from "../config/axios";
+import { StatBox, FeatureCard } from "../components/ui";
 import IDEImage from "../images/IDEimage.webp";
 import livedemo from "../images/livedemo.mp4";
 import ChatDemo from "../images/ChatDemo.mp4";
@@ -24,7 +23,6 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 selection:bg-teal-500/30 font-sans overflow-x-hidden">
-      <PublicHeader />
       {/* --- HERO SECTION --- */}
       <section className="relative pt-32 pb-16 md:pt-48 md:pb-32 px-6 border-b border-white/5">
         {/* Background Gradients */}
@@ -191,30 +189,7 @@ const Home = () => {
           <p className="mt-6 text-zinc-500 text-sm">No credit card required</p>
         </div>
       </section>
-      <Footer />
     </div>
   );
 };
-
-// --- Sub-Components ---
-
-const FeatureCard = ({ icon, title, desc }) => (
-  <div className="group p-8 rounded-2xl bg-zinc-900/50 border border-white/5 hover:border-teal-500/30 hover:bg-zinc-900 transition-all duration-300">
-    <div className="w-12 h-12 rounded-lg bg-teal-500/10 flex items-center justify-center mb-6 group-hover:bg-teal-500/20 transition-colors">
-      {icon}
-    </div>
-    <h3 className="text-xl font-bold mb-3 text-zinc-100">{title}</h3>
-    <p className="text-zinc-400 leading-relaxed">{desc}</p>
-  </div>
-);
-
-const StatBox = ({ number, label }) => (
-  <div className="p-4 rounded-lg bg-white/5 border border-white/5">
-    <div className="text-xl font-bold text-white mb-1">{number}</div>
-    <div className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">
-      {label}
-    </div>
-  </div>
-);
-
 export default Home;

@@ -6,7 +6,7 @@ const PublicLayout = () => {
   return (
     <>
       <PublicHeader />
-      <main className="pt-16 min-h-screen bg-black">
+      <main className="pt-10 min-h-screen bg-black">
         <Outlet />
       </main>
       <Footer />

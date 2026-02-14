@@ -5,3 +5,5 @@ export { default as StatBox } from "./StatBox";
 export { default as Loader } from "./Loader";
 export { default as SocialLink } from "./SocialLink";
 export { default as GoalItem } from "./GoalItem";
+export { default as CodeBlock } from "./CodeBlock";
+export { default as Item } from "./Item"

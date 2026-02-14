@@ -10,14 +10,17 @@ import AppLayout from "../layouts/AppLayout";
 import ProtectedRoute from "./ProtectedRoute";
 import Project from "../screens/Project";
 import About from "../screens/About";
+import PublicLayout from "../layouts/PublicLayout";
 
 const AppRoutes = () => {
   return (
     <BrowserRouter>
       <Routes>
         {/* Public */}
-        <Route path="/" element={<Home />} />
-        <Route path="/about" element={<About />} />
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/about" element={<About />} />
+        </Route>
 
         {/* Auth */}
         <Route element={<AuthLayout />}>

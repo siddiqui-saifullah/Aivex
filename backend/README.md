@@ -66,18 +66,31 @@ PORT=5000
 
 ## API Endpoints
 
-### User Routes (`/api/users`)
-- Authentication and user management
+### User Routes (`/users`)
+- POST `/` - Register user
+- POST `/login` - User login
+- GET `/` - Get user profile
+- PATCH `/:userId` - Update user profile
 
-### Project Routes (`/api/projects`)
-- Project CRUD operations
-- Project collaboration
+### Project Routes (`/projects`)
+- POST `/` - Create project
+- GET `/` - Get all user projects
+- GET `/:projectId` - Get project by ID
+- PATCH `/:projectId` - Update project files
+- PATCH `/:projectId/name` - Update project name
+- PATCH `/:projectId/invite` - Invite users to project
+- PATCH `/:projectId/leave` - Leave project
+- DELETE `/:projectId` - Delete project
+- POST `/:projectId/issues` - Report issue
 
-### Chat Routes (`/api/project/chat`)
-- Real-time project chat
+### Project Chat Routes (`/projects/:projectId/chats`)
+- Real-time collaborative chat per project
+- Message management
+- File patch support
 
-### AI Routes (`/api/ai`)
-- AI-powered text extraction
+### AI Routes (`/ai`)
+- **Note**: Currently for testing purposes only
+- AI-powered text extraction (Gemini API)
 - AI services integration
 
 ## Features
@@ -114,9 +127,6 @@ PORT=5000
 - `redis.service.js` - Caching layer
 - `user.service.js` - User operations
 
-## Contributing
-
-[Contribution guidelines here]
 
 ## License
 

@@ -72,9 +72,6 @@ Create a `.env` file in the root directory with the required environment variabl
 - Dark/Light theme support
 - Responsive design
 
-## Contributing
-
-[Contribution guidelines here]
 
 ## License
 

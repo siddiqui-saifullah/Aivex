@@ -104,6 +104,7 @@ const Project = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [previewBaseUrl, setPreviewBaseUrl] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [isAiThinking, setIsAiThinking] = useState(false);
 
   function toWebContainerTree(flatTree) {
     const root = {};
@@ -319,6 +320,14 @@ const Project = () => {
         project?.users,
       );
 
+      if (
+        normalizedMessage.isAI ||
+        normalizedMessage.senderId === "aivex" ||
+        normalizedMessage.role === "ai"
+      ) {
+        setIsAiThinking(false);
+      }
+
       setMessages((prev) => [...prev, normalizedMessage]);
 
       if (normalizedMessage.fileTree) {
@@ -392,6 +401,10 @@ const Project = () => {
 
     const userMessage = formatUserMessage(message, user);
     setMessages((prev) => [...prev, userMessage]);
+
+    if (message.toLowerCase().includes("@vex")) {
+      setIsAiThinking(true);
+    }
 
     sendMessage("project-message", {
       message,
@@ -711,6 +724,7 @@ const Project = () => {
           onSend={handleSend}
           onTyping={handleTyping}
           typingUsers={typingUsers}
+          isAiThinking={isAiThinking}
         />
 
         {/* Side Panel */}

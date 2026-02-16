@@ -1,42 +1,41 @@
 import MessageGroup from "../shared/MessageGroup";
 import ChatInput from "../shared/ChatTextarea";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { groupMessages } from "../../utils/messageGrouping";
+import AiProgressIndicator from "./AiProgressIndicator";
 
-/**
- * MessageArea Component
- * Displays list of messages and input field for chat
- * Supports real-time streaming AI responses with typing animation
- * Groups consecutive messages from same sender
- *
- * Props:
- * - messages: Array of message objects
- * - message: Current input value
- * - onMessageChange: Handler for input changes
- * - onSend: Handler for sending messages
- * - onTyping: Handler for typing indicator
- * - typingUsers: Object of users currently typing { userId: username }
- */
+/* -------------------------------------------------------------------------- */
+/* MESSAGE AREA                                                               */
+/* -------------------------------------------------------------------------- */
+
 const MessageArea = ({
-  messages,
+  messages = [],
   message,
   onMessageChange,
   onSend,
   onTyping,
   typingUsers = {},
+  isAiThinking = false,
 }) => {
   const bottomRef = useRef(null);
-  const groupedMessages = groupMessages(messages);
-  console.log(messages);
+
+  const groupedMessages = useMemo(() => {
+    return groupMessages(messages);
+  }, [messages]);
+
+  /* ---------------------------------------------------------------------- */
+  /* AUTO SCROLL                                                            */
+  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingUsers]);
+  }, [groupedMessages, typingUsers, isAiThinking, AiProgressIndicator]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Messages (ONLY scroll container) */}
-      <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto  no-scrollbar pt-2">
+      {/* -------------------- MESSAGE LIST -------------------- */}
+      <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto no-scrollbar pt-2">
+        {/* Existing Messages */}
         {groupedMessages.length > 0 ? (
           groupedMessages.map((group) => (
             <MessageGroup
@@ -54,7 +53,7 @@ const MessageArea = ({
           </div>
         )}
 
-        {/* Typing indicators for all users currently typing */}
+        {/* Human Typing Indicators */}
         {Object.entries(typingUsers).map(([userId, username]) => (
           <MessageGroup
             key={`typing-${userId}`}
@@ -66,11 +65,13 @@ const MessageArea = ({
           />
         ))}
 
-        {/* scroll anchor */}
+        {/* AI Thinking Indicator (Single Instance Guaranteed) */}
+        {isAiThinking ? <AiProgressIndicator key="ai-indicator" /> : null}
+
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* -------------------- INPUT AREA -------------------- */}
       <div className="shrink-0 flex items-end gap-2 p-3">
         <ChatInput
           value={message}

@@ -23,10 +23,6 @@ const MessageArea = ({
     return groupMessages(messages);
   }, [messages]);
 
-  /* ---------------------------------------------------------------------- */
-  /* AUTO SCROLL                                                            */
-  /* ---------------------------------------------------------------------- */
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [groupedMessages, typingUsers, isAiThinking, AiProgressIndicator]);
@@ -65,7 +61,7 @@ const MessageArea = ({
           />
         ))}
 
-        {/* AI Thinking Indicator (Single Instance Guaranteed) */}
+        {/* AI Thinking Indicator */}
         {isAiThinking ? <AiProgressIndicator key="ai-indicator" /> : null}
 
         <div ref={bottomRef} />

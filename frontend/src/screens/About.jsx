@@ -1,5 +1,5 @@
-import { Linkedin, Coffee, Heart, Code, Terminal } from "lucide-react";
-import DevloperImage from "../assets/saifullahsiddique.webp";
+import { Linkedin, Coffee, Heart, Code, Terminal, Globe } from "lucide-react";
+import DevloperImage from "../assets/saifullahsiddiqui.webp";
 import { XIcon, GithubIcon } from "../assets/fileIcons";
 import { GoalItem, SocialLink } from "../components/ui";
 
@@ -36,12 +36,12 @@ const About = () => {
                 {/* Developer Image */}
                 <img
                   src={DevloperImage}
-                  alt="Saifullah Siddique"
+                  alt="Saifullah Siddiqui"
                   className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500"
                 />
               </div>
               <div className="text-center mt-4">
-                <h3 className="font-bold text-lg">Saifullah Siddique</h3>
+                <h3 className="font-bold text-lg">Saifullah Siddiqui</h3>
                 <p className="text-sm text-[var(--text-secondary)]">
                   Developer & Student
                 </p>
@@ -145,17 +145,22 @@ const About = () => {
           </p>
           <div className="flex justify-center gap-4">
             <SocialLink
-              href="https://x.com/SaifLearns"
+              href="https://saifullahsiddiqui.com"
+              icon={<Globe size={20} />}
+              label="Website"
+            />
+            <SocialLink
+              href="https://x.com/iamsiddiquisaif"
               icon={XIcon()}
               label="X"
             />
             <SocialLink
-              href="https://github.com/saifullah-siddique/Aivex"
+              href="https://github.com/siddiqui-saifullah"
               icon={GithubIcon()}
               label="GitHub"
             />
             <SocialLink
-              href="https://linkedin.com/in/siddique-saifullah"
+              href="https://linkedin.com/in/siddiqui-saifullah"
               icon={<Linkedin size={20} />}
               label="LinkedIn"
             />

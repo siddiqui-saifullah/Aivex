@@ -209,7 +209,7 @@ const ai = new GoogleGenAI({
 export const generate = async ({ prompt }) => {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash",
       contents: [
         {
           role: "user",

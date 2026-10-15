@@ -144,6 +144,22 @@ export const leaveProjectController = catchAsync(async (req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* AI MEMORY                                                                  */
+/* -------------------------------------------------------------------------- */
+export const updateAiMemoryController = catchAsync(async (req, res) => {
+    const projectId = req.params.projectId as string;
+
+    const result = await projectService.updateAiMemory({
+        projectId,
+        userId: req.user!._id,
+        memory: req.body.memory,
+    });
+    notifyProjectUpdated(projectId, "memory");
+
+    res.status(200).json(result);
+});
+
+/* -------------------------------------------------------------------------- */
 /* TRANSFER OWNERSHIP                                                         */
 /* -------------------------------------------------------------------------- */
 export const transferOwnershipController = catchAsync(async (req, res) => {

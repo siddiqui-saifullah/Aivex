@@ -10,7 +10,7 @@ export const setIo = (io: AppServer) => {
     ioInstance = io;
 };
 
-export type ProjectUpdateReason = "members" | "owner" | "renamed" | "deleted";
+export type ProjectUpdateReason = "members" | "owner" | "renamed" | "deleted" | "memory";
 
 /** Tell everyone in a project's room that its metadata changed. */
 export const notifyProjectUpdated = (projectId: string, reason: ProjectUpdateReason) => {

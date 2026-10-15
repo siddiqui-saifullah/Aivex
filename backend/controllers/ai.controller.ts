@@ -43,7 +43,11 @@ export const enhancePromptController = catchAsync(async (req, res) => {
 
     const enhanced = await ai.enhancePrompt(prompt.trim()).catch((err) => {
         console.error("Enhance failed:", err);
-        throw new AppError("Could not enhance the prompt right now", 502);
+        const status = (err as { status?: number }).status === 429 ? 429 : 502;
+        throw new AppError(
+            status === 429 ? ai.friendlyAiError(err) : "Could not enhance the prompt right now",
+            status,
+        );
     });
 
     res.status(200).json({ prompt: enhanced || prompt.trim() });

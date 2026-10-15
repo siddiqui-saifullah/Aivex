@@ -135,6 +135,11 @@ export interface IssueReportPayload {
     context?: Record<string, unknown>;
 }
 
+export const updateAiMemory = async (projectId: string, memory: string) => {
+    const { data } = await axios.put<{ aiMemory: string }>(`/projects/${projectId}/memory`, { memory });
+    return data;
+};
+
 export const transferOwnership = async (projectId: string, newOwnerId: string) => {
     if (!projectId) throw new Error("Project ID is required");
     const { data } = await axios.patch<{ success: boolean; owner: string }>(

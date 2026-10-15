@@ -10,6 +10,7 @@ import {
   leaveProject,
   removeMember,
   transferOwnership,
+  updateAiMemory,
 } from "../services/project.service";
 import {
   formatUserMessage,
@@ -57,6 +58,7 @@ import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
 import type {
   ChatMessage,
   CreateFilePayload,
+  EditorSelection,
   FileItemType,
   FlatFileTree,
   ProjectDetails,
@@ -188,6 +190,17 @@ const Project = () => {
       }
       return !on;
     });
+  };
+
+  // Editor focus sent with AI requests: the open file and current selection.
+  // The user can drop it for the next message with the chip's ×.
+  const [editorSelection, setEditorSelection] = useState<EditorSelection | null>(null);
+  const [aiContextDismissed, setAiContextDismissed] = useState(false);
+
+  const selectFile = (path: string | null) => {
+    setActiveFile(path);
+    setEditorSelection(null);
+    setAiContextDismissed(false);
   };
 
   // Small screens show one pane at a time
@@ -326,9 +339,11 @@ const Project = () => {
 
       const { fileTree: aiFiles, deletedFiles } = normalizedMessage;
       if (aiFiles || deletedFiles?.length) {
-        // The AI sends only what it changed; merge it into the project
+        // The AI sends only what it changed; merge it into the project.
+        // The server saves those changes itself, so they only count as
+        // unsaved here if it couldn't (or is an older server).
         setFlatFileTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
-        setIsSaved(false);
+        if (!socketData.filesSaved) setIsSaved(false);
       }
     };
 
@@ -406,8 +421,19 @@ const Project = () => {
     const asksAi = text.trim().toLowerCase().startsWith("@vex");
     if (asksAi) setIsAiThinking(true);
 
+    // Tell the AI what the user is looking at (and the open file's unsaved edits)
+    const context =
+      asksAi && activeFile && activeFile !== ".aivex" && !aiContextDismissed
+        ? {
+            activeFile,
+            activeFileContent: isSaved ? undefined : flatFileTree[activeFile],
+            selection: editorSelection ?? undefined,
+          }
+        : undefined;
+    if (asksAi) setAiContextDismissed(false);
+
     try {
-      const ack = await sendWithAck<SendAck>("project-message", { message: text });
+      const ack = await sendWithAck<SendAck>("project-message", { message: text, context });
       if (!ack.ok) throw new Error(ack.error);
 
       // Attach the stored id so the message can be deleted later
@@ -468,6 +494,18 @@ const Project = () => {
     setFlatFileTree((prev) => applyFilePatch(prev, files));
     setIsSaved(false);
     toast.info("Files loaded into the editor. Run or update to save them.");
+  };
+
+  const handleSaveMemory = async (memory: string) => {
+    try {
+      const { aiMemory } = await updateAiMemory(projectId, memory);
+      setProject((prev) => (prev ? { ...prev, aiMemory } : prev));
+      toast.success(aiMemory ? "AI memory saved" : "AI memory cleared");
+      return true;
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to save AI memory"));
+      return false;
+    }
   };
 
   const handleTransferOwnership = async (member: User) => {
@@ -737,7 +775,7 @@ const Project = () => {
         updated = addFileToTree(flatFileTree, fullPath, "");
         // The parent no longer needs its empty-folder placeholder
         if (path) delete updated[`${path}/${FOLDER_PLACEHOLDER}`];
-        setActiveFile(fullPath);
+        selectFile(fullPath);
       } else {
         // Folders only exist through their files, so an empty folder is
         // stored as a hidden placeholder file to survive a reload
@@ -782,7 +820,7 @@ const Project = () => {
 
       // Deselect active file if it's being deleted
       if (activeFile === path || activeFile?.startsWith(path + "/")) {
-        setActiveFile(null);
+        selectFile(null);
       }
 
       // Removes the file, or every file under the folder
@@ -880,6 +918,15 @@ const Project = () => {
             aiMode,
             onToggleAiMode: toggleAiMode,
             onEnhance: handleEnhancePrompt,
+            aiContext:
+              activeFile && activeFile !== ".aivex" && !aiContextDismissed
+                ? {
+                    label: editorSelection
+                      ? `${activeFile.split("/").pop()} · lines ${editorSelection.startLine}–${editorSelection.endLine}`
+                      : activeFile,
+                    onRemove: () => setAiContextDismissed(true),
+                  }
+                : null,
           }}
         />
 
@@ -894,6 +941,7 @@ const Project = () => {
           onLeave={handleLeaveProject}
           onTransferOwnership={handleTransferOwnership}
           onRemoveMember={handleRemoveMember}
+          onSaveMemory={handleSaveMemory}
           currentUserId={user?._id}
           invitePermissionError={invitePermissionError}
           deletePermissionError={deletePermissionError}
@@ -954,7 +1002,7 @@ const Project = () => {
         fileTree={flatFileTree}
         activeFile={activeFile}
         onSelectFile={(path) => {
-          setActiveFile(path);
+          selectFile(path);
           setMobileTab("code");
         }}
         onCreateFile={handleCreateFile}
@@ -985,6 +1033,7 @@ const Project = () => {
               setIsSaved(false);
             }}
             onSave={handleSave}
+            onSelectionChange={setEditorSelection}
             handleRun={handleRun}
             handleUpdate={handleUpdate}
             handleStop={handleStop}

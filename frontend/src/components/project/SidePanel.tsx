@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import ProjectMembers from "./ProjectMembers";
 import ProjectActions from "./ProjectActions";
+import AiMemoryPanel from "./AiMemoryPanel";
 import { STACK_FORMATTER } from "../../constants/options";
 import type { ProjectDetails, User } from "../../types";
 
@@ -14,6 +15,7 @@ interface SidePanelProps {
   onLeave: () => void;
   onTransferOwnership?: (member: User) => Promise<void>;
   onRemoveMember?: (member: User) => Promise<void>;
+  onSaveMemory?: (memory: string) => Promise<boolean>;
   currentUserId?: string;
   invitePermissionError?: boolean;
   deletePermissionError?: boolean;
@@ -29,6 +31,7 @@ const SidePanel = ({
   onLeave,
   onTransferOwnership,
   onRemoveMember,
+  onSaveMemory,
   currentUserId,
   invitePermissionError,
   deletePermissionError,
@@ -97,6 +100,15 @@ const SidePanel = ({
           currentUserId={currentUserId}
           invitePermissionError={invitePermissionError}
         />
+
+        {/* AI memory (remounts when someone else updates it) */}
+        {onSaveMemory && (
+          <AiMemoryPanel
+            key={project?.aiMemory ?? ""}
+            memory={project?.aiMemory ?? ""}
+            onSave={onSaveMemory}
+          />
+        )}
 
         {/* Actions */}
         <ProjectActions

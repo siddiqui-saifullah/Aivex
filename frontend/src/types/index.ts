@@ -34,6 +34,8 @@ export interface Project {
   files?: FlatFileTree;
   flatFileTree: FlatFileTree;
   isOwner?: boolean;
+  /** Long-term notes the AI keeps about this project. */
+  aiMemory?: string;
   stack?: string;
   status?: string;
   usersCount?: number;
@@ -95,8 +97,17 @@ export interface SocketProjectMessage {
   role?: string;
   sender?: { id: string; username?: string };
   isAI?: boolean;
+  /** The server already saved the AI's file changes to the project. */
+  filesSaved?: boolean;
   timestamp?: Timestamp;
   fileTree?: FlatFileTree;
+}
+
+/** The part of the editor the AI should focus on. */
+export interface EditorSelection {
+  startLine: number;
+  endLine: number;
+  text: string;
 }
 
 export interface ApiErrorBody {

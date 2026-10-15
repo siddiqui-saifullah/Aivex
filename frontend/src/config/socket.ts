@@ -90,6 +90,17 @@ export const sendMessage = (eventName: string, data: unknown) => {
 };
 
 /**
+ * Emit an event and wait for the server's acknowledgement.
+ * Rejects if the socket is missing or the server does not answer in time.
+ */
+export const sendWithAck = <T>(eventName: string, data: unknown, timeoutMs = 10000): Promise<T> => {
+    if (!socketInstance) {
+        return Promise.reject(new Error("Socket not initialized"));
+    }
+    return socketInstance.timeout(timeoutMs).emitWithAck(eventName, data) as Promise<T>;
+};
+
+/**
  * Get current socket instance
  * @returns {object|null} Current socket instance or null
  */

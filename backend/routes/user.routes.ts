@@ -13,6 +13,12 @@ router.post("/login", authvalidator.loginValidator, validate, userController.log
 
 router.get("/profile", authMiddleware.authUser, userController.profileController);
 
+router.patch("/profile", authMiddleware.authUser, authvalidator.updateProfileValidator, validate, userController.updateProfileController);
+
+router.delete("/profile", authMiddleware.authUser, authvalidator.deleteAccountValidator, validate, userController.deleteAccountController);
+
+router.patch("/password", authMiddleware.authUser, authvalidator.changePasswordValidator, validate, userController.changePasswordController);
+
 router.post("/logout", userController.logoutController);
 
 router.get("/search", authMiddleware.authUser, userController.searchUserController)

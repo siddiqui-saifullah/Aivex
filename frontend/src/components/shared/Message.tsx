@@ -1,7 +1,7 @@
 import IncomingMessageBubble from "./Message/IncomingMessageBubble";
 import OutgoingMessageBubble from "./Message/OutgoingMessageBubble";
 import type { BubblePosition } from "./Message/types";
-import type { MessageType, Timestamp } from "../../types";
+import type { FlatFileTree, MessageType, Timestamp } from "../../types";
 
 interface MessageProps {
   username?: string;
@@ -13,6 +13,9 @@ interface MessageProps {
   isTyping?: boolean;
   isAI?: boolean;
   position?: BubblePosition;
+  files?: FlatFileTree | null;
+  onApplyFiles?: () => void;
+  onDelete?: () => void;
 }
 
 const Message = ({
@@ -25,6 +28,9 @@ const Message = ({
   isTyping = false,
   isAI,
   position = "single",
+  files,
+  onApplyFiles,
+  onDelete,
 }: MessageProps) => {
   /* ---------------- System Message ---------------- */
   if (type === "system") {
@@ -40,6 +46,7 @@ const Message = ({
         isStreaming={isStreaming}
         isAI={isAI}
         position={position}
+        onDelete={onDelete}
       />
     );
   }
@@ -54,6 +61,8 @@ const Message = ({
       isStreaming={isStreaming}
       isAI={isAI}
       position={position}
+      files={files}
+      onApplyFiles={onApplyFiles}
     />
   );
 };

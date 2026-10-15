@@ -47,14 +47,15 @@ const ProjectMenu = ({
           </button>
         </>
       )}
-      <button
-        onClick={handleLeaveClick}
-        className={`w-full px-4 py-2.5 text-sm text-yellow-400 hover:bg-yellow-500/10 flex items-center gap-2 ${
-          isOwner ? "border-t border-white/5" : ""
-        }`}
-      >
-        <LogOut size={14} /> Leave
-      </button>
+      {/* Owners can't leave; they rename/delete (or transfer ownership in the project) */}
+      {!isOwner && (
+        <button
+          onClick={handleLeaveClick}
+          className="w-full px-4 py-2.5 text-sm text-yellow-400 hover:bg-yellow-500/10 flex items-center gap-2"
+        >
+          <LogOut size={14} /> Leave
+        </button>
+      )}
     </div>
   );
 };

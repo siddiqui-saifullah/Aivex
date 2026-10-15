@@ -5,6 +5,7 @@ export interface User {
   name: string;
   username: string;
   email?: string;
+  bio?: string;
   avatar?: string;
   isOnline?: boolean;
   createdAt?: string;
@@ -50,7 +51,10 @@ export type MessageType = "incoming" | "outgoing" | "system";
 export type Timestamp = string | number | Date;
 
 export interface ChatMessage {
+  /** Server id; set once the message is stored. */
   id?: string;
+  /** Local id for optimistic messages, used to attach the server id later. */
+  clientId?: string;
   text: string;
   username?: string;
   type: MessageType;
@@ -61,6 +65,8 @@ export interface ChatMessage {
   role?: string;
   senderId?: string;
   fileTree?: FlatFileTree | null;
+  /** Paths the AI asked to remove. */
+  deletedFiles?: string[];
   filePatch?: Record<string, string> | null;
 }
 
@@ -78,11 +84,13 @@ export type ToastType = "success" | "error" | "info" | "warning";
 export interface AiMessage {
   text?: string;
   fileTree?: Record<string, unknown>;
+  deletedFiles?: string[];
   buildCommand?: string[];
   runCommand?: string[];
 }
 
 export interface SocketProjectMessage {
+  id?: string;
   message: string | AiMessage;
   role?: string;
   sender?: { id: string; username?: string };

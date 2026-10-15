@@ -38,9 +38,49 @@ export const logOut = async (): Promise<void> => {
 };
 
 
+export interface ProfileStats {
+    projectsOwned: number;
+    projectsJoined: number;
+    collaborators: number;
+    messagesSent: number;
+}
+
+export interface RecentProject {
+    _id: string;
+    name: string;
+    stack?: string;
+    updatedAt: string;
+    usersCount: number;
+    isOwner: boolean;
+}
+
 export const userProfile = async () => {
-    const response = await axios.get<{ user: User }>("/users/profile");
+    const response = await axios.get<{
+        user: User;
+        stats?: ProfileStats;
+        recentProjects?: RecentProject[];
+    }>("/users/profile");
     return response.data;
+};
+
+export const updateProfile = async (updates: { name?: string; username?: string; bio?: string }) => {
+    const response = await axios.patch<{ user: User }>("/users/profile", updates);
+    return response.data;
+};
+
+export const changePassword = async (currentPassword: string, newPassword: string) => {
+    const response = await axios.patch<{ message: string }>("/users/password", {
+        currentPassword,
+        newPassword,
+    });
+    return response.data;
+};
+
+/** Permanently delete the account; the server also revokes the token. */
+export const deleteAccount = async (password: string): Promise<void> => {
+    await axios.delete("/users/profile", { data: { password } });
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
 };
 
 export const searchUser = async (q: string, signal?: AbortSignal): Promise<{ users: User[] }> => {

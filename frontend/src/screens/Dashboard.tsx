@@ -1,5 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 
 import Button from "../components/ui/Button";
 import ProjectList from "../components/dashboard/ProjectList";
@@ -32,6 +32,7 @@ import { useUser } from "../context/user.context";
 import { useToast } from "../context/toast.context";
 import { leaveProject, updateProjectName } from "../services/project.service";
 import { getErrorMessage } from "../utils/getErrorMessage";
+import { prefetchProjectWorkspace } from "../utils/prefetch";
 
 export default function Dashboard() {
   const { user } = useUser();
@@ -46,6 +47,7 @@ export default function Dashboard() {
   } = useProjectList(user);
 
   const [filter, setFilter] = useState<ProjectFilterId>("all");
+  const [search, setSearch] = useState("");
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -66,14 +68,21 @@ export default function Dashboard() {
     if (user) fetchProjects();
   }, [user, fetchProjects]);
 
+  // Load the project workspace in the background so opening one is instant
+  useEffect(() => {
+    prefetchProjectWorkspace();
+  }, []);
+
   /* -------------------------------------------------------------------------- */
   /* FILTER LOGIC                                                               */
   /* -------------------------------------------------------------------------- */
   // The list endpoint doesn't return `isOwner`, so compare owner ids
-  const filteredProjects =
-    filter === "my-projects"
-      ? projects.filter((p) => String(p.ownerId) === String(user?._id))
-      : projects;
+  const query = search.trim().toLowerCase();
+  const filteredProjects = projects
+    .filter((p) => filter !== "my-projects" || String(p.ownerId) === String(user?._id))
+    .filter((p) => !query || p.name.toLowerCase().includes(query))
+    // Most recently worked-on first
+    .sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime());
 
   /* -------------------------------------------------------------------------- */
   /* DELETE PROJECT                                                             */
@@ -185,7 +194,26 @@ export default function Dashboard() {
         </div>
 
         {/* Filter */}
-        <ProjectFilter activeFilter={filter} onFilterChange={setFilter} />
+        <div className="flex flex-col-reverse sm:flex-row sm:items-end justify-between gap-4 mb-8 border-b border-white/10">
+          <ProjectFilter activeFilter={filter} onFilterChange={setFilter} />
+          {projects.length > 0 && (
+            <label className="relative mb-3 sm:mb-2 block">
+              <span className="sr-only">Search projects</span>
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search projects"
+                className="w-full sm:w-64 pl-9 pr-3 py-2 rounded-lg bg-zinc-900 border border-white/10 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-teal-500/50"
+              />
+            </label>
+          )}
+        </div>
+
+        {state === "success" && query && filteredProjects.length === 0 && (
+          <p className="text-sm text-zinc-500 mb-6">No projects match “{search}”.</p>
+        )}
 
         {/* Project List */}
         <ProjectList

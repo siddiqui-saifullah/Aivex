@@ -1,4 +1,5 @@
 import mongoose, { type Types } from "mongoose";
+import type { StoredFile } from "../utils/fileStore.js";
 
 export interface IChatMessage {
     project: Types.ObjectId | null;
@@ -6,7 +7,8 @@ export interface IChatMessage {
     sender: Types.ObjectId | null;
     role: "user" | "ai" | "system";
     text: string;
-    filePatch: Map<string, string> | null;
+    /** Files generated with this (AI) message, as a flat path -> contents map. */
+    filePatch: StoredFile[] | Record<string, string> | null;
     expiresAt?: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -46,9 +48,10 @@ const chatMessageSchema = new mongoose.Schema<IChatMessage>(
             default: "",
         },
 
+        // Stored as [{ path, contents }] (see utils/fileStore): file paths
+        // contain "." which Mongoose Maps and MongoDB keys don't handle well.
         filePatch: {
-            type: Map,
-            of: String,
+            type: mongoose.Schema.Types.Mixed,
             default: null,
         },
 

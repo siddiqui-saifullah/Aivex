@@ -1,5 +1,14 @@
 import type { FlatFileTree } from "../types";
 
+/**
+ * Hidden file that keeps an otherwise empty folder in the saved file tree
+ * (the tree is a flat path -> contents map, so folders only exist through files).
+ */
+export const FOLDER_PLACEHOLDER = ".gitkeep";
+
+const isPlaceholder = (path: string) =>
+    path === FOLDER_PLACEHOLDER || path.endsWith(`/${FOLDER_PLACEHOLDER}`);
+
 export interface TreeNodeData {
     __isFile: boolean;
     __children: Record<string, TreeNodeData>;
@@ -16,9 +25,12 @@ export function buildFileTree(fileTree: FlatFileTree, emptyFolders: string[] = [
         const parts = path.split("/");
         let current = root;
 
+        // Placeholders create their folder but are not shown as files
+        if (isPlaceholder(path)) parts.pop();
+
         parts.forEach((part, index) => {
             if (!current[part]) {
-                const isFile = index === parts.length - 1;
+                const isFile = index === parts.length - 1 && !isPlaceholder(path);
                 const fileContent = fileTree[path];
 
                 current[part] = {
@@ -65,18 +77,6 @@ export const addFileToTree = (flatFileTree: FlatFileTree, path: string, content 
 };
 
 /**
- * Add an empty folder to tracking
- * @param emptyFolders - Set of empty folder paths
- * @param {string} path - Folder path
- * @returns {Set} Updated emptyFolders set
- */
-export const addEmptyFolder = (emptyFolders: Set<string>, path: string): Set<string> => {
-    const updated = new Set(emptyFolders);
-    updated.add(path);
-    return updated;
-};
-
-/**
  * Delete a file or folder from flatFileTree
  * @param {Object} flatFileTree - Current flat file tree
  * @param {string} path - Full path to delete
@@ -93,28 +93,6 @@ export const deleteFileFromTree = (flatFileTree: FlatFileTree, path: string): Fl
     Object.keys(updated).forEach((filePath) => {
         if (filePath.startsWith(normalizedPath + "/")) {
             delete updated[filePath];
-        }
-    });
-
-    return updated;
-};
-
-/**
- * Remove folder from empty folders tracking when deleted
- * @param emptyFolders - Set of empty folder paths
- * @param {string} path - Folder path to delete
- * @returns {Set} Updated emptyFolders set
- */
-export const deleteEmptyFolder = (emptyFolders: Set<string>, path: string): Set<string> => {
-    const updated = new Set(emptyFolders);
-    const normalizedPath = path.endsWith("/") ? path.slice(0, -1) : path;
-
-    updated.delete(normalizedPath);
-
-    // Also delete subfolders
-    emptyFolders.forEach((folderPath) => {
-        if (folderPath.startsWith(normalizedPath + "/")) {
-            updated.delete(folderPath);
         }
     });
 
@@ -206,4 +184,25 @@ export const getDirectoryContents = (flatFileTree: FlatFileTree, dirPath: string
     });
 
     return { folders, files };
+};
+
+/**
+ * Rename/move a file or folder (and everything under it).
+ * Returns null if the target already exists.
+ */
+export const renamePath = (flatFileTree: FlatFileTree, from: string, to: string): FlatFileTree | null => {
+    if (from === to) return flatFileTree;
+    if (pathExists(flatFileTree, to)) return null;
+
+    const updated: FlatFileTree = {};
+    for (const [path, contents] of Object.entries(flatFileTree)) {
+        if (path === from) {
+            updated[to] = contents;
+        } else if (path.startsWith(from + "/")) {
+            updated[to + path.slice(from.length)] = contents;
+        } else {
+            updated[path] = contents;
+        }
+    }
+    return updated;
 };

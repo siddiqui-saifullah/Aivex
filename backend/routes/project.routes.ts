@@ -71,6 +71,20 @@ router.patch(
     projectController.inviteUsersToProject
 );
 
+// Transfer ownership to another member
+router.patch(
+    "/:projectId/owner",
+    body("newOwnerId").isString().withMessage("newOwnerId is required"),
+    validate,
+    projectController.transferOwnershipController
+);
+
+// Remove a member (owner only)
+router.delete(
+    "/:projectId/members/:memberId",
+    projectController.removeMemberController
+);
+
 // Leave project
 router.patch(
     "/:projectId/leave",

@@ -1,4 +1,5 @@
 import type { Types } from "mongoose";
+import { fromStoredFiles } from "./fileStore.js";
 
 interface RawChatMessage {
     _id: Types.ObjectId;
@@ -14,6 +15,6 @@ export const normalizeChatMessage = (msg: RawChatMessage) => ({
     text: msg.text,
     role: msg.role,
     sender: msg.sender,
-    filePatch: msg.filePatch,
+    filePatch: msg.filePatch ? fromStoredFiles(msg.filePatch) : null,
     createdAt: msg.createdAt,
 });

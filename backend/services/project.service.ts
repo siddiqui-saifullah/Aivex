@@ -1,29 +1,42 @@
 import mongoose, { type Types } from "mongoose";
-import Project from "../models/project.model.js";
+import Project, { PROJECT_STACKS, type ProjectStack } from "../models/project.model.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
 import issueModel from "../models/issue.model.js";
 import type { IssueReport } from "../types/index.js";
+import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
 type Id = Types.ObjectId | string;
 
 /* -------------------------------------------------------------------------- */
 /* CREATE PROJECT                                                             */
 /* -------------------------------------------------------------------------- */
-export const createProject = async ({ name, userId }: { name: string; userId: Id }) => {
+export const createProject = async ({ name, userId, stack }: { name: string; userId: Id; stack?: unknown }) => {
     if (!name) throw new AppError("Project name required", 400);
     if (!userId) throw new AppError("UserId required", 400);
 
+    // "Next.js" -> "nextjs", "Node.js" -> "nodejs"
+    const normalizedStack = typeof stack === "string"
+        ? stack.toLowerCase().replace(/[.\-\s]/g, "")
+        : "nodejs";
+
+    if (!PROJECT_STACKS.includes(normalizedStack as ProjectStack)) {
+        throw new AppError(`Stack must be one of: ${PROJECT_STACKS.join(", ")}`, 400);
+    }
+
     try {
-        return await Project.create({
+        const project = await Project.create({
             name,
             owner: userId,
             users: [userId],
-            files: {
+            stack: normalizedStack as ProjectStack,
+            files: toStoredFiles({
                 ".aivex": "//Aivex System File - Do not delete"
-            }
+            })
         });
+        const obj = project.toObject();
+        return { ...obj, files: fromStoredFiles(obj.files) };
     } catch (err) {
         if ((err as { code?: number }).code === 11000) {
             throw new AppError("Project with this name already exists", 409);
@@ -38,7 +51,10 @@ export const createProject = async ({ name, userId }: { name: string; userId: Id
 export const userAllProjects = async ({ userId }: { userId: Id }) => {
     if (!userId) throw new AppError("UserId required", 400);
 
+    // The dashboard never needs file contents; skipping them keeps the
+    // response small no matter how big the projects are.
     return Project.find({ users: userId })
+        .select("-files")
         .sort({ createdAt: -1 })
         .lean();
 };
@@ -64,6 +80,7 @@ export const getProjectById = async ({ projectId, userId }: { projectId: string;
 
     return {
         ...project,
+        files: fromStoredFiles(project.files),
         isOwner: project.owner.toString() === userId.toString(),
     };
 };
@@ -106,7 +123,7 @@ export const updateProjectFiles = async ({ projectId, userId, fileTree }: {
         throw new AppError("Access denied or project not found", 403);
     }
 
-    project.files = fileTree;
+    project.files = toStoredFiles(fileTree);
     await project.save();
 };
 
@@ -252,6 +269,72 @@ export const leaveProject = async ({ projectId, userId }: { projectId: string; u
     await project.save();
 
     return { success: true };
+};
+
+/* -------------------------------------------------------------------------- */
+/* TRANSFER OWNERSHIP                                                         */
+/* -------------------------------------------------------------------------- */
+export const transferOwnership = async ({ projectId, ownerId, newOwnerId }: {
+    projectId: string;
+    ownerId: Id;
+    newOwnerId: unknown;
+}) => {
+    if (typeof newOwnerId !== "string" || !mongoose.Types.ObjectId.isValid(newOwnerId)) {
+        throw new AppError("A valid newOwnerId is required", 400);
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) throw new AppError("Project not found", 404);
+
+    if (!project.owner.equals(ownerId)) {
+        throw new AppError("Only the owner can transfer ownership", 403);
+    }
+
+    if (project.owner.equals(newOwnerId)) {
+        throw new AppError("You already own this project", 400);
+    }
+
+    if (!project.users.some(id => id.equals(newOwnerId))) {
+        throw new AppError("New owner must be a member of the project", 400);
+    }
+
+    project.owner = new mongoose.Types.ObjectId(newOwnerId);
+    await project.save();
+
+    return { success: true, owner: newOwnerId };
+};
+
+/* -------------------------------------------------------------------------- */
+/* REMOVE MEMBER                                                              */
+/* -------------------------------------------------------------------------- */
+export const removeMember = async ({ projectId, ownerId, memberId }: {
+    projectId: string;
+    ownerId: Id;
+    memberId: string;
+}) => {
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+        throw new AppError("Invalid member id", 400);
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) throw new AppError("Project not found", 404);
+
+    if (!project.owner.equals(ownerId)) {
+        throw new AppError("Only the owner can remove members", 403);
+    }
+
+    if (project.owner.equals(memberId)) {
+        throw new AppError("The owner cannot be removed", 400);
+    }
+
+    if (!project.users.some(id => id.equals(memberId))) {
+        throw new AppError("User is not a member of this project", 404);
+    }
+
+    project.users = project.users.filter(id => !id.equals(memberId));
+    await project.save();
+
+    return { success: true, usersCount: project.users.length };
 };
 
 /* -------------------------------------------------------------------------- */

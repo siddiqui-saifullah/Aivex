@@ -1,26 +1,14 @@
-import { useEffect } from "react";
 import { MessageSquare, Layout, ArrowRight, Play, Folder } from "lucide-react";
 import { Link } from "react-router-dom";
-import axios from "../config/axios";
 import { StatBox, FeatureCard } from "../components/ui";
 import IDEImage from "../images/IDEimage.webp";
 import livedemo from "../images/livedemo.mp4";
 import ChatDemo from "../images/ChatDemo.mp4";
+import livedemoPoster from "../images/livedemo-poster.webp";
+import ChatDemoPoster from "../images/ChatDemo-poster.webp";
+import LazyVideo from "../components/ui/LazyVideo";
 
 const Home = () => {
-  useEffect(() => {
-    const awaikBackend = async () => {
-      try {
-        const result = await axios.get("/"); // To Wake render cooldown
-        console.log(result.data.message);
-      } catch (err) {
-        console.log(err);
-      }
-    };
-
-    awaikBackend();
-  }, []);
-
   return (
     <div className="min-h-screen bg-black text-zinc-100 selection:bg-teal-500/30 font-sans overflow-x-hidden">
       {/* --- HERO SECTION --- */}
@@ -89,7 +77,7 @@ const Home = () => {
         </div>
       </section>
       {/* --- FEATURES GRID --- */}
-      <section className="py-24 bg-zinc-950">
+      <section id="features" className="py-24 bg-zinc-950 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-8">
             <FeatureCard
@@ -121,11 +109,10 @@ const Home = () => {
           </div>
 
           <div className="relative mx-auto w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-teal-900/10 bg-zinc-900 aspect-video group cursor-pointer">
-            <video
+            <LazyVideo
               src={livedemo}
-              autoPlay
-              muted
-              loop
+              poster={livedemoPoster}
+              label="Aivex live demo"
               className="w-full h-full object-cover"
             />
           </div>
@@ -158,11 +145,10 @@ const Home = () => {
           {/* --- VIDEO PLACEHOLDER #2 (Chat Workflow) --- */}
           <div className="flex-1 w-full max-w-sm">
             <div className="relative rounded-xl border border-white/10 bg-black shadow-2xl overflow-hidden aspect-9/16 group">
-              <video
+              <LazyVideo
                 src={ChatDemo}
-                autoPlay
-                muted
-                loop
+                poster={ChatDemoPoster}
+                label="Aivex chat workflow demo"
                 className="w-full h-full object-cover"
               />
             </div>

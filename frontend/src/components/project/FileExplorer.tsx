@@ -1,7 +1,7 @@
 import { buildFileTree } from "../../utils/buildFileTree";
 import TreeNode from "./TreeNode";
 import { useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Download, Plus, X } from "lucide-react";
 import type { CreateFilePayload, FileItemType, FlatFileTree } from "../../types";
 
 interface FileExplorerProps {
@@ -10,7 +10,9 @@ interface FileExplorerProps {
   onSelectFile: (path: string) => void;
   onCreateFile: (payload: CreateFilePayload) => void;
   onDeleteFile: (path: string, type: FileItemType) => void;
-  emptyFolders?: Set<string>;
+  onRenameItem: (path: string, newName: string) => boolean | Promise<boolean>;
+  onDownload: () => void;
+  className?: string;
 }
 
 const FileExplorer = ({
@@ -19,7 +21,9 @@ const FileExplorer = ({
   onSelectFile,
   onCreateFile,
   onDeleteFile,
-  emptyFolders = new Set<string>(),
+  onRenameItem,
+  onDownload,
+  className = "",
 }: FileExplorerProps) => {
   const [selectedPath, setSelectedPath] = useState("");
   const [inlineInput, setInlineInput] = useState("");
@@ -28,12 +32,21 @@ const FileExplorer = ({
 
   // Build tree structure from fileTree prop
   const tree = useMemo(() => {
-    if (Object.keys(fileTree).length === 0 && emptyFolders.size === 0) {
+    if (Object.keys(fileTree).length === 0) {
       return {};
     }
 
-    return buildFileTree(fileTree, Array.from(emptyFolders));
-  }, [fileTree, emptyFolders]);
+    return buildFileTree(fileTree);
+  }, [fileTree]);
+
+  // Folders first, then files, alphabetically (like most editors)
+  const rootEntries = useMemo(
+    () =>
+      Object.entries(tree).sort(([a, na], [b, nb]) =>
+        na.__isFile === nb.__isFile ? a.localeCompare(b) : na.__isFile ? 1 : -1,
+      ),
+    [tree],
+  );
 
   const handleCreateClick = (folderPath: string) => {
     setSelectedPath(folderPath);
@@ -73,10 +86,19 @@ const FileExplorer = ({
   };
 
   return (
-    <aside className="w-64 bg-zinc-900 border-r border-white/10 flex flex-col">
+    <aside className={`bg-zinc-900 border-r border-white/10 flex flex-col ${className}`}>
       {/* Header */}
       <div className="h-12.5 px-4 flex items-center justify-between border-b border-white/10">
         <span className="text-sm font-medium text-zinc-200">Explorer</span>
+        <div className="flex items-center gap-1">
+        <button
+          onClick={onDownload}
+          className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-zinc-200 transition"
+          title="Download project as .zip"
+          aria-label="Download project as zip"
+        >
+          <Download size={16} />
+        </button>
         <button
           onClick={() => {
             setSelectedPath("");
@@ -86,9 +108,11 @@ const FileExplorer = ({
           }}
           className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-zinc-200 transition"
           title="Create file or folder"
+          aria-label="Create file or folder"
         >
           <Plus size={18} />
         </button>
+        </div>
       </div>
 
       {/* Inline Input for File/Folder Creation */}
@@ -164,9 +188,9 @@ const FileExplorer = ({
       )}
 
       {/* Tree */}
-      <div className="flex-1 overflow-y-auto px-1 py-2 text-sm">
-        {Object.keys(tree).length > 0 ? (
-          Object.entries(tree).map(([name, node]) => (
+      <div className="flex-1 overflow-y-auto px-1 py-2 text-sm" role="tree" aria-label="Project files">
+        {rootEntries.length > 0 ? (
+          rootEntries.map(([name, node]) => (
             <TreeNode
               key={name}
               name={name}
@@ -176,6 +200,7 @@ const FileExplorer = ({
               onSelectFile={onSelectFile}
               onCreateInFolder={handleCreateClick}
               onDeleteItem={onDeleteFile}
+              onRenameItem={onRenameItem}
             />
           ))
         ) : (

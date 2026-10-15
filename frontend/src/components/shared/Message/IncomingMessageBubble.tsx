@@ -1,3 +1,4 @@
+import { FileCode2 } from "lucide-react";
 import MarkdownRenderer from "../MarkdownRenderer";
 import type { BubblePosition, BubbleProps } from "./types";
 
@@ -15,7 +16,11 @@ const IncomingMessageBubble = ({
   isStreaming,
   isAI,
   position = "single",
+  files,
+  onApplyFiles,
 }: IncomingMessageBubbleProps) => {
+  const fileCount = files ? Object.keys(files).length : 0;
+
   const formattedTime = timestamp
     ? new Date(timestamp).toLocaleTimeString([], {
         hour: "numeric",
@@ -56,6 +61,24 @@ const IncomingMessageBubble = ({
             <MarkdownRenderer content={text} />
           ) : (
             <span>{text}</span>
+          )}
+
+          {/* Generated files */}
+          {fileCount > 0 && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs text-zinc-300">
+              <FileCode2 size={14} className="text-teal-400 shrink-0" />
+              <span className="flex-1">
+                {fileCount} file{fileCount === 1 ? "" : "s"} generated
+              </span>
+              {onApplyFiles && (
+                <button
+                  onClick={onApplyFiles}
+                  className="rounded px-2 py-0.5 font-medium text-teal-300 hover:bg-teal-500/10 transition"
+                >
+                  Apply
+                </button>
+              )}
+            </div>
           )}
 
           {/* Typing / Streaming */}

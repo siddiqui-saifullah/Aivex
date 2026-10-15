@@ -59,15 +59,48 @@ npm run typecheck
 
 ## Environment Variables
 
-Create a `.env` file in the root directory with:
+Create a `.env` file in `backend/` with:
 
 ```
-MONGODB_URI=your_mongodb_connection_string
-REDIS_URL=your_redis_url
+MONGO_URL=mongodb+srv://...          # MongoDB connection string
+JWT_SECRET=a-long-random-string
 GEMINI_API_KEY=your_gemini_api_key
-CORS_ORIGIN=http://localhost:5173
-PORT=5000
+REDIS_HOST=...
+REDIS_PORT=6379
+REDIS_PASSWORD=...
+PORT=3000
+
+# Optional: cloud code runner for C, C++, Java, Python, Go, Rust, ...
+PISTON_URL=http://your-piston-host:2000
+PISTON_TOKEN=                         # only if your Piston instance requires one
 ```
+
+## Code Runner (C, C++, Java, Python, ...)
+
+Node.js projects run in the browser (WebContainer). Other languages are sent
+to a [Piston](https://github.com/engineer-man/piston) sandbox through
+`POST /run`. The public Piston API now requires a token, so self-host it for
+free, e.g. on an Oracle Cloud "Always Free" VM (or any Linux box with Docker):
+
+```bash
+docker run -d --name piston --privileged -p 2000:2000 \
+  -v piston-data:/piston --restart unless-stopped \
+  ghcr.io/engineer-man/piston
+# list installable runtimes, then install the ones you want (one-time)
+curl -s localhost:2000/api/v2/packages | head
+curl -X POST localhost:2000/api/v2/packages -H 'Content-Type: application/json' \
+  -d '{"language":"gcc","version":"10.2.0"}'      # C and C++
+curl -X POST localhost:2000/api/v2/packages -H 'Content-Type: application/json' \
+  -d '{"language":"java","version":"15.0.2"}'
+curl -X POST localhost:2000/api/v2/packages -H 'Content-Type: application/json' \
+  -d '{"language":"python","version":"3.10.0"}'
+```
+
+(Use the versions shown by the list command.)
+
+Then set `PISTON_URL=http://<vm-ip>:2000` on the backend (keep port 2000
+firewalled to the backend's IP). Without `PISTON_URL`, the Run button for
+these languages shows "Code runner is not configured".
 
 ## API Endpoints
 

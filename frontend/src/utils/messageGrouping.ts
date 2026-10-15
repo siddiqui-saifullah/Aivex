@@ -8,7 +8,7 @@
  * - Preserves message types and metadata
  */
 
-import type { ChatMessage, MessageType, Timestamp } from "../types";
+import type { ChatMessage, FlatFileTree, MessageType, Timestamp } from "../types";
 
 export interface GroupedMessageItem {
     id?: string;
@@ -16,6 +16,8 @@ export interface GroupedMessageItem {
     timestamp?: Timestamp;
     isStreaming?: boolean;
     isError?: boolean;
+    /** Files generated with an AI message (live `fileTree` or saved `filePatch`). */
+    files?: FlatFileTree | null;
 }
 
 export interface MessageGroupData {
@@ -65,6 +67,7 @@ const toGroupItem = (message: ChatMessage): GroupedMessageItem => ({
     timestamp: message.timestamp,
     isStreaming: message.isStreaming,
     isError: message.isError,
+    files: message.fileTree ?? message.filePatch ?? null,
 });
 
 /**

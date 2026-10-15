@@ -16,6 +16,7 @@ import type {
  */
 export const formatUserMessage = (text: string, user: User | null | undefined): ChatMessage => {
     return {
+        clientId: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         text,
         username: user?.name || user?.username || 'You',
         type: 'outgoing',
@@ -96,8 +97,12 @@ export const normalizeSocketMessage = (
     const fileTree = messageObj.fileTree ? flattenFileTree(messageObj.fileTree) : {};
 
     return {
+        id: socketData.id,
         text: messageObj.text ?? '',
         fileTree: Object.keys(fileTree).length > 0 ? fileTree : null,
+        deletedFiles: Array.isArray(messageObj.deletedFiles)
+            ? messageObj.deletedFiles.filter((p): p is string => typeof p === "string")
+            : undefined,
         username,
         role: socketData.role,
         senderId: socketData.sender?.id,

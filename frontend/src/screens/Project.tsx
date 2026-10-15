@@ -50,7 +50,7 @@ import {
   pathExists,
   renamePath,
 } from "../utils/buildFileTree";
-import { getErrorMessage } from "../utils/getErrorMessage";
+import { getErrorMessage, isAckTimeout } from "../utils/getErrorMessage";
 import { toWebContainerTree } from "../utils/toWebContainerTree";
 import { applyFilePatch } from "../utils/applyFilePatch";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
@@ -417,6 +417,10 @@ const Project = () => {
         ),
       );
     } catch (err) {
+      // No acknowledgement (older server, or a slow one): the message was most
+      // likely delivered anyway, so don't flag it as failed
+      if (isAckTimeout(err)) return;
+
       console.error("Failed to send message:", err);
       setMessages((prev) =>
         prev.map((m) =>
@@ -449,7 +453,13 @@ const Project = () => {
       if (!ack.ok) throw new Error(ack.error);
       // Removal itself arrives via the "message-deleted" broadcast
     } catch (err) {
-      toast.error(err instanceof Error && err.message ? err.message : "Failed to delete message");
+      toast.error(
+        isAckTimeout(err)
+          ? "The server didn't confirm the delete. It may be outdated or waking up; please try again."
+          : err instanceof Error && err.message
+            ? err.message
+            : "Failed to delete message",
+      );
     }
   };
 

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Terminal, Trash2 } from "lucide-react";
+import RunLoader from "./RunLoader";
+import type { RunStep } from "../../utils/runSteps";
 
 export type OutputKind = "stdout" | "stderr" | "info" | "success" | "error";
 
@@ -20,6 +22,13 @@ interface OutputPanelProps {
   onStdinChange: (value: string) => void;
   /** Increment to bring the Output tab to the front (e.g. when a run starts). */
   revealOutputKey?: number;
+  /** Node project run: shown as a step loader instead of raw logs. */
+  run?: {
+    steps: RunStep[];
+    startedAt: number;
+    logs: OutputLine[];
+    previewErrors: string[];
+  } | null;
 }
 
 const KIND_CLASSES: Record<OutputKind, string> = {
@@ -39,6 +48,7 @@ const OutputPanel = ({
   stdin,
   onStdinChange,
   revealOutputKey = 0,
+  run = null,
 }: OutputPanelProps) => {
   const [tab, setTab] = useState<"output" | "input">("output");
 
@@ -55,7 +65,7 @@ const OutputPanel = ({
     if (isOpen && activeTab === "output") {
       bottomRef.current?.scrollIntoView({ block: "end" });
     }
-  }, [lines, isOpen, activeTab]);
+  }, [lines, run, isOpen, activeTab]);
 
   return (
     <div
@@ -110,8 +120,18 @@ const OutputPanel = ({
       {isOpen &&
         (activeTab === "output" ? (
           <div className="flex-1 overflow-auto px-3 py-2 font-mono text-xs leading-relaxed">
+            {run && (
+              <div className={lines.length ? "mb-3 pb-3 border-b border-white/5" : ""}>
+                <RunLoader
+                  steps={run.steps}
+                  startedAt={run.startedAt}
+                  logs={run.logs}
+                  previewErrors={run.previewErrors}
+                />
+              </div>
+            )}
             {lines.length === 0 ? (
-              <p className="text-zinc-600">Run your code to see output here.</p>
+              !run && <p className="text-zinc-600">Run your code to see output here.</p>
             ) : (
               lines.map((line) => (
                 <div key={line.id} className={`whitespace-pre-wrap break-all ${KIND_CLASSES[line.kind]}`}>

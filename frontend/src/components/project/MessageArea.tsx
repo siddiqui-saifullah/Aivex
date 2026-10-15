@@ -18,7 +18,7 @@ interface MessageAreaProps {
   /** Mentions, AI mode and prompt enhancer for the input. */
   inputProps?: Pick<
     ComponentProps<typeof ChatInput>,
-    "mentionables" | "aiMode" | "onToggleAiMode" | "onEnhance"
+    "mentionables" | "aiMode" | "onToggleAiMode" | "onEnhance" | "aiContext"
   >;
 }
 

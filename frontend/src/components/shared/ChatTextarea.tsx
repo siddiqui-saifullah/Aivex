@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Bot, Loader2, Send, Sparkles } from "lucide-react";
+import { Bot, FileCode2, Loader2, Send, Sparkles, X } from "lucide-react";
 
 export interface Mentionable {
   id: string;
@@ -33,6 +33,8 @@ interface ChatInputProps {
   onToggleAiMode?: () => void;
   /** Returns the improved prompt. */
   onEnhance?: (text: string) => Promise<string>;
+  /** Editor context sent with AI messages (open file / selection), shown as a chip. */
+  aiContext?: { label: string; onRemove: () => void } | null;
 }
 
 /** The "@query" being typed right before the cursor, if any. */
@@ -54,6 +56,7 @@ const ChatInput = ({
   aiMode = false,
   onToggleAiMode,
   onEnhance,
+  aiContext,
 }: ChatInputProps) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,6 +182,8 @@ const ChatInput = ({
   };
 
   const canSend = value.trim().length > 0 && !disabled;
+  // Show what the AI will see only when this message goes to the AI
+  const isForAi = aiMode || /^\s*@vex\b/i.test(value);
 
   return (
     <div className="relative w-full">
@@ -215,6 +220,26 @@ const ChatInput = ({
             </li>
           ))}
         </ul>
+      )}
+
+      {aiContext && isForAi && (
+        <div className="mb-1.5 flex">
+          <span
+            className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-[11px] text-teal-200"
+            title="Sent to Vex AI with your message"
+          >
+            <FileCode2 size={12} className="shrink-0" />
+            <span className="truncate">{aiContext.label}</span>
+            <button
+              type="button"
+              onClick={aiContext.onRemove}
+              aria-label="Don't send this context"
+              className="text-teal-300/70 hover:text-white"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        </div>
       )}
 
       {beforeEnhance !== null && (

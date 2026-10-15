@@ -272,6 +272,71 @@ export const leaveProject = async ({ projectId, userId }: { projectId: string; u
 };
 
 /* -------------------------------------------------------------------------- */
+/* AI MEMORY                                                                  */
+/* -------------------------------------------------------------------------- */
+export const MAX_AI_MEMORY_CHARS = 2000;
+
+export const updateAiMemory = async ({ projectId, userId, memory }: {
+    projectId: string;
+    userId: Id;
+    memory: unknown;
+}) => {
+    if (typeof memory !== "string") {
+        throw new AppError("memory must be text", 400);
+    }
+    if (memory.length > MAX_AI_MEMORY_CHARS) {
+        throw new AppError(`Memory must be at most ${MAX_AI_MEMORY_CHARS} characters`, 400);
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(projectId)) {
+        throw new AppError("Invalid projectId", 400);
+    }
+
+    const result = await Project.updateOne(
+        { _id: projectId, users: userId },
+        { aiMemory: memory.trim() },
+    );
+
+    if (result.matchedCount === 0) throw new AppError("Project not found or access denied", 404);
+    return { aiMemory: memory.trim() };
+};
+
+/**
+ * Save the AI's changes straight to the project so they persist even if
+ * nobody presses save. Merges into the stored files (unchanged files stay)
+ * and applies deletions; the .aivex system file is never removed.
+ */
+export const applyAiChanges = async ({ projectId, changed, deleted = [], memory }: {
+    projectId: Id;
+    changed: Record<string, string>;
+    deleted?: string[];
+    memory?: string;
+}) => {
+    const project = await Project.findById(projectId).select("files aiMemory");
+    if (!project) return false;
+
+    const hasFileChanges = Object.keys(changed).length > 0 || deleted.length > 0;
+
+    if (hasFileChanges) {
+        const files = { ...fromStoredFiles(project.files), ...changed };
+        for (const path of deleted) {
+            if (path === ".aivex") continue;
+            for (const key of Object.keys(files)) {
+                if (key === path || key.startsWith(path + "/")) delete files[key];
+            }
+        }
+        project.files = toStoredFiles(files);
+    }
+
+    if (typeof memory === "string" && memory.trim()) {
+        project.aiMemory = memory.trim().slice(0, MAX_AI_MEMORY_CHARS);
+    }
+
+    await project.save();
+    return hasFileChanges;
+};
+
+/* -------------------------------------------------------------------------- */
 /* TRANSFER OWNERSHIP                                                         */
 /* -------------------------------------------------------------------------- */
 export const transferOwnership = async ({ projectId, ownerId, newOwnerId }: {

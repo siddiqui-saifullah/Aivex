@@ -1,6 +1,8 @@
 import type { Server, Socket } from "socket.io";
 import * as ai from "../controllers/ai.controller.js";
 import * as chatService from "../services/chats.service.js";
+import * as projectService from "../services/project.service.js";
+import type { EditorFocus } from "../services/ai.service.js";
 import type { AiResponse, SocketData } from "../types/index.js";
 import { flattenFileTree } from "../utils/flattenFileTree.js";
 import { fromStoredFiles } from "../utils/fileStore.js";
@@ -18,6 +20,8 @@ interface ProjectMessagePayload {
     role?: "ai";
     sender: ChatSender;
     isAI?: boolean;
+    /** AI file changes were already saved to the project on the server. */
+    filesSaved?: boolean;
     timestamp: Date | undefined;
 }
 
@@ -34,7 +38,7 @@ type SendAck = Ack<{ ok: true; id: string; timestamp?: Date } | { ok: false; err
 type DeleteAck = Ack<{ ok: boolean; error?: string }>;
 
 interface ClientToServerEvents {
-    "project-message": (data: { message?: unknown }, ack?: SendAck) => void;
+    "project-message": (data: { message?: unknown; context?: unknown }, ack?: SendAck) => void;
     "user-typing": (data: { isTyping?: boolean }) => void;
     "delete-message": (data: { id?: unknown }, ack?: DeleteAck) => void;
 }
@@ -98,9 +102,42 @@ const handleUserConnection = (socket: AppSocket, io: AppServer) => {
 };
 
 
+/** What the editor sends along with an AI request (validated, size-capped). */
+interface AiRequestContext {
+    focus: EditorFocus;
+    /** Unsaved contents of the open file, so the AI sees the latest edits. */
+    activeFileContent?: string;
+}
+
+const MAX_ACTIVE_FILE_CHARS = 100_000;
+const MAX_SELECTION_CHARS = 20_000;
+
+const parseAiContext = (raw: unknown): AiRequestContext => {
+    const ctx = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const activeFile = typeof ctx.activeFile === "string" && ctx.activeFile.length < 500
+        ? ctx.activeFile
+        : undefined;
+    if (!activeFile) return { focus: {} };
+
+    const sel = (ctx.selection && typeof ctx.selection === "object" ? ctx.selection : null) as
+        { startLine?: unknown; endLine?: unknown; text?: unknown } | null;
+    const selection = sel
+        && Number.isInteger(sel.startLine) && Number.isInteger(sel.endLine)
+        && typeof sel.text === "string" && sel.text.trim() && sel.text.length <= MAX_SELECTION_CHARS
+        ? { startLine: sel.startLine as number, endLine: sel.endLine as number, text: sel.text }
+        : undefined;
+
+    const activeFileContent = typeof ctx.activeFileContent === "string"
+        && ctx.activeFileContent.length <= MAX_ACTIVE_FILE_CHARS
+        ? ctx.activeFileContent
+        : undefined;
+
+    return { focus: { activeFile, selection }, activeFileContent };
+};
+
 const handleProjectMessage = async (
     socket: AppSocket,
-    data: { message?: unknown },
+    data: { message?: unknown; context?: unknown },
     io: AppServer,
     roomId: string,
     ack?: SendAck,
@@ -117,46 +154,90 @@ const handleProjectMessage = async (
     await handleUserMessage(socket, text, io, roomId, ack);
 
     if (text.toLowerCase().startsWith("@vex")) {
-        await handleAiMessage(socket, text, io, roomId);
+        await handleAiMessage(socket, text, io, roomId, parseAiContext(data?.context));
     }
 };
 
 
-const handleAiMessage = async (socket: AppSocket, message: string, io: AppServer, roomId: string) => {
+/** Replies that carry no information for the next request (errors, quota). */
+const AI_ERROR_REPLY = /^(AI failed|AI returned an empty|Vex AI (has reached|is busy|couldn't))/;
+
+/**
+ * Only the conversation with the AI is useful context: drop members'
+ * small talk and failed replies, and strip the "@vex" prefix (token savings
+ * matter on the free Gemini tier).
+ */
+const toAiHistory = (chats: { role: string; text: string }[]) =>
+    chats
+        .filter(c => c.role === "ai" ? !AI_ERROR_REPLY.test(c.text) : /^\s*@vex\b/i.test(c.text))
+        .map(c => ({
+            role: (c.role === "ai" ? "ai" : "user") as "ai" | "user",
+            text: c.text.replace(/^\s*@vex\b\s*/i, ""),
+        }));
+
+const handleAiMessage = async (
+    socket: AppSocket,
+    message: string,
+    io: AppServer,
+    roomId: string,
+    { focus, activeFileContent }: AiRequestContext,
+) => {
     const prompt = message.replace(/^@vex/i, "").trim();
     const projectId = socket.data.project._id;
 
     // Give the AI the current project and the recent conversation so it edits
     // what exists instead of starting from scratch
     const [project, recentChats] = await Promise.all([
-        Project.findById(projectId).select("files").lean(),
+        Project.findById(projectId).select("files aiMemory").lean(),
         ChatMessage.find({ project: projectId })
             .sort({ createdAt: -1 })
-            .limit(8)
+            .limit(12)
             .select("role text")
             .lean(),
     ]);
 
+    const files = fromStoredFiles(project?.files);
+    // The open file may have unsaved edits in the browser; use those
+    if (focus.activeFile && activeFileContent !== undefined) {
+        files[focus.activeFile] = activeFileContent;
+    }
+
     const response: AiResponse = (await ai.getResult({
         prompt,
-        files: fromStoredFiles(project?.files),
-        history: recentChats
-            .reverse()
-            .slice(0, -1) // the last one is the request itself, saved just before
-            .map(c => ({ role: c.role === "ai" ? "ai" : "user", text: c.text })),
+        files,
+        memory: project?.aiMemory ?? "",
+        focus,
+        history: toAiHistory(recentChats.reverse().slice(0, -1)), // last = this request
     })) ?? {
         text: "AI failed to generate response",
     };
 
-    // Persist generated files with the message so they survive a reload
-    const files = flattenFileTree(response.fileTree);
+    const changedFiles = flattenFileTree(response.fileTree);
+    const deletedFiles = Array.isArray(response.deletedFiles)
+        ? response.deletedFiles.filter((p): p is string => typeof p === "string")
+        : [];
 
+    // Save the AI's edits (and updated memory) to the project right away,
+    // so they persist even if nobody presses save
+    let filesSaved = false;
+    try {
+        filesSaved = await projectService.applyAiChanges({
+            projectId,
+            changed: changedFiles,
+            deleted: deletedFiles,
+            memory: typeof response.memory === "string" ? response.memory : undefined,
+        });
+    } catch (err) {
+        console.error("Failed to save AI changes:", err);
+    }
+
+    // Also keep the files on the message so they can be re-applied from chat history
     const savedMessage = await chatService.createProjectChat({
         projectId: socket.data.project._id,
         senderId: null,
         role: "ai",
         text: response.text,
-        filePatch: Object.keys(files).length > 0 ? files : null,
+        filePatch: Object.keys(changedFiles).length > 0 ? changedFiles : null,
     });
 
     const aiMessage: ProjectMessagePayload = {
@@ -168,10 +249,16 @@ const handleAiMessage = async (socket: AppSocket, message: string, io: AppServer
             username: "AiVex",
         },
         isAI: true,
+        filesSaved,
         timestamp: savedMessage.createdAt,
     };
 
     io.to(roomId).emit("project-message", aiMessage);
+
+    if (typeof response.memory === "string" && response.memory.trim()) {
+        // Lets open panels show the refreshed memory
+        io.to(roomId).emit("project-updated", { projectId: String(projectId), reason: "memory" });
+    }
 };
 
 

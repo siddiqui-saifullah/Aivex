@@ -5,6 +5,7 @@ A robust Node.js/Express backend server providing APIs for project management, A
 ## Tech Stack
 
 - **Runtime**: Node.js
+- **Language**: TypeScript
 - **Framework**: Express.js
 - **Real-time Communication**: Socket.io
 - **Database**: MongoDB
@@ -26,8 +27,8 @@ A robust Node.js/Express backend server providing APIs for project management, A
 ├── socket/          # Socket.io handlers
 ├── utils/           # Utility functions
 ├── validators/      # Input validation
-├── app.js           # Express app setup
-├── server.js        # Server entry point
+├── app.ts           # Express app setup
+├── server.ts        # Server entry point
 └── package.json
 ```
 
@@ -45,11 +46,15 @@ A robust Node.js/Express backend server providing APIs for project management, A
 # Install dependencies
 npm install
 
-# Start development server
+# Development (TypeScript, auto-reload via tsx)
+npm run dev
+
+# Production: compile to dist/ then run the compiled server
+npm run build
 npm start
 
-# Or with nodemon for development
-npm run dev
+# Type-check without emitting
+npm run typecheck
 ```
 
 ## Environment Variables
@@ -106,11 +111,11 @@ PORT=5000
 
 ## Middleware
 
-- `auth.middleware.js` - JWT authentication
-- `error.middleware.js` - Global error handler
-- `project.middleware.js` - Project-related middleware
-- `socketAuth.middleware.js` - Socket.io authentication
-- `validate.middleware.js` - Input validation
+- `auth.middleware.ts` - JWT authentication
+- `error.middleware.ts` - Global error handler
+- `project.middleware.ts` - Project-related middleware
+- `socketAuth.middleware.ts` - Socket.io authentication
+- `validate.middleware.ts` - Input validation
 
 ## Models
 
@@ -121,11 +126,11 @@ PORT=5000
 
 ## Services
 
-- `ai.service.js` - AI operations
-- `chats.service.js` - Chat operations
-- `project.service.js` - Project operations
-- `redis.service.js` - Caching layer
-- `user.service.js` - User operations
+- `ai.service.ts` - AI operations
+- `chats.service.ts` - Chat operations
+- `project.service.ts` - Project operations
+- `redis.service.ts` - Caching layer
+- `user.service.ts` - User operations
 
 
 ## License

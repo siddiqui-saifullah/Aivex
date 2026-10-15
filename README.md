@@ -29,7 +29,7 @@ Aivex follows a modular monorepo structure:
 ```
 
 ### Backend Stack
-- Node.js
+- Node.js + TypeScript
 - Express
 - MongoDB + Mongoose
 - JWT Authentication
@@ -38,7 +38,7 @@ Aivex follows a modular monorepo structure:
 - Gemini AI API
 
 ### Frontend Stack
-- React
+- React + TypeScript
 - Vite
 - Context API
 - Modular routing & layouts

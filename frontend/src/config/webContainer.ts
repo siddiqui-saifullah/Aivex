@@ -5,16 +5,18 @@
  * vercel.json / vite.config.ts) and only run Node.js; other languages go
  * through the server-side runner (services/runner.service.ts).
  */
-import type { WebContainer, WebContainerProcess } from "@webcontainer/api";
+import type { PreviewMessage, WebContainer, WebContainerProcess } from "@webcontainer/api";
 import type { WebContainerTree } from "../types";
 
 let webcontainerInstance: WebContainer | null = null;
 let bootPromise: Promise<WebContainer> | null = null;
 let runningProcess: WebContainerProcess | null = null;
-let portListenerAttached = false;
-// Latest callback; the port listener is attached once, so it must not capture a stale one
+let listenersAttached = false;
+// Latest callbacks; the container listeners are attached once, so they must
+// not capture a stale run's handlers
 let previewReadyHandler: ((info: { port: number; url: string }) => void) | undefined;
-// package.json that dependencies were last installed for; reinstall only when it changes
+let previewErrorHandler: ((message: string) => void) | undefined;
+// package.json that dependencies were last installed for
 let installedPackageJson: string | null = null;
 
 /* Browser-only WebContainer loader (boots once, shared by every caller) */
@@ -26,7 +28,13 @@ export const getWebContainer = async (): Promise<WebContainer> => {
     if (webcontainerInstance) return webcontainerInstance;
 
     bootPromise ??= import("@webcontainer/api")
-        .then(({ WebContainer }) => WebContainer.boot())
+        .then(({ WebContainer }) =>
+            WebContainer.boot({
+                coep: "require-corp",
+                // Lets us show *why* a preview is blank instead of a white screen
+                forwardPreviewErrors: "exceptions-only",
+            }),
+        )
         .then((instance) => {
             webcontainerInstance = instance;
             return instance;
@@ -68,7 +76,7 @@ const getStartCommand = (tree: WebContainerTree, packageJson: string | null): [s
             if (pkg.scripts?.dev) return ["npm", ["run", "dev"]];
             if (pkg.main && tree[pkg.main]) return ["node", [pkg.main]];
         } catch {
-            // Invalid JSON: npm will report it during install
+            // Invalid JSON: npm will report it
             return ["npm", ["start"]];
         }
     }
@@ -79,88 +87,116 @@ const getStartCommand = (tree: WebContainerTree, packageJson: string | null): [s
     return null;
 };
 
+const hasNodeModules = async (webContainer: WebContainer) => {
+    try {
+        await webContainer.fs.readdir("node_modules");
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+const formatPreviewError = (message: PreviewMessage) => {
+    if ("message" in message) return message.message;
+    if ("args" in message) return message.args.map(String).join(" ");
+    return "Unknown error in the preview";
+};
+
+export type RunStepId = "mount" | "install" | "start" | "ready";
+export type RunStepStatus = "pending" | "active" | "done" | "skipped" | "error";
+
 export interface RunCallbacks {
+    /** Progress of each stage, for the run loader. */
+    onStep?: (step: RunStepId, status: RunStepStatus, detail?: string) => void;
     onPreviewReady?: (info: { port: number; url: string }) => void;
-    onProgress?: (message: string) => void;
     /** Raw process output (npm install + the app itself). */
     onOutput?: (chunk: string) => void;
-    /** The started process exited (crash or normal end). */
+    /** The started app process exited (crash or normal end). */
     onExit?: (code: number) => void;
+    /** Uncaught errors thrown inside the preview page (the usual cause of a blank preview). */
+    onPreviewError?: (message: string) => void;
 }
 
 /** Mount files, install dependencies if needed and start the app. Returns false on failure. */
 export const runWebcontainer = async (
     webContainer: WebContainer | null,
     fileTree: WebContainerTree | null,
-    { onPreviewReady, onProgress, onOutput, onExit }: RunCallbacks = {},
+    { onStep, onPreviewReady, onOutput, onExit, onPreviewError }: RunCallbacks = {},
 ): Promise<boolean> => {
+    if (!webContainer || !fileTree) return false;
+
+    previewReadyHandler = onPreviewReady;
+    previewErrorHandler = onPreviewError;
+    let step: RunStepId = "mount";
+
     try {
-        if (!webContainer || !fileTree) return false;
-
-        previewReadyHandler = onPreviewReady;
-
         await stopWebcontainer();
 
-        onProgress?.("Mounting files...");
+        onStep?.("mount", "active");
         await webContainer.mount(fileTree);
+        onStep?.("mount", "done");
 
         const packageJson = readPackageJson(fileTree);
 
-        if (packageJson && packageJson !== installedPackageJson) {
-            onProgress?.("Installing dependencies...");
+        step = "install";
+        if (!packageJson) {
+            onStep?.("install", "skipped", "No package.json");
+        } else if (packageJson === installedPackageJson && (await hasNodeModules(webContainer))) {
+            onStep?.("install", "skipped", "Dependencies unchanged");
+        } else {
+            onStep?.("install", "active");
             onOutput?.("$ npm install\n");
-            // Skip audit/funding lookups and reuse cached packages: noticeably faster
-            const installProcess = await webContainer.spawn("npm", [
-                "install",
-                "--prefer-offline",
-                "--no-audit",
-                "--no-fund",
-                "--loglevel=error",
-            ]);
+            // Plain `npm install`: WebContainer's npm doesn't support every CLI flag
+            const installProcess = await webContainer.spawn("npm", ["install"]);
             pipeOutput(installProcess, onOutput);
             const installExitCode = await installProcess.exit;
             if (installExitCode !== 0) {
-                onProgress?.("Install failed");
-                onOutput?.(`\nnpm install failed (exit code ${installExitCode})\n`);
+                onStep?.("install", "error", `npm install failed (exit code ${installExitCode})`);
                 return false;
             }
             installedPackageJson = packageJson;
-        } else if (packageJson) {
-            onOutput?.("Dependencies unchanged, skipping npm install\n");
+            onStep?.("install", "done");
         }
 
+        step = "start";
         const command = getStartCommand(fileTree, packageJson);
         if (!command) {
-            onProgress?.("Nothing to run");
-            onOutput?.("No start script found. Add a \"start\" script to package.json or create index.js\n");
+            onStep?.("start", "error", 'No start script. Add "start" to package.json or create index.js');
             return false;
         }
 
         const [cmd, args] = command;
-        onProgress?.("Starting...");
+        onStep?.("start", "active", `${cmd} ${args.join(" ")}`);
         onOutput?.(`$ ${cmd} ${args.join(" ")}\n`);
         const process = await webContainer.spawn(cmd, args);
         runningProcess = process;
         pipeOutput(process, onOutput);
+        onStep?.("start", "done", `${cmd} ${args.join(" ")}`);
+        onStep?.("ready", "active");
 
         process.exit.then((code) => {
-            if (runningProcess === process) runningProcess = null;
+            // Ignore processes we stopped ourselves (Stop / Update): only the
+            // current app exiting on its own is reported
+            if (runningProcess !== process) return;
+            runningProcess = null;
             onExit?.(code);
         });
 
-        if (!portListenerAttached) {
-            webContainer.on("port", (port, type, url) => {
-                if (type === "open" && runningProcess) {
-                    previewReadyHandler?.({ port, url });
-                }
+        if (!listenersAttached) {
+            // `server-ready` fires once the server actually answers requests;
+            // opening the preview earlier is what shows a blank page
+            webContainer.on("server-ready", (port, url) => {
+                if (runningProcess) previewReadyHandler?.({ port, url });
             });
-            portListenerAttached = true;
+            webContainer.on("preview-message", (message) => {
+                previewErrorHandler?.(formatPreviewError(message));
+            });
+            listenersAttached = true;
         }
         return true;
     } catch (error) {
         console.error(error);
-        onProgress?.("Failed To Start");
-        onOutput?.(`\n${error instanceof Error ? error.message : String(error)}\n`);
+        onStep?.(step, "error", error instanceof Error ? error.message : String(error));
         return false;
     }
 };

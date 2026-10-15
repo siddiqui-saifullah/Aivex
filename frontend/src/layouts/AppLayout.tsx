@@ -7,7 +7,7 @@ const AppLayout = () => {
     <>
       <AppHeader />
       <ServerOutdatedBanner />
-      <main className="pt-16 min-h-screen bg-black">
+      <main className="pt-16 min-h-dvh bg-black">
         <Outlet />
       </main>
     </>

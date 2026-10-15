@@ -22,10 +22,12 @@ const AppLayout = lazy(() => import("../layouts/AppLayout"));
 const PublicLayout = lazy(() => import("../layouts/PublicLayout"));
 
 import ProtectedRoute from "./ProtectedRoute";
+import PageTitle from "./PageTitle";
 
 const AppRoutes = () => {
   return (
     <BrowserRouter>
+      <PageTitle />
       <Suspense fallback={<Loader />}>
         <Routes>
           {/* Public */}

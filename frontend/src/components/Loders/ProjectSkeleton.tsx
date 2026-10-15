@@ -2,7 +2,7 @@ import React from "react";
 
 const ProjectSkeleton = () => {
   return (
-    <div className="h-[calc(100vh-4rem)] flex overflow-hidden bg-zinc-950 text-zinc-400">
+    <div className="h-[calc(100dvh-4rem)] flex overflow-hidden bg-zinc-950 text-zinc-400">
       {/* Left Section (Sidebar + Chat) - Matches w-[23%] */}
       <div className="flex flex-col h-full w-[23%] min-w-60 border-r border-white/10 bg-black/20">
         {/* Header Skeleton */}

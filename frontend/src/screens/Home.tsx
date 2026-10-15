@@ -1,4 +1,4 @@
-import { MessageSquare, Layout, ArrowRight, Play, Folder } from "lucide-react";
+import { MessageSquare, Layout, ArrowRight, Folder, Zap, Cpu, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StatBox, FeatureCard } from "../components/ui";
 import IDEImage from "../images/IDEimage.webp";
@@ -7,10 +7,15 @@ import ChatDemo from "../images/ChatDemo.mp4";
 import livedemoPoster from "../images/livedemo-poster.webp";
 import ChatDemoPoster from "../images/ChatDemo-poster.webp";
 import LazyVideo from "../components/ui/LazyVideo";
+import { useUser } from "../context/user.context";
 
 const Home = () => {
+  const { user } = useUser();
+  // Signed-in visitors go straight back to their work
+  const primaryCta = user ? { to: "/dashboard", label: "Open Dashboard" } : { to: "/register", label: "Start Coding Now" };
+
   return (
-    <div className="min-h-screen bg-black text-zinc-100 selection:bg-teal-500/30 font-sans overflow-x-hidden">
+    <div className="min-h-dvh bg-black text-zinc-100 selection:bg-teal-500/30 font-sans overflow-x-hidden">
       {/* --- HERO SECTION --- */}
       <section className="relative pt-32 pb-16 md:pt-48 md:pb-32 px-6 border-b border-white/5">
         {/* Background Gradients */}
@@ -36,25 +41,28 @@ const Home = () => {
           </h1>
 
           <p className="text-lg text-zinc-400 max-w-2xl mb-12 leading-relaxed">
-            Chat with Aivex to generate Express servers, debug errors, and
-            manage files. All running in a secure, browser-based Node.js
-            environment.
+            Build websites, APIs and apps with an AI pair programmer that edits
+            your files and remembers your project. HTML, CSS and JS preview
+            instantly, Node.js runs in your browser, and C, C++, Java and Python
+            run in the cloud. No setup.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-20">
             <Link
-              to="/register"
+              to={primaryCta.to}
               className="w-full sm:w-auto px-8 py-4 bg-linear-to-r from-teal-500 to-emerald-600 text-white rounded-full font-bold text-lg hover:shadow-[0_0_30px_-5px_rgba(20,184,166,0.4)] transition-all hover:scale-105 flex items-center justify-center gap-2 border border-white/10"
             >
-              Start Coding Now
+              {primaryCta.label}
               <ArrowRight size={20} />
             </Link>
-            <Link
-              to="/login"
-              className="w-full sm:w-auto px-8 py-4 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-full font-medium hover:bg-zinc-800 hover:text-white transition-all flex items-center justify-center"
-            >
-              Log In
-            </Link>
+            {!user && (
+              <Link
+                to="/login"
+                className="w-full sm:w-auto px-8 py-4 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-full font-medium hover:bg-zinc-800 hover:text-white transition-all flex items-center justify-center"
+              >
+                Log In
+              </Link>
+            )}
           </div>
 
           {/* --- HERO IDE VISUAL --- */}
@@ -79,21 +87,40 @@ const Home = () => {
       {/* --- FEATURES GRID --- */}
       <section id="features" className="py-24 bg-zinc-950 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="max-w-2xl mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3">Everything in one tab</h2>
+            <p className="text-zinc-400">Write, run, preview and ship together, from any device.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <FeatureCard
               icon={<MessageSquare size={24} className="text-white" />}
-              title="AI Chat & Generate"
-              desc="Ask @Aivex to scaffold projects, write functions, or explain code. Context-aware and integrated directly into the editor."
+              title="AI that edits your code"
+              desc="Ask @Vex to build features, fix bugs or explain code. It sees your open file and selection, saves its changes and remembers your project."
+            />
+            <FeatureCard
+              icon={<Zap size={24} className="text-white" />}
+              title="Instant web preview"
+              desc="HTML, CSS and JS sites open in a fraction of a second and update as you type, with console output right in the editor."
             />
             <FeatureCard
               icon={<Layout size={24} className="text-white" />}
-              title="Live Browser Preview"
-              desc="No localhost tunneling needed. Your server runs in the browser and exposes a preview URL instantly."
+              title="Node.js in your browser"
+              desc="Run Express servers and full-stack apps without installing anything, with a live preview you can open in a new tab."
+            />
+            <FeatureCard
+              icon={<Cpu size={24} className="text-white" />}
+              title="C, C++, Java, Python & more"
+              desc="Compile and run programs on the cloud runner with input support: great for practice, DSA and assignments."
+            />
+            <FeatureCard
+              icon={<Users size={24} className="text-white" />}
+              title="Real-time collaboration"
+              desc="Invite teammates, chat in the project, see who is typing and build together on the same files."
             />
             <FeatureCard
               icon={<Folder size={24} className="text-white" />}
-              title="Full File System"
-              desc="Not just a snippet runner. A complete file system with folders, static assets, and Node.js module support."
+              title="A real file system"
+              desc="Folders, multiple files, tabs, quick open (Ctrl+P) and one-click ZIP download of your whole project."
             />
           </div>
         </div>
@@ -131,14 +158,16 @@ const Home = () => {
               </span>
             </h3>
             <p className="text-lg text-zinc-400 leading-relaxed">
-              Whether you are building a simple API or a complex React
-              dashboard, Aivex provides the tools you need without the setup
-              fatigue.
+              From a first HTML page to a full-stack app, Aivex gives you the
+              runtime, the AI and the team chat in one place, with nothing to
+              install.
             </p>
 
             <div className="grid grid-cols-2 gap-4 pt-4">
-              <StatBox number="Node.js" label="Runtime" />
-              <StatBox number="WebContainer" label="Technology" />
+              <StatBox number="10+" label="Languages" />
+              <StatBox number="<1s" label="Web preview" />
+              <StatBox number="0" label="Setup steps" />
+              <StatBox number="Live" label="Team chat" />
             </div>
           </div>
 
@@ -166,10 +195,10 @@ const Home = () => {
             Join the beta and start shipping in under 30 seconds.
           </p>
           <Link
-            to="/register"
+            to={primaryCta.to}
             className="inline-flex items-center gap-2 px-10 py-5 bg-white text-black rounded-full font-bold text-xl hover:scale-105 transition-transform shadow-2xl shadow-white/20"
           >
-            Start Building Free
+            {user ? "Open Dashboard" : "Start Building Free"}
             <ArrowRight size={20} />
           </Link>
           <p className="mt-6 text-zinc-500 text-sm">No credit card required</p>

@@ -99,6 +99,8 @@ export interface SocketProjectMessage {
   isAI?: boolean;
   /** The server already saved the AI's file changes to the project. */
   filesSaved?: boolean;
+  /** ...and put them into the live shared document. */
+  filesSynced?: boolean;
   timestamp?: Timestamp;
   fileTree?: FlatFileTree;
 }

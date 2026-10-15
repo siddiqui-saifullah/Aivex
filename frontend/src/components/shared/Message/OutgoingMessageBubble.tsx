@@ -1,4 +1,5 @@
 import { Trash2 } from "lucide-react";
+import MentionText from "../MentionText";
 import type { BubblePosition, BubbleProps } from "./types";
 
 const OutgoingMessageBubble = ({
@@ -37,17 +38,19 @@ const OutgoingMessageBubble = ({
       <div
         className={`
           group relative
-          max-w-[78%] sm:max-w-[65%]
+          max-w-[85%]
           px-4 py-2.5
           text-sm leading-snug
-          bg-[#00aeb0] text-black
+          bg-teal-500 text-black
           break-words whitespace-pre-wrap
           overflow-hidden
           ${radiusMap[position]}
         `}
       >
         {/* Message text */}
-        <span>{text}</span>
+        <span>
+          <MentionText text={text ?? ""} tone="outgoing" />
+        </span>
 
         {/* WhatsApp-style time */}
         {formattedTime && (

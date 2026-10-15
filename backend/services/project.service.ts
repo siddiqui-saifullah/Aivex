@@ -9,6 +9,61 @@ import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
 type Id = Types.ObjectId | string;
 
+/** Starter for HTML/CSS/JS projects: previews instantly, no install. */
+const STATIC_SITE_STARTER: Record<string, string> = {
+    "index.html": `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Site</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <h1>Hello, Aivex 👋</h1>
+    <p>Edit <code>index.html</code>, <code>style.css</code> or <code>script.js</code>: the preview updates as you type.</p>
+    <button id="counter">Clicked 0 times</button>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
+`,
+    "style.css": `* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: system-ui, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+main { text-align: center; padding: 2rem; }
+
+button {
+  padding: 0.6rem 1.2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #14b8a6;
+  color: #042f2e;
+  font-weight: 600;
+  cursor: pointer;
+}
+`,
+    "script.js": `const button = document.getElementById("counter");
+let count = 0;
+
+button.addEventListener("click", () => {
+  count++;
+  button.textContent = \`Clicked \${count} time\${count === 1 ? "" : "s"}\`;
+  console.log("count:", count);
+});
+`,
+};
+
 /* -------------------------------------------------------------------------- */
 /* CREATE PROJECT                                                             */
 /* -------------------------------------------------------------------------- */
@@ -16,9 +71,9 @@ export const createProject = async ({ name, userId, stack }: { name: string; use
     if (!name) throw new AppError("Project name required", 400);
     if (!userId) throw new AppError("UserId required", 400);
 
-    // "Next.js" -> "nextjs", "Node.js" -> "nodejs"
+    // "Next.js" -> "nextjs", "Node.js" -> "nodejs", "HTML/CSS/JS" -> "htmlcssjs"
     const normalizedStack = typeof stack === "string"
-        ? stack.toLowerCase().replace(/[.\-\s]/g, "")
+        ? stack.toLowerCase().replace(/[.\-\s/]/g, "")
         : "nodejs";
 
     if (!PROJECT_STACKS.includes(normalizedStack as ProjectStack)) {
@@ -32,7 +87,8 @@ export const createProject = async ({ name, userId, stack }: { name: string; use
             users: [userId],
             stack: normalizedStack as ProjectStack,
             files: toStoredFiles({
-                ".aivex": "//Aivex System File - Do not delete"
+                ".aivex": "//Aivex System File - Do not delete",
+                ...(normalizedStack === "htmlcssjs" ? STATIC_SITE_STARTER : {}),
             })
         });
         const obj = project.toObject();

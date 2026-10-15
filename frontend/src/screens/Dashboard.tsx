@@ -169,7 +169,7 @@ export default function Dashboard() {
   /* RENDER                                                                     */
   /* -------------------------------------------------------------------------- */
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-teal-500/30">
+    <div className="min-h-dvh bg-black text-zinc-100 font-sans selection:bg-teal-500/30">
       <main className="max-w-7xl mx-auto px-6 py-10">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">

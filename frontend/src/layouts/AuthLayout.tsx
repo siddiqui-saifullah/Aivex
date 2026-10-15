@@ -6,7 +6,7 @@ const AuthLayout = () => {
   const theme = "dark";
 
   return (
-    <div className="min-h-screen flex flex-col bg-black text-zinc-100 font-sans selection:bg-teal-500/30">
+    <div className="min-h-dvh flex flex-col bg-black text-zinc-100 font-sans selection:bg-teal-500/30">
       <PublicHeader />
 
       <main className="flex-1 flex items-center justify-center relative p-6 pt-32 pb-20 overflow-hidden">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from "react";
 import { Code2, FolderTree, Loader2, MessageSquare } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { WebContainer } from "@webcontainer/api";
@@ -23,7 +23,11 @@ import MessageArea from "../components/project/MessageArea";
 import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
 import PreviewOverlay from "../components/project/PreviewOverlay";
+import QuickOpen from "../components/project/QuickOpen";
+import { CollabSession, type Peer } from "../config/collab";
 import OutputPanel, { type OutputKind, type OutputLine } from "../components/project/OutputPanel";
+import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
+import type { RunStepId, RunStepStatus } from "../config/webContainer";
 import { getRunnerLanguage, runFile } from "../services/runner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
@@ -54,6 +58,15 @@ import {
 import { getErrorMessage, isAckTimeout } from "../utils/getErrorMessage";
 import { toWebContainerTree } from "../utils/toWebContainerTree";
 import { applyFilePatch } from "../utils/applyFilePatch";
+import {
+  PREVIEW_MESSAGE_SOURCE,
+  PREVIEW_SANDBOX,
+  buildStaticPage,
+  getEntryPage,
+  isStaticSite,
+  resolvePath,
+  type PreviewMessage,
+} from "../utils/staticSite";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
 import type {
   ChatMessage,
@@ -116,6 +129,34 @@ const MAX_OUTPUT_LINES = 2000;
 
 type MobileTab = "chat" | "files" | "code";
 
+/** File to open when a project loads: the page or entry point a person would start with. */
+const pickEntryFile = (files: FlatFileTree): string | null => {
+  const paths = Object.keys(files).filter((p) => p !== ".aivex" && !p.endsWith(FOLDER_PLACEHOLDER));
+  if (paths.length === 0) return null;
+  let main: string | undefined;
+  try {
+    main = (JSON.parse(files["package.json"] ?? "{}") as { main?: string }).main?.replace(/^\.\//, "");
+  } catch {
+    /* invalid package.json */
+  }
+  const preferred = [
+    main,
+    "index.html",
+    "src/App.jsx",
+    "src/App.tsx",
+    "src/main.jsx",
+    "server.js",
+    "index.js",
+    "app.js",
+    "main.js",
+    "main.py",
+    "main.cpp",
+    "main.c",
+    "Main.java",
+  ];
+  return preferred.find((p) => p && p in files) ?? paths.find((p) => !p.includes("/") && p !== "package.json") ?? paths[0];
+};
+
 const Project = () => {
   const { projectId = "" } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -152,6 +193,19 @@ const Project = () => {
 
   // FileTree states
   const [flatFileTree, setFlatFileTree] = useState<FlatFileTree>({});
+  // Last saved contents, to mark edited tabs
+  const [savedTree, setSavedTree] = useState<FlatFileTree>({});
+
+  // Live collaborative editing (shared document synced over the socket)
+  const collabRef = useRef<CollabSession | null>(null);
+  const [collab, setCollab] = useState<CollabSession | null>(null);
+  const [peers, setPeers] = useState<Peer[]>([]);
+
+  /** Change the project's files: through the shared document when live editing is on. */
+  const commitTree = (next: FlatFileTree) => {
+    if (collabRef.current?.ready) collabRef.current.applyTree(next);
+    else setFlatFileTree(next);
+  };
 
   // Web Container State
   const [webContainer, setWebContainer] = useState<WebContainer | null>(null);
@@ -172,6 +226,52 @@ const Project = () => {
   const [isRunningFile, setIsRunningFile] = useState(false);
   const [revealOutputKey, setRevealOutputKey] = useState(0);
   const outputIdRef = useRef(0);
+
+  // Node project run shown as a step loader (raw logs kept behind "Show logs")
+  const [nodeRun, setNodeRun] = useState<{
+    steps: RunStep[];
+    startedAt: number;
+    logs: OutputLine[];
+    previewErrors: string[];
+  } | null>(null);
+
+  const updateRunStep = useCallback((id: RunStepId, status: RunStepStatus, detail?: string) => {
+    setNodeRun((run) =>
+      run
+        ? { ...run, steps: run.steps.map((s) => (s.id === id ? { ...s, status, detail: detail ?? s.detail } : s)) }
+        : run,
+    );
+    if (status === "active") setRunProgress(`${RUN_STEP_LABELS[id]}…`);
+    if (status === "error") setRunProgress(`${RUN_STEP_LABELS[id]} failed`);
+  }, []);
+
+  const appendRunLog = useCallback((chunk: string) => {
+    const lines = toTerminalLines(chunk);
+    setNodeRun((run) => {
+      if (!run) return run;
+      const logs = [...run.logs, ...lines.map((text) => ({ id: outputIdRef.current++, text, kind: "stdout" as OutputKind }))];
+      return { ...run, logs: logs.length > MAX_OUTPUT_LINES ? logs.slice(-MAX_OUTPUT_LINES) : logs };
+    });
+  }, []);
+
+  // HTML / CSS / JS projects: instant live preview without the WebContainer
+  const [staticPage, setStaticPage] = useState<string | null>(null);
+  const [staticTree, setStaticTree] = useState<FlatFileTree>({});
+  const previewTokenRef = useRef(Math.random().toString(36).slice(2));
+  const previewTabRef = useRef<Window | null>(null);
+  const isStatic = useMemo(() => isStaticSite(flatFileTree), [flatFileTree]);
+
+  // Follow edits (saved or not) with a short debounce so typing stays smooth
+  useEffect(() => {
+    if (!staticPage) return;
+    const timer = setTimeout(() => setStaticTree(flatFileTree), 250);
+    return () => clearTimeout(timer);
+  }, [flatFileTree, staticPage]);
+
+  const staticHtml = useMemo(
+    () => (staticPage ? buildStaticPage(staticTree, staticPage, previewTokenRef.current) : null),
+    [staticTree, staticPage],
+  );
 
   // AI mode: send every message to Vex without typing @Vex (remembered per browser)
   const [aiMode, setAiMode] = useState(() => {
@@ -197,10 +297,33 @@ const Project = () => {
   const [editorSelection, setEditorSelection] = useState<EditorSelection | null>(null);
   const [aiContextDismissed, setAiContextDismissed] = useState(false);
 
+  // Editor tabs (most recent last) and the "Go to file" palette
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [isQuickOpen, setIsQuickOpen] = useState(false);
+
   const selectFile = (path: string | null) => {
     setActiveFile(path);
     setEditorSelection(null);
     setAiContextDismissed(false);
+    if (path) {
+      setOpenFiles((tabs) => {
+        if (tabs.includes(path)) return tabs;
+        // Keep the tab bar manageable: drop the oldest tab beyond 10
+        const next = [...tabs, path];
+        return next.length > 10 ? next.slice(-10) : next;
+      });
+    }
+  };
+
+  const closeTab = (path: string) => {
+    const index = openFiles.indexOf(path);
+    const next = openFiles.filter((p) => p !== path);
+    setOpenFiles(next);
+    if (activeFile === path) {
+      const neighbour = next[Math.min(index, next.length - 1)] ?? null;
+      setActiveFile(neighbour);
+      setEditorSelection(null);
+    }
   };
 
   // Small screens show one pane at a time
@@ -264,7 +387,36 @@ const Project = () => {
     clearAllTypingUsers();
 
     /* ---------- SOCKET INIT ---------- */
-    initializeSocket(projectId);
+    const socket = initializeSocket(projectId);
+
+    const session = new CollabSession(
+      socket,
+      { id: currentUserId, name: user.name || user.username || "Someone" },
+      {
+        onReady: (files) => {
+          if (!isMounted) return;
+          // The shared document includes teammates' unsaved edits
+          setFlatFileTree(files);
+          setCollab(session);
+        },
+        onFilesChanged: (changes) => {
+          setFlatFileTree((prev) => {
+            const next = { ...prev };
+            for (const [path, contents] of Object.entries(changes)) {
+              if (contents === null) delete next[path];
+              else next[path] = contents;
+            }
+            return next;
+          });
+        },
+        onPeersChanged: setPeers,
+        onRemoteSaved: (username) => {
+          setSavedTree(session.toTree());
+          toast.info(`${username} saved the project`, 1500);
+        },
+      },
+    );
+    collabRef.current = session;
 
     const loadProjectAndChats = async () => {
       let projectData: ProjectDetails;
@@ -278,8 +430,14 @@ const Project = () => {
       if (!isMounted) return;
 
       applyProject(projectData);
-      setFlatFileTree(projectData.files || projectData.flatFileTree || {});
+      const files = projectData.files || projectData.flatFileTree || {};
+      // Live editing may already have delivered the shared (newer) state
+      if (!collabRef.current?.ready) setFlatFileTree(files);
+      setSavedTree(files);
       setIsSaved(true);
+      // Open the project's main file so there's something to work with right away
+      const entry = pickEntryFile(files);
+      if (entry) selectFile(entry);
 
       try {
         const response = await getProjectChats(projectId);
@@ -342,8 +500,12 @@ const Project = () => {
         // The AI sends only what it changed; merge it into the project.
         // The server saves those changes itself, so they only count as
         // unsaved here if it couldn't (or is an older server).
-        setFlatFileTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
-        if (!socketData.filesSaved) setIsSaved(false);
+        // With live editing the server already put them into the shared document
+        if (!(socketData.filesSynced && collabRef.current?.ready)) {
+          setFlatFileTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
+        }
+        if (socketData.filesSaved) setSavedTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
+        else setIsSaved(false);
       }
     };
 
@@ -399,6 +561,11 @@ const Project = () => {
       removeMessageListener("user-typing", handleUserTypingEvent);
       removeMessageListener("message-deleted", handleMessageDeleted);
       removeMessageListener("project-updated", handleProjectUpdated);
+
+      session.destroy();
+      collabRef.current = null;
+      setCollab(null);
+      setPeers([]);
 
       // Leave the project room when navigating away
       disconnectSocket();
@@ -491,7 +658,7 @@ const Project = () => {
 
   /** Load files from an AI message into the editor (unsaved until Run/Update). */
   const handleApplyFiles = (files: FlatFileTree) => {
-    setFlatFileTree((prev) => applyFilePatch(prev, files));
+    commitTree(applyFilePatch(flatFileTree, files));
     setIsSaved(false);
     toast.info("Files loaded into the editor. Run or update to save them.");
   };
@@ -613,7 +780,9 @@ const Project = () => {
 
     try {
       await updateProjectFiles(projectId, flatFileTree);
+      setSavedTree(flatFileTree);
       setIsSaved(true);
+      collabRef.current?.notifySaved();
       return true;
     } catch (error) {
       console.error("Failed to save files:", error);
@@ -625,24 +794,151 @@ const Project = () => {
     }
   };
 
+  // Tab title: project name, with a dot while there are unsaved changes
+  useEffect(() => {
+    if (project?.name) document.title = `${isSaved ? "" : "● "}${project.name} · Aivex`;
+  }, [project?.name, isSaved]);
+
+  // With live editing teammates change files too: compare with the last save
+  useEffect(() => {
+    if (!collab) return;
+    const paths = new Set([...Object.keys(flatFileTree), ...Object.keys(savedTree)]);
+    setIsSaved([...paths].every((p) => flatFileTree[p] === savedTree[p]));
+  }, [collab, flatFileTree, savedTree]);
+
+  // Let teammates see which file we're in
+  useEffect(() => {
+    collab?.setActiveFile(activeFile);
+  }, [collab, activeFile]);
+
+  // Don't lose unsaved edits to an accidental tab close / reload
+  useEffect(() => {
+    if (isSaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isSaved]);
+
+  const dirtyFiles = useMemo(
+    () => new Set(openFiles.filter((p) => p in flatFileTree && flatFileTree[p] !== savedTree[p])),
+    [openFiles, flatFileTree, savedTree],
+  );
+  const visibleFiles = useMemo(
+    () => Object.keys(flatFileTree).filter((p) => !p.endsWith(FOLDER_PLACEHOLDER) && p !== ".aivex").sort(),
+    [flatFileTree],
+  );
+
+  // Ctrl/Cmd+P anywhere in the workspace (the editor registers its own too)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setIsQuickOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  /** Messages from the static preview: console output, errors and page links. */
+  useEffect(() => {
+    if (!staticPage) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as PreviewMessage | null;
+      if (data?.source !== PREVIEW_MESSAGE_SOURCE || data.token !== previewTokenRef.current) return;
+
+      if (data.type === "console") {
+        const kind: OutputKind = data.level === "error" || data.level === "warn" ? "stderr" : "stdout";
+        appendOutput(data.text ?? "", kind);
+      } else if (data.type === "error") {
+        appendOutput(data.text ?? "Error", "error");
+        setIsOutputOpen(true);
+      } else if (data.type === "navigate" && data.path) {
+        const target = resolvePath(staticPage, data.path);
+        const page = target in flatFileTree ? target : `${target}/index.html` in flatFileTree ? `${target}/index.html` : null;
+        if (page) setStaticPage(page);
+        else appendOutput(`Page not found: ${target}`, "error");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [staticPage, flatFileTree, appendOutput]);
+
+  // Keep a preview opened in a new tab in sync
+  useEffect(() => {
+    const tab = previewTabRef.current;
+    if (!tab || tab.closed) return;
+    const frame = tab.document.querySelector("iframe");
+    if (frame && staticHtml !== null) frame.srcdoc = staticHtml;
+  }, [staticHtml]);
+
+  const startStaticPreview = () => {
+    const page = getEntryPage(flatFileTree, activeFile);
+    if (!page) {
+      toast.warning("Add an index.html to preview this site");
+      return;
+    }
+    setStaticTree(flatFileTree);
+    setStaticPage(page);
+    setOriginalIsRunning(true);
+    setPreviewUrl(`/${page}`);
+    setShowPreview(true);
+    setRunProgress("Live preview · updates as you type");
+    appendOutput(`— Live preview of ${page} (console output appears here) —`, "info");
+  };
+
+  const openStaticPreviewTab = () => {
+    if (staticHtml === null) return;
+    const tab = previewTabRef.current && !previewTabRef.current.closed ? previewTabRef.current : window.open("", "_blank");
+    if (!tab) {
+      toast.warning("Allow pop-ups to open the preview in a new tab");
+      return;
+    }
+    previewTabRef.current = tab;
+    const doc = tab.document;
+    if (!doc.querySelector("iframe")) {
+      doc.title = `${project?.name ?? "Preview"} · Aivex`;
+      doc.body.style.cssText = "margin:0;height:100vh;background:#fff";
+      const frame = doc.createElement("iframe");
+      frame.setAttribute("sandbox", PREVIEW_SANDBOX);
+      frame.title = "Preview";
+      frame.style.cssText = "border:0;width:100%;height:100%;display:block";
+      doc.body.appendChild(frame);
+      // Relay console output and page links back to the editor
+      tab.addEventListener("message", (event) => window.postMessage(event.data, "*"));
+    }
+    doc.querySelector("iframe")!.srcdoc = staticHtml;
+    tab.focus();
+  };
+
   const startServer = async () => {
     setOriginalIsRunning(true);
     setIsOutputOpen(true);
     setRevealOutputKey((k) => k + 1);
-    appendOutput("— Starting project —", "info");
+    setPreviewUrl(null);
+    setNodeRun({ steps: initialRunSteps(), startedAt: Date.now(), logs: [], previewErrors: [] });
 
     const started = await runWebcontainer(webContainer, toWebContainerTree(flatFileTree), {
+      onStep: updateRunStep,
       onPreviewReady: ({ url }) => {
         setPreviewBaseUrl(url);
         setPreviewUrl(url);
         setShowPreview(true);
-        setRunProgress("Server running...");
-        appendOutput(`Server ready at ${url}`, "success");
+        setRunProgress("Server running");
+        updateRunStep("ready", "done", url);
       },
-      onProgress: setRunProgress,
-      onOutput: (chunk) => appendOutput(chunk),
+      onOutput: appendRunLog,
+      onPreviewError: (message) => {
+        setNodeRun((run) =>
+          run ? { ...run, previewErrors: [...run.previewErrors.slice(-9), message] } : run,
+        );
+        setIsOutputOpen(true);
+      },
       onExit: (code) => {
-        appendOutput(`Process exited with code ${code}`, code === 0 ? "info" : "error");
+        // A script that finishes (no server) is fine; a crash is an error
+        updateRunStep("ready", code === 0 ? "skipped" : "error", code === 0 ? "Program finished" : `App exited with code ${code}`);
         setOriginalIsRunning(false);
         setRunProgress("");
         setPreviewUrl(null);
@@ -705,12 +1001,14 @@ const Project = () => {
     const updated = renamePath(flatFileTree, path, target);
     if (!updated) return false;
 
-    setFlatFileTree(updated);
-    if (activeFile === path) setActiveFile(target);
-    else if (activeFile?.startsWith(path + "/")) setActiveFile(target + activeFile.slice(path.length));
+    commitTree(updated);
+    const move = (p: string) => (p === path ? target : p.startsWith(path + "/") ? target + p.slice(path.length) : p);
+    if (activeFile) setActiveFile(move(activeFile));
+    setOpenFiles((tabs) => tabs.map(move));
 
     try {
       await updateProjectFiles(projectId, updated);
+      setSavedTree(updated);
       setIsSaved(true);
     } catch {
       setIsSaved(false);
@@ -728,6 +1026,11 @@ const Project = () => {
   };
 
   const handleRun = async () => {
+    if (isStatic) {
+      startStaticPreview();
+      return;
+    }
+
     if (!webContainer) {
       toast.warning("The runtime is still starting. Please try again shortly.");
       return;
@@ -741,6 +1044,12 @@ const Project = () => {
   const handleUpdate = async () => {
     if (isSaved) return;
 
+    // The static preview is already live: just save
+    if (staticPage) {
+      await saveFiles("Saving files...");
+      return;
+    }
+
     if (!(await saveFiles("Updating files..."))) return;
 
     await stopWebcontainer();
@@ -753,7 +1062,13 @@ const Project = () => {
       setOriginalIsRunning(false);
       setRunProgress("");
       setShowPreview(false);
-      toast.info("Server stopped");
+      setPreviewUrl(null);
+      setNodeRun(null);
+      const wasStatic = Boolean(staticPage);
+      setStaticPage(null);
+      if (previewTabRef.current && !previewTabRef.current.closed) previewTabRef.current.close();
+      previewTabRef.current = null;
+      toast.info(wasStatic ? "Preview stopped" : "Server stopped");
     } else {
       toast.error("Failed to stop server");
     }
@@ -782,12 +1097,13 @@ const Project = () => {
         updated = addFileToTree(flatFileTree, `${fullPath}/${FOLDER_PLACEHOLDER}`, "");
       }
 
-      setFlatFileTree(updated);
+      commitTree(updated);
       setIsSaved(false);
 
       // Auto-save to backend
       try {
         await updateProjectFiles(projectId, updated);
+        setSavedTree(updated);
         setIsSaved(true);
         toast.success(`${capitalize(type)} created: ${fullPath}`);
       } catch (error) {
@@ -818,18 +1134,23 @@ const Project = () => {
     try {
       setIsDeleting(true);
 
-      // Deselect active file if it's being deleted
-      if (activeFile === path || activeFile?.startsWith(path + "/")) {
-        selectFile(null);
+      // Close tabs of deleted files
+      const removed = (p: string) => p === path || p.startsWith(path + "/");
+      const remaining = openFiles.filter((p) => !removed(p));
+      setOpenFiles(remaining);
+      if (activeFile && removed(activeFile)) {
+        setActiveFile(remaining[remaining.length - 1] ?? null);
+        setEditorSelection(null);
       }
 
       // Removes the file, or every file under the folder
       const updated = deleteFileFromTree(flatFileTree, path);
 
-      setFlatFileTree(updated);
+      commitTree(updated);
 
       // Save to backend
       await updateProjectFiles(projectId, updated);
+      setSavedTree(updated);
       setIsSaved(true);
 
       toast.success(`${type === "file" ? "File" : "Folder"} deleted: ${path}`);
@@ -1043,9 +1364,23 @@ const Project = () => {
             runProgress={runProgress}
             isSaved={isSaved}
             originalIsRunning={originalIsRunning}
+            isLivePreview={Boolean(staticPage)}
+            isStaticSite={isStatic}
             canPreview={Boolean(previewUrl)}
             preview={setShowPreview}
+            openFiles={openFiles}
+            dirtyFiles={dirtyFiles}
+            collab={collab}
+            peers={peers}
+            onSelectTab={selectFile}
+            onCloseTab={closeTab}
+            onQuickOpen={() => setIsQuickOpen(true)}
+            onBrowseFiles={() => setMobileTab("files")}
             onOpenPreviewTab={() => {
+              if (staticPage) {
+                openStaticPreviewTab();
+                return;
+              }
               // The preview server lives in this tab; keep it open while using the new one
               if (previewUrl) window.open(previewUrl, "_blank", "noopener");
             }}
@@ -1056,18 +1391,43 @@ const Project = () => {
           lines={outputLines}
           isOpen={isOutputOpen}
           onToggle={() => setIsOutputOpen((v) => !v)}
-          onClear={() => setOutputLines([])}
+          onClear={() => {
+            setOutputLines([]);
+            setNodeRun(null);
+          }}
           showInput={Boolean(getRunnerLanguage(activeFile))}
           stdin={stdin}
           onStdinChange={setStdin}
           revealOutputKey={revealOutputKey}
+          run={nodeRun}
         />
+
+        {isQuickOpen && (
+          <QuickOpen
+            files={visibleFiles}
+            onOpen={(path) => {
+              selectFile(path);
+              setMobileTab("code");
+            }}
+            onClose={() => setIsQuickOpen(false)}
+          />
+        )}
 
         {showPreview && (
           <PreviewOverlay
-            url={previewUrl}
+            url={staticPage ? `/${staticPage}` : previewUrl}
             baseUrl={previewBaseUrl}
-            onNavigate={setPreviewUrl}
+            srcDoc={staticHtml}
+            onOpenTab={staticPage ? openStaticPreviewTab : undefined}
+            onNavigate={(target) => {
+              if (!staticPage) {
+                setPreviewUrl(target);
+                return;
+              }
+              const page = target.replace(/^\/+/, "") || "index.html";
+              if (page in flatFileTree) setStaticPage(page);
+              else toast.warning(`No page ${page}`);
+            }}
             onClose={() => setShowPreview(false)}
           />
         )}

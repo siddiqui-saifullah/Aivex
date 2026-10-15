@@ -21,6 +21,8 @@ export interface AiResponse {
     fileTree?: Record<string, FileTreeNode>;
     /** Paths the AI wants removed from the project. */
     deletedFiles?: string[];
+    /** Updated long-term notes about the project. */
+    memory?: string;
     buildCommand?: string[];
     runCommand?: string[];
 }

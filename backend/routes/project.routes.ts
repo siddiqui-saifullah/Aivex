@@ -71,6 +71,12 @@ router.patch(
     projectController.inviteUsersToProject
 );
 
+// Edit / clear the AI's long-term project memory (any member)
+router.put(
+    "/:projectId/memory",
+    projectController.updateAiMemoryController
+);
+
 // Transfer ownership to another member
 router.patch(
     "/:projectId/owner",

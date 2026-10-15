@@ -10,6 +10,8 @@ export interface IProject {
     owner: Types.ObjectId;
     users: Types.ObjectId[];
     lastRenamedAt: Date | null;
+    /** Long-term notes the AI keeps about this project (purpose, preferences, decisions). */
+    aiMemory: string;
     /**
      * Stored as `[{ path, contents }]` (see utils/fileStore). Older projects
      * may still hold a `{ path: contents }` object; read via `fromStoredFiles`.
@@ -55,6 +57,12 @@ const projectSchema = new mongoose.Schema<IProject>(
         lastRenamedAt: {
             type: Date,
             default: null,
+        },
+
+        aiMemory: {
+            type: String,
+            default: "",
+            maxlength: 2000,
         },
 
 

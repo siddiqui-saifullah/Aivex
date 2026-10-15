@@ -4,7 +4,7 @@ import "../../config/monaco";
 import getLanguageFromFilename from "../../utils/getLanguageFromFilename";
 import { getRunnerLanguage } from "../../services/runner.service";
 import { ExternalLink, Eye, Loader2, Play, RefreshCw, Square } from "lucide-react";
-import type { FlatFileTree } from "../../types";
+import type { EditorSelection, FlatFileTree } from "../../types";
 
 interface CodeEditorProps {
   activeFile: string | null;
@@ -12,6 +12,8 @@ interface CodeEditorProps {
   onChange: (value: string) => void;
   /** Ctrl/Cmd+S */
   onSave: () => void;
+  /** Current non-empty selection (null when nothing is selected), for the AI. */
+  onSelectionChange?: (selection: EditorSelection | null) => void;
   handleRun: () => void;
   handleUpdate: () => void;
   handleStop: () => void;
@@ -33,6 +35,7 @@ const CodeEditor = ({
   fileTree = {},
   onChange,
   onSave,
+  onSelectionChange,
   handleRun,
   handleUpdate,
   handleStop,
@@ -48,14 +51,31 @@ const CodeEditor = ({
 }: CodeEditorProps) => {
   // Monaco registers the shortcut once; keep it pointing at the latest handler
   const onSaveRef = useRef(onSave);
+  const onSelectionRef = useRef(onSelectionChange);
   useEffect(() => {
     onSaveRef.current = onSave;
-  }, [onSave]);
+    onSelectionRef.current = onSelectionChange;
+  }, [onSave, onSelectionChange]);
 
   const handleMount: OnMount = (editor, monaco) => {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onSaveRef.current();
     });
+
+    // Report the selection (debounced) so "@Vex fix this" targets it
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    editor.onDidChangeCursorSelection(({ selection }) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const text = selection.isEmpty() ? "" : editor.getModel()?.getValueInRange(selection) ?? "";
+        onSelectionRef.current?.(
+          text.trim()
+            ? { startLine: selection.startLineNumber, endLine: selection.endLineNumber, text }
+            : null,
+        );
+      }, 150);
+    });
+    editor.onDidDispose(() => clearTimeout(timer));
   };
 
   if (!activeFile) {

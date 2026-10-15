@@ -140,7 +140,7 @@ const Profile = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-red-400">
+      <div className="min-h-dvh bg-black flex items-center justify-center text-red-400">
         {error}
       </div>
     );
@@ -148,14 +148,14 @@ const Profile = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-zinc-500">
+      <div className="min-h-dvh bg-black flex items-center justify-center text-zinc-500">
         User not found
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 px-4 sm:px-6 py-10">
+    <div className="min-h-dvh bg-black text-zinc-100 px-4 sm:px-6 py-10">
       <div className="max-w-5xl mx-auto space-y-8">
         {/* Hero */}
         <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-900/60">

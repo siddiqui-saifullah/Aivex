@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-black text-zinc-100 px-4">
+        <div className="flex flex-col items-center justify-center min-h-dvh bg-black text-zinc-100 px-4">
           <div className="max-w-md text-center">
             <div className="p-4 bg-red-500/10 rounded-full text-red-400 mb-6 inline-block">
               <AlertCircle size={48} />

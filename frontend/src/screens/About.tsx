@@ -5,7 +5,7 @@ import { GoalItem, SocialLink } from "../components/ui";
 
 const About = () => {
   return (
-    <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)] transition-colors duration-300 font-sans selection:bg-teal-500/30">
+    <div className="min-h-dvh bg-[var(--bg-main)] text-[var(--text-primary)] transition-colors duration-300 font-sans selection:bg-teal-500/30">
       {/* --- HERO SECTION --- */}
       <section className="relative pt-32 pb-12 px-6 overflow-hidden">
         <div className="max-w-3xl mx-auto text-center relative z-10">

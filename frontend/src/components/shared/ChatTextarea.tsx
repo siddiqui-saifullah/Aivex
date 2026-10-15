@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Bot, FileCode2, Loader2, Send, Sparkles, X } from "lucide-react";
+import MentionText from "./MentionText";
 
 export interface Mentionable {
   id: string;
@@ -59,6 +60,7 @@ const ChatInput = ({
   aiContext,
 }: ChatInputProps) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const [highlight, setHighlight] = useState(0);
@@ -280,24 +282,41 @@ const ChatInput = ({
           </button>
         )}
 
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => handleTextChange(e.target.value, e.target.selectionStart)}
-          onKeyDown={handleKeyDown}
-          onBlur={() => setMention(null)}
-          placeholder={aiMode ? "Ask Vex AI anything…" : placeholder}
-          disabled={disabled || isEnhancing}
-          rows={1}
-          aria-label="Message"
-          className="
-            flex-1 resize-none bg-transparent py-1.5
-            text-sm text-white placeholder-zinc-500
-            focus:outline-none
-            overflow-y-auto max-h-32
-            no-scrollbar
-          "
-        />
+        {/* The textarea's own text is transparent; this overlay draws it with
+            highlighted @mentions in exactly the same place */}
+        <div className="relative flex-1 min-w-0">
+          <div
+            ref={overlayRef}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words py-1.5 text-sm text-white"
+          >
+            <MentionText text={value} tone="input" />
+            {/* keeps a trailing newline visible */}
+            {"\u200b"}
+          </div>
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onScroll={(e) => {
+              if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            onChange={(e) => handleTextChange(e.target.value, e.target.selectionStart)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setMention(null)}
+            placeholder={aiMode ? "Ask Vex AI anything…" : placeholder}
+            disabled={disabled || isEnhancing}
+            rows={1}
+            aria-label="Message"
+            className="
+              relative block w-full resize-none bg-transparent py-1.5
+              text-sm text-transparent caret-white placeholder-zinc-500
+              selection:bg-teal-500/30
+              focus:outline-none
+              overflow-y-auto max-h-32
+              no-scrollbar break-words
+            "
+          />
+        </div>
 
         {onEnhance && (
           <button

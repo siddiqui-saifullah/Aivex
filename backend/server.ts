@@ -14,7 +14,9 @@ const io: AppServer = new Server(server, {
     cors: {
         origin: allowedOrigins,
         credentials: true,
-    }
+    },
+    // Live-editing sync sends whole project snapshots to newcomers
+    maxHttpBufferSize: 5e6,
 });
 
 //socket authentication middleware

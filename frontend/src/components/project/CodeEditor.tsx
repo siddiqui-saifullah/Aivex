@@ -5,6 +5,8 @@ import getLanguageFromFilename from "../../utils/getLanguageFromFilename";
 import { getRunnerLanguage } from "../../services/runner.service";
 import { ExternalLink, Eye, FolderOpen, Loader2, Play, RefreshCw, Search, Square, X } from "lucide-react";
 import { getFileIcon } from "../../utils/fileIconMap";
+import { MonacoBinding } from "y-monaco";
+import type { CollabSession, Peer } from "../../config/collab";
 import type { EditorSelection, FlatFileTree } from "../../types";
 
 interface CodeEditorProps {
@@ -41,7 +43,19 @@ interface CodeEditorProps {
   onQuickOpen?: () => void;
   /** Mobile: jump to the file explorer. */
   onBrowseFiles?: () => void;
+  /** Live editing session (null until synced or when unavailable). */
+  collab?: CollabSession | null;
+  /** Teammates in the project right now. */
+  peers?: Peer[];
 }
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl";
@@ -72,6 +86,8 @@ const CodeEditor = ({
   onCloseTab,
   onQuickOpen,
   onBrowseFiles,
+  collab = null,
+  peers = [],
 }: CodeEditorProps) => {
   const runnerLanguage = getRunnerLanguage(activeFile);
 
@@ -116,6 +132,23 @@ const CodeEditor = ({
       }, 150);
     });
     editor.onDidDispose(() => clearTimeout(timer));
+
+    // Live editing: bind this file's model to the shared document
+    const text = activeFile ? collab?.getText(activeFile) : null;
+    const model = editor.getModel();
+    if (collab && text && model) {
+      const binding = new MonacoBinding(text, model, new Set([editor]), collab.awareness);
+      // Models outlive the editor (one per path), so unbind when the editor goes;
+      // y-monaco also destroys itself when the model is disposed: only once
+      const destroy = binding.destroy.bind(binding);
+      let destroyed = false;
+      binding.destroy = () => {
+        if (destroyed) return;
+        destroyed = true;
+        destroy();
+      };
+      editor.onDidDispose(() => binding.destroy());
+    }
   };
 
   if (!activeFile) {
@@ -224,6 +257,23 @@ const CodeEditor = ({
                 {active && <span className="absolute inset-x-0 top-0 h-0.5 bg-teal-400" />}
                 <span className="[&_svg]:h-3.5 [&_svg]:w-3.5">{createElement(getFileIcon(name))}</span>
                 <span className="max-w-[10rem] truncate">{name}</span>
+                {peers.some((p) => p.file === path) && (
+                  <span className="flex -space-x-1">
+                    {peers
+                      .filter((p) => p.file === path)
+                      .slice(0, 3)
+                      .map((p) => (
+                        <span
+                          key={p.clientId}
+                          title={`${p.name} is here`}
+                          className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-black ring-1 ring-black"
+                          style={{ backgroundColor: p.color }}
+                        >
+                          {p.name.charAt(0).toUpperCase()}
+                        </span>
+                      ))}
+                  </span>
+                )}
                 {onCloseTab && (
                   <button
                     onClick={(e) => {
@@ -246,6 +296,26 @@ const CodeEditor = ({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {peers.length > 0 && (
+            <div className="hidden sm:flex items-center -space-x-1.5 mr-1" aria-label="Online teammates">
+              {peers.slice(0, 4).map((p) => (
+                <button
+                  key={p.clientId}
+                  onClick={() => p.file && onSelectTab?.(p.file)}
+                  title={p.file ? `${p.name} · ${p.file} (click to follow)` : p.name}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold text-black ring-2 ring-zinc-950 transition hover:z-10 hover:scale-110"
+                  style={{ backgroundColor: p.color }}
+                >
+                  {initials(p.name)}
+                </button>
+              ))}
+              {peers.length > 4 && (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-[10px] text-zinc-300 ring-2 ring-zinc-950">
+                  +{peers.length - 4}
+                </span>
+              )}
+            </div>
+          )}
           {runnerLanguage ? (
             /* C / C++ / Java / Python ... -> cloud runner */
             <button
@@ -315,7 +385,8 @@ const CodeEditor = ({
       {/* Monaco Editor */}
       <div className="flex-1 min-h-0">
         <Editor
-          key={activeFile}
+          // Re-mount (and bind) once live editing is ready
+          key={`${activeFile}:${collab ? "live" : "local"}`}
           height="100%"
           theme="vs-dark"
           language={language}

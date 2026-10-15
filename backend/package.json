@@ -38,7 +38,8 @@
     "mongoose": "^8.20.0",
     "morgan": "^1.10.1",
     "socket.io": "^4.8.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "tsx": "^4.23.15"

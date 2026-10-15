@@ -1,4 +1,5 @@
-import { FileCode2 } from "lucide-react";
+import { useState } from "react";
+import { Bot, Check, Copy, FileCode2 } from "lucide-react";
 import MarkdownRenderer from "../MarkdownRenderer";
 import type { BubblePosition, BubbleProps } from "./types";
 
@@ -20,6 +21,18 @@ const IncomingMessageBubble = ({
   onApplyFiles,
 }: IncomingMessageBubbleProps) => {
   const fileCount = files ? Object.keys(files).length : 0;
+  const [copied, setCopied] = useState(false);
+
+  const copyText = async () => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
 
   const formattedTime = timestamp
     ? new Date(timestamp).toLocaleTimeString([], {
@@ -42,17 +55,29 @@ const IncomingMessageBubble = ({
         className={`
           group relative px-4 py-2.5
           text-sm leading-snug
-          min-w-[3.5rem] max-w-[78%] sm:max-w-[65%]
-          bg-zinc-800/90 text-white
+          min-w-[3.5rem] ${isAI ? "max-w-[92%] bg-zinc-900 border border-teal-500/15" : "max-w-[85%] bg-zinc-800/90"}
+          text-white
           overflow-hidden wrap-break-word
           ${radiusMap[position]}
         `}
       >
         {/* Username — only at group start */}
         {showUsername && (
-          <div className="mb-1 text-[11px] font-medium text-zinc-400">
-            {username || "Unknown"}
+          <div className={`mb-1 flex items-center gap-1.5 text-[11px] font-medium ${isAI ? "text-teal-300" : "text-zinc-400"}`}>
+            {isAI && <Bot size={12} />}
+            {isAI ? "Vex AI" : username || "Unknown"}
           </div>
+        )}
+
+        {isAI && text && !isStreaming && (
+          <button
+            onClick={copyText}
+            title={copied ? "Copied" : "Copy reply"}
+            aria-label="Copy reply"
+            className="absolute right-1.5 top-1.5 rounded p-1 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-zinc-200 focus:opacity-100 group-hover:opacity-100"
+          >
+            {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+          </button>
         )}
 
         {/* Content */}

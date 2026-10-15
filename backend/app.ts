@@ -12,6 +12,9 @@ import { errorHandler } from "./middleware/error.middleware.js"
 
 connect();
 
+/** Bump when the frontend starts depending on new endpoints/socket events. */
+export const API_VERSION = 2;
+
 const app: Express = express();
 
 app.use(corsMiddleware);
@@ -26,7 +29,9 @@ app.use(cookieParser());
 app.get("/", (req, res) => {
     res.status(200).json({
         success: true,
-        message: "System Awaken Successfully"
+        message: "System Awaken Successfully",
+        // Lets the frontend detect an outdated backend deployment
+        apiVersion: API_VERSION,
     })
 });
 app.use('/users', userRoutes);

@@ -1,10 +1,12 @@
 import AppHeader from "../components/AppHeader";
+import ServerOutdatedBanner from "../components/shared/ServerOutdatedBanner";
 import { Outlet } from "react-router-dom";
 
 const AppLayout = () => {
   return (
     <>
       <AppHeader />
+      <ServerOutdatedBanner />
       <main className="pt-16 min-h-screen bg-black">
         <Outlet />
       </main>

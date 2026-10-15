@@ -25,6 +25,9 @@ interface CodeEditorProps {
   isSaved?: boolean;
   originalIsRunning?: boolean;
   canPreview?: boolean;
+  /** HTML/CSS/JS site shown live: no server, nothing to update. */
+  isLivePreview?: boolean;
+  isStaticSite?: boolean;
   preview: (show: boolean) => void;
   /** Open the running app in a separate browser tab. */
   onOpenPreviewTab?: () => void;
@@ -46,6 +49,8 @@ const CodeEditor = ({
   isSaved = true,
   originalIsRunning = false,
   canPreview = false,
+  isLivePreview = false,
+  isStaticSite = false,
   preview,
   onOpenPreviewTab,
 }: CodeEditorProps) => {
@@ -83,7 +88,7 @@ const CodeEditor = ({
       <div className="flex-1 bg-black flex flex-col items-center justify-center gap-2 text-zinc-500 px-6 text-center">
         <p>Select a file from Explorer</p>
         <p className="text-xs text-zinc-600">
-          Node.js projects run in your browser · C, C++, Java, Python and more run on the cloud runner
+          HTML/CSS/JS sites preview instantly · Node.js projects run in your browser · C, C++, Java, Python and more run on the cloud runner
         </p>
       </div>
     );
@@ -181,24 +186,24 @@ const CodeEditor = ({
                 disabled={isSaving}
                 onClick={() => {
                   if (!originalIsRunning) handleRun();
-                  else if (!isSaved) handleUpdate();
+                  else if (!isSaved && !isLivePreview) handleUpdate();
                   else handleStop();
                 }}
                 className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 disabled:opacity-50 ${
                   !originalIsRunning
                     ? "bg-teal-500/90 text-black hover:bg-teal-400"
-                    : !isSaved
+                    : !isSaved && !isLivePreview
                       ? "bg-blue-500/90 text-white hover:bg-blue-400"
                       : "bg-red-500/90 text-white hover:bg-red-400"
                 }`}
               >
                 {!originalIsRunning && <Play size={14} />}
-                {originalIsRunning && !isSaved && <RefreshCw size={14} />}
-                {originalIsRunning && isSaved && <Square size={14} />}
+                {originalIsRunning && !isSaved && !isLivePreview && <RefreshCw size={14} />}
+                {originalIsRunning && (isSaved || isLivePreview) && <Square size={14} />}
 
-                {!originalIsRunning && "Run"}
-                {originalIsRunning && !isSaved && "Update"}
-                {originalIsRunning && isSaved && "Stop"}
+                {!originalIsRunning && (isStaticSite ? "Preview" : "Run")}
+                {originalIsRunning && !isSaved && !isLivePreview && "Update"}
+                {originalIsRunning && (isSaved || isLivePreview) && "Stop"}
               </button>
             </>
           )}
@@ -263,7 +268,9 @@ const CodeEditor = ({
                   originalIsRunning ? "bg-emerald-400 animate-pulse" : "bg-zinc-600"
                 }`}
               />
-              {originalIsRunning ? "Server Running" : "Server Stopped"}
+              {originalIsRunning
+                ? isLivePreview ? "Live Preview" : "Server Running"
+                : isStaticSite ? "Static Site" : "Server Stopped"}
             </div>
           )}
         </div>

@@ -15,7 +15,7 @@ text: short Markdown reply.
 fileTree: ONLY created/changed files, complete contents, nested format {"a.js":{"file":{"contents":"..."}},"src":{"directory":{"b.js":{"file":{"contents":"..."}}}}}. Omit unchanged files. Changes are saved to the project automatically.
 deletedFiles: paths to remove, only if needed.
 memory: updated PROJECT MEMORY (<=600 chars: purpose, stack, structure, user preferences, decisions) when something new is worth remembering; omit otherwise.
-Rules: questions/greetings -> only text. Never use "..." placeholders. Node: package.json with "type":"module" and a "start" script, minimal deps. Other languages: entry point in the file to run. If code is SELECTED, apply the request to it unless told otherwise; prefer editing the OPEN FILE. Edit the existing project, don't restart it. No secrets, no destructive commands. Unclear/unsafe -> explain in text, no files.`;
+Rules: questions/greetings -> only text. Never use "..." placeholders. Websites/UI without a backend: plain index.html + style.css + script.js, NO package.json (instant live preview). Node: package.json with "type":"module" and a "start" script, minimal deps. Other languages: entry point in the file to run. If code is SELECTED, apply the request to it unless told otherwise; prefer editing the OPEN FILE. Edit the existing project, don't restart it. No secrets, no destructive commands. Unclear/unsafe -> explain in text, no files.`;
 
 const ENHANCE_INSTRUCTION = `Rewrite the user's request for a coding assistant so it is specific and actionable: name the language/framework, the features, files or behaviour expected and any constraints implied. Keep the user's intent and language, do not add unrelated features, stay under 120 words. Reply with the rewritten request only.`;
 

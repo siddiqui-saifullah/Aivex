@@ -1,0 +1,96 @@
+/** Shared domain types for the Aivex frontend. */
+
+export interface User {
+  _id: string;
+  name: string;
+  username: string;
+  email?: string;
+  avatar?: string;
+  isOnline?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Flat file tree: `{ "src/index.js": "<contents>" }` */
+export type FlatFileTree = Record<string, string>;
+
+/** WebContainer-compatible nested tree (`FileSystemTree`). */
+export type WebContainerTree = {
+  [name: string]:
+    | { file: { contents: string } }
+    | { directory: WebContainerTree };
+};
+
+export interface Project {
+  _id: string;
+  /** Frontend-friendly alias of `_id`. */
+  id: string;
+  name: string;
+  owner: string | User;
+  ownerId?: string;
+  /** Populated members on the project page, raw ids on the dashboard. */
+  users: User[] | string[];
+  files?: FlatFileTree;
+  flatFileTree: FlatFileTree;
+  isOwner?: boolean;
+  stack?: string;
+  status?: string;
+  usersCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** A project loaded on the project page, where `users` is populated. */
+export interface ProjectDetails extends Project {
+  users: User[];
+}
+
+export type MessageType = "incoming" | "outgoing" | "system";
+
+export type Timestamp = string | number | Date;
+
+export interface ChatMessage {
+  id?: string;
+  text: string;
+  username?: string;
+  type: MessageType;
+  timestamp?: Timestamp;
+  isAI?: boolean;
+  isStreaming?: boolean;
+  isError?: boolean;
+  role?: string;
+  senderId?: string;
+  fileTree?: FlatFileTree | null;
+  filePatch?: Record<string, string> | null;
+}
+
+export type FileItemType = "file" | "folder";
+
+export interface CreateFilePayload {
+  name: string;
+  type: FileItemType;
+  path: string;
+}
+
+export type ToastType = "success" | "error" | "info" | "warning";
+
+/** Shape of the AI response the backend relays over the socket. */
+export interface AiMessage {
+  text?: string;
+  fileTree?: Record<string, unknown>;
+  buildCommand?: string[];
+  runCommand?: string[];
+}
+
+export interface SocketProjectMessage {
+  message: string | AiMessage;
+  role?: string;
+  sender?: { id: string; username?: string };
+  isAI?: boolean;
+  timestamp?: Timestamp;
+  fileTree?: FlatFileTree;
+}
+
+export interface ApiErrorBody {
+  message?: string;
+}

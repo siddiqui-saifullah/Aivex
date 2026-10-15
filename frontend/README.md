@@ -55,7 +55,8 @@ npm run lint
 ## Available Scripts
 
 - `npm run dev` - Start development server
-- `npm run build` - Build for production
+- `npm run build` - Type-check (`tsc -b`) and build for production
+- `npm run typecheck` - Type-check only
 - `npm run preview` - Preview production build locally
 - `npm run lint` - Run ESLint
 

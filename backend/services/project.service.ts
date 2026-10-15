@@ -5,6 +5,7 @@ import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
 import issueModel from "../models/issue.model.js";
 import type { IssueReport } from "../types/index.js";
+import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
 type Id = Types.ObjectId | string;
 
@@ -25,15 +26,17 @@ export const createProject = async ({ name, userId, stack }: { name: string; use
     }
 
     try {
-        return await Project.create({
+        const project = await Project.create({
             name,
             owner: userId,
             users: [userId],
             stack: normalizedStack as ProjectStack,
-            files: {
+            files: toStoredFiles({
                 ".aivex": "//Aivex System File - Do not delete"
-            }
+            })
         });
+        const obj = project.toObject();
+        return { ...obj, files: fromStoredFiles(obj.files) };
     } catch (err) {
         if ((err as { code?: number }).code === 11000) {
             throw new AppError("Project with this name already exists", 409);
@@ -48,7 +51,10 @@ export const createProject = async ({ name, userId, stack }: { name: string; use
 export const userAllProjects = async ({ userId }: { userId: Id }) => {
     if (!userId) throw new AppError("UserId required", 400);
 
+    // The dashboard never needs file contents; skipping them keeps the
+    // response small no matter how big the projects are.
     return Project.find({ users: userId })
+        .select("-files")
         .sort({ createdAt: -1 })
         .lean();
 };
@@ -74,6 +80,7 @@ export const getProjectById = async ({ projectId, userId }: { projectId: string;
 
     return {
         ...project,
+        files: fromStoredFiles(project.files),
         isOwner: project.owner.toString() === userId.toString(),
     };
 };
@@ -116,7 +123,7 @@ export const updateProjectFiles = async ({ projectId, userId, fileTree }: {
         throw new AppError("Access denied or project not found", 403);
     }
 
-    project.files = fileTree;
+    project.files = toStoredFiles(fileTree);
     await project.save();
 };
 

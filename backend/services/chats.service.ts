@@ -1,6 +1,7 @@
 import mongoose, { type Types } from "mongoose";
 import ChatMessage, { type IChatMessage } from "../models/chat.model.js";
 import AppError from "../errors/AppError.js";
+import { toStoredFiles } from "../utils/fileStore.js";
 
 type Id = Types.ObjectId | string;
 
@@ -48,7 +49,7 @@ export const createProjectChat = async ({
         sender: senderId || null,
         role,
         text,
-        filePatch,
+        filePatch: filePatch ? toStoredFiles(filePatch) : null,
     });
 
     return message;

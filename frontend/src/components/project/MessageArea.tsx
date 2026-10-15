@@ -1,6 +1,6 @@
 import MessageGroup from "../shared/MessageGroup";
 import ChatInput from "../shared/ChatTextarea";
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, type ComponentProps } from "react";
 import { groupMessages } from "../../utils/messageGrouping";
 import AiProgressIndicator from "./AiProgressIndicator";
 import type { ChatMessage, FlatFileTree } from "../../types";
@@ -15,6 +15,11 @@ interface MessageAreaProps {
   isAiThinking?: boolean;
   onDeleteMessage?: (id: string) => void;
   onApplyFiles?: (files: FlatFileTree) => void;
+  /** Mentions, AI mode and prompt enhancer for the input. */
+  inputProps?: Pick<
+    ComponentProps<typeof ChatInput>,
+    "mentionables" | "aiMode" | "onToggleAiMode" | "onEnhance"
+  >;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -31,6 +36,7 @@ const MessageArea = ({
   isAiThinking = false,
   onDeleteMessage,
   onApplyFiles,
+  inputProps,
 }: MessageAreaProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -91,7 +97,8 @@ const MessageArea = ({
           onChange={onMessageChange}
           onSend={onSend}
           onTyping={onTyping}
-          placeholder="Use @Vex to chat with Aivex AI"
+          placeholder="Message, or type @ to mention Vex AI"
+          {...inputProps}
         />
       </div>
     </div>

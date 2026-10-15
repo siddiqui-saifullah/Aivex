@@ -15,7 +15,7 @@ const ProjectFilter = ({ activeFilter, onFilterChange }: ProjectFilterProps) => 
   ];
 
   return (
-    <div className="flex gap-2 mb-8 border-b border-white/10">
+    <div className="flex gap-2">
       {filters.map((filter) => (
         <button
           key={filter.id}

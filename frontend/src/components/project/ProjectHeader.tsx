@@ -1,5 +1,6 @@
 import { Users, X } from "lucide-react";
 import type { ProjectDetails } from "../../types";
+import { plural } from "../../utils/plural";
 
 interface ProjectHeaderProps {
   project: ProjectDetails | null;
@@ -11,18 +12,22 @@ const ProjectHeader = ({ project, isSidePanelOpen, onToggleSidePanel }: ProjectH
   return (
     <header className="h-14 shrink-0 px-3 flex items-center justify-between border-b border-white/10">
       {/* Left: Project Info */}
-      <div className="flex flex-col leading-tight">
+      <div className="flex flex-col leading-tight min-w-0">
         <span className="text-sm font-medium text-white truncate">
           {project?.name}
         </span>
         <span className="text-xs text-zinc-500">
-          {project?.users?.length || 0} members
+          {plural(project?.users?.length || 0, "member")}
         </span>
       </div>
 
       {/* Right: Actions */}
       <button
         onClick={onToggleSidePanel}
+        data-sidepanel-toggle
+        title={isSidePanelOpen ? "Close members" : "Members & settings"}
+        aria-label={isSidePanelOpen ? "Close members panel" : "Open members panel"}
+        aria-expanded={isSidePanelOpen}
         className="p-2 rounded-lg hover:bg-white/5 transition-colors"
       >
         {isSidePanelOpen ? (

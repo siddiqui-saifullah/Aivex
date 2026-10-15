@@ -3,6 +3,9 @@ import * as ai from "../controllers/ai.controller.js";
 import * as chatService from "../services/chats.service.js";
 import type { AiResponse, SocketData } from "../types/index.js";
 import { flattenFileTree } from "../utils/flattenFileTree.js";
+import { fromStoredFiles } from "../utils/fileStore.js";
+import Project from "../models/project.model.js";
+import ChatMessage from "../models/chat.model.js";
 
 interface ChatSender {
     id: string;
@@ -121,8 +124,27 @@ const handleProjectMessage = async (
 
 const handleAiMessage = async (socket: AppSocket, message: string, io: AppServer, roomId: string) => {
     const prompt = message.replace(/^@vex/i, "").trim();
+    const projectId = socket.data.project._id;
 
-    const response: AiResponse = (await ai.getResult({ prompt })) ?? {
+    // Give the AI the current project and the recent conversation so it edits
+    // what exists instead of starting from scratch
+    const [project, recentChats] = await Promise.all([
+        Project.findById(projectId).select("files").lean(),
+        ChatMessage.find({ project: projectId })
+            .sort({ createdAt: -1 })
+            .limit(8)
+            .select("role text")
+            .lean(),
+    ]);
+
+    const response: AiResponse = (await ai.getResult({
+        prompt,
+        files: fromStoredFiles(project?.files),
+        history: recentChats
+            .reverse()
+            .slice(0, -1) // the last one is the request itself, saved just before
+            .map(c => ({ role: c.role === "ai" ? "ai" : "user", text: c.text })),
+    })) ?? {
         text: "AI failed to generate response",
     };
 

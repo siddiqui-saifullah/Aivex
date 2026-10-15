@@ -185,3 +185,24 @@ export const getDirectoryContents = (flatFileTree: FlatFileTree, dirPath: string
 
     return { folders, files };
 };
+
+/**
+ * Rename/move a file or folder (and everything under it).
+ * Returns null if the target already exists.
+ */
+export const renamePath = (flatFileTree: FlatFileTree, from: string, to: string): FlatFileTree | null => {
+    if (from === to) return flatFileTree;
+    if (pathExists(flatFileTree, to)) return null;
+
+    const updated: FlatFileTree = {};
+    for (const [path, contents] of Object.entries(flatFileTree)) {
+        if (path === from) {
+            updated[to] = contents;
+        } else if (path.startsWith(from + "/")) {
+            updated[to + path.slice(from.length)] = contents;
+        } else {
+            updated[path] = contents;
+        }
+    }
+    return updated;
+};

@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { MoreVertical, Code2, Clock, User } from "lucide-react";
-import StatusBadge from "../StatusBadge";
+import { MoreVertical, Code2, Clock, User, Crown } from "lucide-react";
+import { plural } from "../../../utils/plural";
 import ProjectMenu from "./ProjectMenu";
 import { useProjectCard } from "./useProjectCard";
 import type { MouseEvent } from "react";
@@ -73,7 +73,18 @@ const ProjectCard = ({ project, onDelete, onRename, onLeave, isOwner }: ProjectC
 
       {/* Meta */}
       <div className="flex items-center gap-3 mb-6">
-        <StatusBadge status={project.status} />
+        {/* The server doesn't track whether a project is running (that happens
+            in each viewer's browser), so show the viewer's role instead */}
+        <span
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+            isOwner
+              ? "text-yellow-300 bg-yellow-500/10 border-yellow-500/20"
+              : "text-zinc-300 bg-white/5 border-white/10"
+          }`}
+        >
+          {isOwner && <Crown size={12} />}
+          {isOwner ? "Owner" : "Member"}
+        </span>
         <span className="text-xs text-zinc-500">
           {formatStack(project.stack)}
         </span>
@@ -88,7 +99,7 @@ const ProjectCard = ({ project, onDelete, onRename, onLeave, isOwner }: ProjectC
 
         <div className="flex items-center gap-2">
           <User size={14} />
-          <span>{project.usersCount ?? project.users?.length ?? 0} users</span>
+          <span>{plural(project.usersCount ?? project.users?.length ?? 0, "member")}</span>
         </div>
       </div>
     </div>

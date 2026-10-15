@@ -19,6 +19,8 @@ export type FileTreeNode =
 export interface AiResponse {
     text?: string;
     fileTree?: Record<string, FileTreeNode>;
+    /** Paths the AI wants removed from the project. */
+    deletedFiles?: string[];
     buildCommand?: string[];
     runCommand?: string[];
 }

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p .",
+    "postinstall": "npm run build",
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
     "typecheck": "tsc --noEmit -p .",
@@ -17,6 +18,14 @@
   "dependencies": {
     "@google/genai": "^1.38.0",
     "@openrouter/sdk": "^0.5.1",
+    "@types/bcrypt": "^6.0.0",
+    "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^22.20.5",
     "bcrypt": "^6.0.0",
     "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
@@ -28,18 +37,10 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.20.0",
     "morgan": "^1.10.1",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/compression": "^1.8.1",
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/morgan": "^1.9.10",
-    "@types/node": "^22.20.5",
-    "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "tsx": "^4.23.15"
   }
 }

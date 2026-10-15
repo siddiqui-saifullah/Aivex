@@ -6,7 +6,8 @@ export interface IChatMessage {
     sender: Types.ObjectId | null;
     role: "user" | "ai" | "system";
     text: string;
-    filePatch: Map<string, string> | null;
+    /** Files generated with this (AI) message, as a flat path -> contents map. */
+    filePatch: Record<string, string> | null;
     expiresAt?: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -46,9 +47,10 @@ const chatMessageSchema = new mongoose.Schema<IChatMessage>(
             default: "",
         },
 
+        // Plain object rather than a Map: Mongoose Maps reject keys containing
+        // "." and every file path ("index.js") has one.
         filePatch: {
-            type: Map,
-            of: String,
+            type: Object,
             default: null,
         },
 

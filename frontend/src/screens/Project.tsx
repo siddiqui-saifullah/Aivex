@@ -7,6 +7,8 @@ import {
   updateProjectFiles,
   deleteProject,
   leaveProject,
+  removeMember,
+  transferOwnership,
 } from "../services/project.service";
 import {
   formatUserMessage,
@@ -26,6 +28,7 @@ import {
   sendMessage,
   removeMessageListener,
   disconnectSocket,
+  sendWithAck,
 } from "../config/socket";
 import { useUser } from "../context/user.context";
 import { useToast } from "../context/toast.context";
@@ -36,10 +39,11 @@ import {
 } from "../config/webContainer";
 import {
   addFileToTree,
-  deleteEmptyFolder,
   deleteFileFromTree,
+  FOLDER_PLACEHOLDER,
   pathExists,
 } from "../utils/buildFileTree";
+import { getErrorMessage } from "../utils/getErrorMessage";
 import { toWebContainerTree } from "../utils/toWebContainerTree";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
 import type {
@@ -75,6 +79,15 @@ interface UserJoinedEvent {
   username: string;
   timestamp: number;
 }
+
+interface ProjectUpdatedEvent {
+  projectId: string;
+  reason: "members" | "owner" | "renamed" | "deleted";
+}
+
+type SendAck =
+  | { ok: true; id: string; timestamp?: string }
+  | { ok: false; error: string };
 
 interface UserTypingEvent {
   userId: string;
@@ -120,7 +133,6 @@ const Project = () => {
 
   // FileTree states
   const [flatFileTree, setFlatFileTree] = useState<FlatFileTree>({});
-  const [emptyFolders, setEmptyFolders] = useState<Set<string>>(new Set());
 
   // Web Container State
   const [webContainer, setWebContainer] = useState<WebContainer | null>(null);
@@ -282,9 +294,34 @@ const Project = () => {
       handleUserTyping(data.userId, data.username, data.isTyping);
     };
 
+    const handleMessageDeleted = ({ id }: { id: string }) => {
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    };
+
+    // Membership, ownership or name changed (possibly by someone else)
+    const handleProjectUpdated = async ({ reason }: ProjectUpdatedEvent) => {
+      if (reason === "deleted") {
+        toast.info("This project was deleted by its owner");
+        navigate("/dashboard");
+        return;
+      }
+
+      try {
+        const updated = await getProjectById(projectId);
+        if (isMounted) applyProject(updated);
+      } catch {
+        // No longer a member (removed by the owner)
+        if (!isMounted) return;
+        toast.warning("You no longer have access to this project");
+        navigate("/dashboard");
+      }
+    };
+
     receiveMessage("project-message", handleProjectMessage);
     receiveMessage("user-joined", handleUserJoined);
     receiveMessage("user-typing", handleUserTypingEvent);
+    receiveMessage("message-deleted", handleMessageDeleted);
+    receiveMessage("project-updated", handleProjectUpdated);
 
     /* ---------- CLEANUP ---------- */
     return () => {
@@ -293,6 +330,8 @@ const Project = () => {
       removeMessageListener("project-message", handleProjectMessage);
       removeMessageListener("user-joined", handleUserJoined);
       removeMessageListener("user-typing", handleUserTypingEvent);
+      removeMessageListener("message-deleted", handleMessageDeleted);
+      removeMessageListener("project-updated", handleProjectUpdated);
 
       // Leave the project room when navigating away
       disconnectSocket();
@@ -301,22 +340,82 @@ const Project = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user?._id]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!message.trim()) return;
 
-    const userMessage = formatUserMessage(message, user);
+    const text = message;
+    const userMessage = formatUserMessage(text, user);
     setMessages((prev) => [...prev, userMessage]);
+    setMessage("");
 
     // The server only answers messages that start with "@vex"
-    if (message.trim().toLowerCase().startsWith("@vex")) {
-      setIsAiThinking(true);
+    const asksAi = text.trim().toLowerCase().startsWith("@vex");
+    if (asksAi) setIsAiThinking(true);
+
+    try {
+      const ack = await sendWithAck<SendAck>("project-message", { message: text });
+      if (!ack.ok) throw new Error(ack.error);
+
+      // Attach the stored id so the message can be deleted later
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.clientId === userMessage.clientId ? { ...m, id: ack.id } : m,
+        ),
+      );
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.clientId === userMessage.clientId ? { ...m, isError: true } : m,
+        ),
+      );
+      if (asksAi) setIsAiThinking(false);
+      toast.error("Message failed to send");
     }
+  };
 
-    sendMessage("project-message", {
-      message,
+  const handleDeleteMessage = async (id: string) => {
+    try {
+      const ack = await sendWithAck<{ ok: boolean; error?: string }>(
+        "delete-message",
+        { id },
+      );
+      if (!ack.ok) throw new Error(ack.error);
+      // Removal itself arrives via the "message-deleted" broadcast
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : "Failed to delete message");
+    }
+  };
+
+  /** Load files from an AI message into the editor (unsaved until Run/Update). */
+  const handleApplyFiles = (files: FlatFileTree) => {
+    setFlatFileTree((prev) => {
+      const aivex = prev[".aivex"];
+      return { ...files, ...(aivex ? { ".aivex": aivex } : {}) };
     });
+    setActiveFile(null);
+    setIsSaved(false);
+    toast.info("Files loaded into the editor. Run or update to save them.");
+  };
 
-    setMessage("");
+  const handleTransferOwnership = async (member: User) => {
+    try {
+      await transferOwnership(projectId, member._id);
+      toast.success(`${member.name || member.username} is now the owner`);
+      applyProject(await getProjectById(projectId));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to transfer ownership"));
+    }
+  };
+
+  const handleRemoveMember = async (member: User) => {
+    try {
+      await removeMember(projectId, member._id);
+      toast.success(`${member.name || member.username} was removed`);
+      applyProject(await getProjectById(projectId));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to remove member"));
+    }
   };
 
   const handleTyping = (isTyping: boolean) => {
@@ -344,7 +443,7 @@ const Project = () => {
   const handleLeaveProject = () => {
     if (isOwner) {
       toast.warning(
-        "Project owner cannot leave. Transfer ownership or delete the project.",
+        "Project owner cannot leave. Make another member the owner (Members panel) or delete the project.",
       );
       return;
     }
@@ -478,40 +577,35 @@ const Project = () => {
       const fullPath = path ? `${path}/${name}` : name;
 
       // Check if file/folder already exists
-      if (pathExists(flatFileTree, fullPath, emptyFolders)) {
+      if (pathExists(flatFileTree, fullPath)) {
         toast.error(`${capitalize(type)} already exists: ${fullPath}`);
         return;
       }
 
+      let updated: FlatFileTree;
+
       if (type === "file") {
-        // Add file to flatFileTree
-        const updated = addFileToTree(flatFileTree, fullPath, "");
-        setFlatFileTree(updated);
+        updated = addFileToTree(flatFileTree, fullPath, "");
+        // The parent no longer needs its empty-folder placeholder
+        if (path) delete updated[`${path}/${FOLDER_PLACEHOLDER}`];
         setActiveFile(fullPath);
-        setIsSaved(false);
+      } else {
+        // Folders only exist through their files, so an empty folder is
+        // stored as a hidden placeholder file to survive a reload
+        updated = addFileToTree(flatFileTree, `${fullPath}/${FOLDER_PLACEHOLDER}`, "");
+      }
 
-        // Remove parent folder from emptyFolders if it exists
-        if (path && emptyFolders.has(path)) {
-          const updatedEmptyFolders = new Set(emptyFolders);
-          updatedEmptyFolders.delete(path);
-          setEmptyFolders(updatedEmptyFolders);
-        }
+      setFlatFileTree(updated);
+      setIsSaved(false);
 
-        // Auto-save to backend
-        try {
-          await updateProjectFiles(projectId, updated);
-          setIsSaved(true);
-          toast.success(`File created: ${fullPath}`);
-        } catch (error) {
-          console.error("Failed to save file:", error);
-          toast.warning(`File created locally. Save pending...`);
-        }
-      } else if (type === "folder") {
-        // Add folder to emptyFolders
-        const updated = new Set(emptyFolders);
-        updated.add(fullPath);
-        setEmptyFolders(updated);
-        toast.success(`Folder created: ${fullPath}`);
+      // Auto-save to backend
+      try {
+        await updateProjectFiles(projectId, updated);
+        setIsSaved(true);
+        toast.success(`${capitalize(type)} created: ${fullPath}`);
+      } catch (error) {
+        console.error("Failed to save file:", error);
+        toast.warning(`${capitalize(type)} created locally. Save pending...`);
       }
     } catch (error) {
       console.error("Failed to create file/folder:", error);
@@ -546,9 +640,6 @@ const Project = () => {
       const updated = deleteFileFromTree(flatFileTree, path);
 
       setFlatFileTree(updated);
-      if (type === "folder") {
-        setEmptyFolders((prev) => deleteEmptyFolder(prev, path));
-      }
 
       // Save to backend
       await updateProjectFiles(projectId, updated);
@@ -588,6 +679,8 @@ const Project = () => {
           onTyping={handleTyping}
           typingUsers={typingUsers}
           isAiThinking={isAiThinking}
+          onDeleteMessage={handleDeleteMessage}
+          onApplyFiles={handleApplyFiles}
         />
 
         {/* Side Panel */}
@@ -598,6 +691,9 @@ const Project = () => {
           onAddMember={handleAddMember}
           onDelete={handleDeleteProject}
           onLeave={handleLeaveProject}
+          onTransferOwnership={handleTransferOwnership}
+          onRemoveMember={handleRemoveMember}
+          currentUserId={user?._id}
           invitePermissionError={invitePermissionError}
           deletePermissionError={deletePermissionError}
         />
@@ -659,7 +755,6 @@ const Project = () => {
           onSelectFile={setActiveFile}
           onCreateFile={handleCreateFile}
           onDeleteFile={handleDeleteFile}
-          emptyFolders={emptyFolders}
         />
 
         <CodeEditor

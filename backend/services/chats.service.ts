@@ -57,10 +57,19 @@ export const createProjectChat = async ({
 /* -------------------------------------------------------------------------- */
 /* DELETE ONE MESSAGE BY ID                                                   */
 /* -------------------------------------------------------------------------- */
-export const deleteMessageById = async ({ messageId, userId }: { messageId: Id; userId: Id }) => {
+export const deleteMessageById = async ({ messageId, userId, projectId }: {
+    messageId: Id;
+    userId: Id;
+    /** When given, the message must belong to this project. */
+    projectId?: Id;
+}) => {
+    if (!mongoose.Types.ObjectId.isValid(messageId)) {
+        throw new AppError("Invalid message id", 400);
+    }
+
     const message = await ChatMessage.findById(messageId);
 
-    if (!message) {
+    if (!message || (projectId && !message.project?.equals(projectId))) {
         throw new AppError("Message not found", 404);
     }
 

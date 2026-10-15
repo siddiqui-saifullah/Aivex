@@ -89,7 +89,7 @@ const Home = () => {
         </div>
       </section>
       {/* --- FEATURES GRID --- */}
-      <section className="py-24 bg-zinc-950">
+      <section id="features" className="py-24 bg-zinc-950 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-8">
             <FeatureCard

@@ -3,7 +3,7 @@ import ChatInput from "../shared/ChatTextarea";
 import { useEffect, useRef, useMemo } from "react";
 import { groupMessages } from "../../utils/messageGrouping";
 import AiProgressIndicator from "./AiProgressIndicator";
-import type { ChatMessage } from "../../types";
+import type { ChatMessage, FlatFileTree } from "../../types";
 
 interface MessageAreaProps {
   messages?: ChatMessage[];
@@ -13,6 +13,8 @@ interface MessageAreaProps {
   onTyping?: (isTyping: boolean) => void;
   typingUsers?: Record<string, string>;
   isAiThinking?: boolean;
+  onDeleteMessage?: (id: string) => void;
+  onApplyFiles?: (files: FlatFileTree) => void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -27,6 +29,8 @@ const MessageArea = ({
   onTyping,
   typingUsers = {},
   isAiThinking = false,
+  onDeleteMessage,
+  onApplyFiles,
 }: MessageAreaProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +56,8 @@ const MessageArea = ({
               messages={group.messages}
               type={group.type}
               isAI={group.isAI}
+              onDeleteMessage={onDeleteMessage}
+              onApplyFiles={onApplyFiles}
             />
           ))
         ) : (

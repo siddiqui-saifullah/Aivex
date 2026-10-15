@@ -50,7 +50,10 @@ export type MessageType = "incoming" | "outgoing" | "system";
 export type Timestamp = string | number | Date;
 
 export interface ChatMessage {
+  /** Server id; set once the message is stored. */
   id?: string;
+  /** Local id for optimistic messages, used to attach the server id later. */
+  clientId?: string;
   text: string;
   username?: string;
   type: MessageType;
@@ -83,6 +86,7 @@ export interface AiMessage {
 }
 
 export interface SocketProjectMessage {
+  id?: string;
   message: string | AiMessage;
   role?: string;
   sender?: { id: string; username?: string };

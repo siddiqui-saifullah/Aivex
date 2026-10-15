@@ -1,5 +1,5 @@
 import mongoose, { type Types } from "mongoose";
-import Project from "../models/project.model.js";
+import Project, { PROJECT_STACKS, type ProjectStack } from "../models/project.model.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
@@ -11,15 +11,25 @@ type Id = Types.ObjectId | string;
 /* -------------------------------------------------------------------------- */
 /* CREATE PROJECT                                                             */
 /* -------------------------------------------------------------------------- */
-export const createProject = async ({ name, userId }: { name: string; userId: Id }) => {
+export const createProject = async ({ name, userId, stack }: { name: string; userId: Id; stack?: unknown }) => {
     if (!name) throw new AppError("Project name required", 400);
     if (!userId) throw new AppError("UserId required", 400);
+
+    // "Next.js" -> "nextjs", "Node.js" -> "nodejs"
+    const normalizedStack = typeof stack === "string"
+        ? stack.toLowerCase().replace(/[.\-\s]/g, "")
+        : "nodejs";
+
+    if (!PROJECT_STACKS.includes(normalizedStack as ProjectStack)) {
+        throw new AppError(`Stack must be one of: ${PROJECT_STACKS.join(", ")}`, 400);
+    }
 
     try {
         return await Project.create({
             name,
             owner: userId,
             users: [userId],
+            stack: normalizedStack as ProjectStack,
             files: {
                 ".aivex": "//Aivex System File - Do not delete"
             }
@@ -252,6 +262,72 @@ export const leaveProject = async ({ projectId, userId }: { projectId: string; u
     await project.save();
 
     return { success: true };
+};
+
+/* -------------------------------------------------------------------------- */
+/* TRANSFER OWNERSHIP                                                         */
+/* -------------------------------------------------------------------------- */
+export const transferOwnership = async ({ projectId, ownerId, newOwnerId }: {
+    projectId: string;
+    ownerId: Id;
+    newOwnerId: unknown;
+}) => {
+    if (typeof newOwnerId !== "string" || !mongoose.Types.ObjectId.isValid(newOwnerId)) {
+        throw new AppError("A valid newOwnerId is required", 400);
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) throw new AppError("Project not found", 404);
+
+    if (!project.owner.equals(ownerId)) {
+        throw new AppError("Only the owner can transfer ownership", 403);
+    }
+
+    if (project.owner.equals(newOwnerId)) {
+        throw new AppError("You already own this project", 400);
+    }
+
+    if (!project.users.some(id => id.equals(newOwnerId))) {
+        throw new AppError("New owner must be a member of the project", 400);
+    }
+
+    project.owner = new mongoose.Types.ObjectId(newOwnerId);
+    await project.save();
+
+    return { success: true, owner: newOwnerId };
+};
+
+/* -------------------------------------------------------------------------- */
+/* REMOVE MEMBER                                                              */
+/* -------------------------------------------------------------------------- */
+export const removeMember = async ({ projectId, ownerId, memberId }: {
+    projectId: string;
+    ownerId: Id;
+    memberId: string;
+}) => {
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+        throw new AppError("Invalid member id", 400);
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) throw new AppError("Project not found", 404);
+
+    if (!project.owner.equals(ownerId)) {
+        throw new AppError("Only the owner can remove members", 403);
+    }
+
+    if (project.owner.equals(memberId)) {
+        throw new AppError("The owner cannot be removed", 400);
+    }
+
+    if (!project.users.some(id => id.equals(memberId))) {
+        throw new AppError("User is not a member of this project", 404);
+    }
+
+    project.users = project.users.filter(id => !id.equals(memberId));
+    await project.save();
+
+    return { success: true, usersCount: project.users.length };
 };
 
 /* -------------------------------------------------------------------------- */

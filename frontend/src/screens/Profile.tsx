@@ -1,4 +1,4 @@
-import { User, Mail, AtSign, Calendar, Shield } from "lucide-react";
+import { User, Mail, AtSign, Calendar, Shield, Pencil, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -7,6 +7,12 @@ import Button from "../components/ui/Button";
 import ProfileSkeleton from "../components/Loders/ProfileSkeleton";
 import { logOut } from "../services/user.service";
 import { useUser } from "../context/user.context";
+import { useToast } from "../context/toast.context";
+import {
+  ChangePasswordModal,
+  DeleteAccountModal,
+  EditProfileModal,
+} from "../components/profile/AccountModals";
 import type { User as UserType } from "../types";
 
 const Profile = () => {
@@ -15,6 +21,8 @@ const Profile = () => {
   const [user, setUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openModal, setOpenModal] = useState<"edit" | "password" | "delete" | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -41,6 +49,22 @@ const Profile = () => {
 
     // Redirect
     navigate("/login");
+  };
+
+  const handleProfileSaved = (updated: UserType) => {
+    setUser(updated);
+    // Keep the header / session in sync with the new name and username
+    const sessionUser = { _id: updated._id, name: updated.name, username: updated.username };
+    localStorage.setItem("user", JSON.stringify(sessionUser));
+    setSessionUser(sessionUser);
+    setOpenModal(null);
+    toast.success("Profile updated");
+  };
+
+  const handleAccountDeleted = () => {
+    setSessionUser(null);
+    toast.info("Your account has been deleted");
+    navigate("/");
   };
 
   if (loading) {
@@ -90,10 +114,25 @@ const Profile = () => {
             <p className="text-zinc-400 text-sm">@{user.username}</p>
           </div>
 
-          {/* Actions (future ready) */}
-          {/* <Button variant="secondary" size="sm">
-            Edit Profile
-          </Button> */}
+          {/* Actions */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Pencil}
+              onClick={() => setOpenModal("edit")}
+            >
+              Edit Profile
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={KeyRound}
+              onClick={() => setOpenModal("password")}
+            >
+              Password
+            </Button>
+          </div>
         </div>
 
         {/* Info Grid */}
@@ -122,18 +161,46 @@ const Profile = () => {
           />
         </div>
 
-        {/* Danger Zone (future) */}
+        {/* Danger Zone */}
         <div className="border border-red-500/20 bg-red-500/5 rounded-2xl p-6">
           <h3 className="text-red-400 font-semibold mb-2">Danger Zone</h3>
           <p className="text-sm text-zinc-400 mb-4">
             Sensitive actions related to your account.
           </p>
 
-          <Button variant="danger" size="sm" onClick={handleLogout}>
-            Logout
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" size="sm" onClick={handleLogout}>
+              Logout
+            </Button>
+            <Button variant="danger" size="sm" onClick={() => setOpenModal("delete")}>
+              Delete Account
+            </Button>
+          </div>
         </div>
       </div>
+
+      {openModal === "edit" && (
+        <EditProfileModal
+          user={user}
+          onClose={() => setOpenModal(null)}
+          onSaved={handleProfileSaved}
+        />
+      )}
+      {openModal === "password" && (
+        <ChangePasswordModal
+          onClose={() => setOpenModal(null)}
+          onChanged={() => {
+            setOpenModal(null);
+            toast.success("Password updated");
+          }}
+        />
+      )}
+      {openModal === "delete" && (
+        <DeleteAccountModal
+          onClose={() => setOpenModal(null)}
+          onDeleted={handleAccountDeleted}
+        />
+      )}
     </div>
   );
 };

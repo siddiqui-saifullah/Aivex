@@ -10,7 +10,6 @@ interface FileExplorerProps {
   onSelectFile: (path: string) => void;
   onCreateFile: (payload: CreateFilePayload) => void;
   onDeleteFile: (path: string, type: FileItemType) => void;
-  emptyFolders?: Set<string>;
 }
 
 const FileExplorer = ({
@@ -19,7 +18,6 @@ const FileExplorer = ({
   onSelectFile,
   onCreateFile,
   onDeleteFile,
-  emptyFolders = new Set<string>(),
 }: FileExplorerProps) => {
   const [selectedPath, setSelectedPath] = useState("");
   const [inlineInput, setInlineInput] = useState("");
@@ -28,12 +26,12 @@ const FileExplorer = ({
 
   // Build tree structure from fileTree prop
   const tree = useMemo(() => {
-    if (Object.keys(fileTree).length === 0 && emptyFolders.size === 0) {
+    if (Object.keys(fileTree).length === 0) {
       return {};
     }
 
-    return buildFileTree(fileTree, Array.from(emptyFolders));
-  }, [fileTree, emptyFolders]);
+    return buildFileTree(fileTree);
+  }, [fileTree]);
 
   const handleCreateClick = (folderPath: string) => {
     setSelectedPath(folderPath);

@@ -1,0 +1,18 @@
+import mongoose from "mongoose";
+
+function connect(): void {
+    const mongoUrl = process.env.MONGO_URL;
+    if (!mongoUrl) {
+        console.warn('MONGO_URL not set; skipping database connection (development only).');
+        return;
+    }
+
+    mongoose.connect(mongoUrl)
+        .then(() => console.log("Connected to database"))
+        .catch((err: unknown) => {
+            console.error('Failed to connect to MongoDB:', err);
+            process.exit(1);
+        });
+};
+
+export default connect;

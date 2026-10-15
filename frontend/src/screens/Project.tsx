@@ -24,6 +24,8 @@ import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
 import PreviewOverlay from "../components/project/PreviewOverlay";
 import OutputPanel, { type OutputKind, type OutputLine } from "../components/project/OutputPanel";
+import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
+import type { RunStepId, RunStepStatus } from "../config/webContainer";
 import { getRunnerLanguage, runFile } from "../services/runner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
@@ -172,6 +174,33 @@ const Project = () => {
   const [isRunningFile, setIsRunningFile] = useState(false);
   const [revealOutputKey, setRevealOutputKey] = useState(0);
   const outputIdRef = useRef(0);
+
+  // Node project run shown as a step loader (raw logs kept behind "Show logs")
+  const [nodeRun, setNodeRun] = useState<{
+    steps: RunStep[];
+    startedAt: number;
+    logs: OutputLine[];
+    previewErrors: string[];
+  } | null>(null);
+
+  const updateRunStep = useCallback((id: RunStepId, status: RunStepStatus, detail?: string) => {
+    setNodeRun((run) =>
+      run
+        ? { ...run, steps: run.steps.map((s) => (s.id === id ? { ...s, status, detail: detail ?? s.detail } : s)) }
+        : run,
+    );
+    if (status === "active") setRunProgress(`${RUN_STEP_LABELS[id]}…`);
+    if (status === "error") setRunProgress(`${RUN_STEP_LABELS[id]} failed`);
+  }, []);
+
+  const appendRunLog = useCallback((chunk: string) => {
+    const lines = toTerminalLines(chunk);
+    setNodeRun((run) => {
+      if (!run) return run;
+      const logs = [...run.logs, ...lines.map((text) => ({ id: outputIdRef.current++, text, kind: "stdout" as OutputKind }))];
+      return { ...run, logs: logs.length > MAX_OUTPUT_LINES ? logs.slice(-MAX_OUTPUT_LINES) : logs };
+    });
+  }, []);
 
   // AI mode: send every message to Vex without typing @Vex (remembered per browser)
   const [aiMode, setAiMode] = useState(() => {
@@ -629,20 +658,28 @@ const Project = () => {
     setOriginalIsRunning(true);
     setIsOutputOpen(true);
     setRevealOutputKey((k) => k + 1);
-    appendOutput("— Starting project —", "info");
+    setPreviewUrl(null);
+    setNodeRun({ steps: initialRunSteps(), startedAt: Date.now(), logs: [], previewErrors: [] });
 
     const started = await runWebcontainer(webContainer, toWebContainerTree(flatFileTree), {
+      onStep: updateRunStep,
       onPreviewReady: ({ url }) => {
         setPreviewBaseUrl(url);
         setPreviewUrl(url);
         setShowPreview(true);
-        setRunProgress("Server running...");
-        appendOutput(`Server ready at ${url}`, "success");
+        setRunProgress("Server running");
+        updateRunStep("ready", "done", url);
       },
-      onProgress: setRunProgress,
-      onOutput: (chunk) => appendOutput(chunk),
+      onOutput: appendRunLog,
+      onPreviewError: (message) => {
+        setNodeRun((run) =>
+          run ? { ...run, previewErrors: [...run.previewErrors.slice(-9), message] } : run,
+        );
+        setIsOutputOpen(true);
+      },
       onExit: (code) => {
-        appendOutput(`Process exited with code ${code}`, code === 0 ? "info" : "error");
+        // A script that finishes (no server) is fine; a crash is an error
+        updateRunStep("ready", code === 0 ? "skipped" : "error", code === 0 ? "Program finished" : `App exited with code ${code}`);
         setOriginalIsRunning(false);
         setRunProgress("");
         setPreviewUrl(null);
@@ -753,6 +790,8 @@ const Project = () => {
       setOriginalIsRunning(false);
       setRunProgress("");
       setShowPreview(false);
+      setPreviewUrl(null);
+      setNodeRun(null);
       toast.info("Server stopped");
     } else {
       toast.error("Failed to stop server");
@@ -1056,11 +1095,15 @@ const Project = () => {
           lines={outputLines}
           isOpen={isOutputOpen}
           onToggle={() => setIsOutputOpen((v) => !v)}
-          onClear={() => setOutputLines([])}
+          onClear={() => {
+            setOutputLines([]);
+            setNodeRun(null);
+          }}
           showInput={Boolean(getRunnerLanguage(activeFile))}
           stdin={stdin}
           onStdinChange={setStdin}
           revealOutputKey={revealOutputKey}
+          run={nodeRun}
         />
 
         {showPreview && (

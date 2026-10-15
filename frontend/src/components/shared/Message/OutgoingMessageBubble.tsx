@@ -1,9 +1,11 @@
+import { Trash2 } from "lucide-react";
 import type { BubblePosition, BubbleProps } from "./types";
 
 const OutgoingMessageBubble = ({
   text,
   timestamp,
   position = "single",
+  onDelete,
 }: BubbleProps) => {
   const formattedTime = timestamp
     ? new Date(timestamp).toLocaleTimeString([], {
@@ -21,7 +23,17 @@ const OutgoingMessageBubble = ({
   };
 
   return (
-    <div className="flex w-full justify-end pr-2">
+    <div className="group/row flex w-full items-center justify-end gap-1 pr-2">
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="opacity-0 group-hover/row:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition"
+          title="Delete message"
+          aria-label="Delete message"
+        >
+          <Trash2 size={13} />
+        </button>
+      )}
       <div
         className={`
           group relative

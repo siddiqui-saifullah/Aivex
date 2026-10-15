@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useCallback, useEffect, useState, useRef, lazy, Suspense } from "react";
+import { Code2, FolderTree, Loader2, MessageSquare } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { WebContainer } from "@webcontainer/api";
 import {
@@ -7,6 +8,8 @@ import {
   updateProjectFiles,
   deleteProject,
   leaveProject,
+  removeMember,
+  transferOwnership,
 } from "../services/project.service";
 import {
   formatUserMessage,
@@ -18,14 +21,20 @@ import ProjectHeader from "../components/project/ProjectHeader";
 import MessageArea from "../components/project/MessageArea";
 import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
-import CodeEditor from "../components/project/CodeEditor";
 import PreviewOverlay from "../components/project/PreviewOverlay";
+import OutputPanel, { type OutputKind, type OutputLine } from "../components/project/OutputPanel";
+import { getRunnerLanguage, runFile } from "../services/runner.service";
+import { enhancePrompt } from "../services/ai.service";
+import type { Mentionable } from "../components/shared/ChatTextarea";
+import { downloadProjectZip } from "../utils/downloadZip";
+import { toTerminalLines } from "../utils/terminalText";
 import {
   initializeSocket,
   receiveMessage,
   sendMessage,
   removeMessageListener,
   disconnectSocket,
+  sendWithAck,
 } from "../config/socket";
 import { useUser } from "../context/user.context";
 import { useToast } from "../context/toast.context";
@@ -36,11 +45,14 @@ import {
 } from "../config/webContainer";
 import {
   addFileToTree,
-  deleteEmptyFolder,
   deleteFileFromTree,
+  FOLDER_PLACEHOLDER,
   pathExists,
+  renamePath,
 } from "../utils/buildFileTree";
+import { getErrorMessage } from "../utils/getErrorMessage";
 import { toWebContainerTree } from "../utils/toWebContainerTree";
+import { applyFilePatch } from "../utils/applyFilePatch";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
 import type {
   ChatMessage,
@@ -51,6 +63,10 @@ import type {
   SocketProjectMessage,
   User,
 } from "../types";
+
+// The editor (Monaco) is large; load it in parallel with the project data
+// instead of blocking the first paint of the page.
+const CodeEditor = lazy(() => import("../components/project/CodeEditor"));
 
 // Lazy load modals - they're only shown on specific user actions
 const InviteUserModal = lazy(
@@ -76,6 +92,15 @@ interface UserJoinedEvent {
   timestamp: number;
 }
 
+interface ProjectUpdatedEvent {
+  projectId: string;
+  reason: "members" | "owner" | "renamed" | "deleted";
+}
+
+type SendAck =
+  | { ok: true; id: string; timestamp?: string }
+  | { ok: false; error: string };
+
 interface UserTypingEvent {
   userId: string;
   username: string;
@@ -83,6 +108,11 @@ interface UserTypingEvent {
 }
 
 const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+
+/** Keep the output panel responsive on chatty processes (npm install). */
+const MAX_OUTPUT_LINES = 2000;
+
+type MobileTab = "chat" | "files" | "code";
 
 const Project = () => {
   const { projectId = "" } = useParams<{ projectId: string }>();
@@ -120,7 +150,6 @@ const Project = () => {
 
   // FileTree states
   const [flatFileTree, setFlatFileTree] = useState<FlatFileTree>({});
-  const [emptyFolders, setEmptyFolders] = useState<Set<string>>(new Set());
 
   // Web Container State
   const [webContainer, setWebContainer] = useState<WebContainer | null>(null);
@@ -133,6 +162,47 @@ const Project = () => {
   const [previewBaseUrl, setPreviewBaseUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isAiThinking, setIsAiThinking] = useState(false);
+
+  // Output panel / runner state
+  const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
+  const [isOutputOpen, setIsOutputOpen] = useState(false);
+  const [stdin, setStdin] = useState("");
+  const [isRunningFile, setIsRunningFile] = useState(false);
+  const [revealOutputKey, setRevealOutputKey] = useState(0);
+  const outputIdRef = useRef(0);
+
+  // AI mode: send every message to Vex without typing @Vex (remembered per browser)
+  const [aiMode, setAiMode] = useState(() => {
+    try {
+      return localStorage.getItem("aivex-ai-mode") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleAiMode = () => {
+    setAiMode((on) => {
+      try {
+        localStorage.setItem("aivex-ai-mode", on ? "0" : "1");
+      } catch {
+        /* storage unavailable */
+      }
+      return !on;
+    });
+  };
+
+  // Small screens show one pane at a time
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+
+  const appendOutput = useCallback((chunk: string, kind: OutputKind = "stdout") => {
+    const lines = kind === "stdout" || kind === "stderr" ? toTerminalLines(chunk) : chunk.split("\n");
+    setOutputLines((prev) => {
+      const next = [
+        ...prev,
+        ...lines.map((text) => ({ id: outputIdRef.current++, text, kind })),
+      ];
+      return next.length > MAX_OUTPUT_LINES ? next.slice(-MAX_OUTPUT_LINES) : next;
+    });
+  }, []);
 
   // Typing indicator state
   const { typingUsers, handleUserTyping, clearAllTypingUsers } =
@@ -254,16 +324,10 @@ const Project = () => {
 
       setMessages((prev) => [...prev, normalizedMessage]);
 
-      const aiFileTree = normalizedMessage.fileTree;
-      if (aiFileTree) {
-        setFlatFileTree((prev) => {
-          // Preserve .aivex system file when AI sends new fileTree
-          const aivex = prev[".aivex"];
-          return {
-            ...aiFileTree,
-            ...(aivex ? { ".aivex": aivex } : {}),
-          };
-        });
+      const { fileTree: aiFiles, deletedFiles } = normalizedMessage;
+      if (aiFiles || deletedFiles?.length) {
+        // The AI sends only what it changed; merge it into the project
+        setFlatFileTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
         setIsSaved(false);
       }
     };
@@ -282,9 +346,34 @@ const Project = () => {
       handleUserTyping(data.userId, data.username, data.isTyping);
     };
 
+    const handleMessageDeleted = ({ id }: { id: string }) => {
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    };
+
+    // Membership, ownership or name changed (possibly by someone else)
+    const handleProjectUpdated = async ({ reason }: ProjectUpdatedEvent) => {
+      if (reason === "deleted") {
+        toast.info("This project was deleted by its owner");
+        navigate("/dashboard");
+        return;
+      }
+
+      try {
+        const updated = await getProjectById(projectId);
+        if (isMounted) applyProject(updated);
+      } catch {
+        // No longer a member (removed by the owner)
+        if (!isMounted) return;
+        toast.warning("You no longer have access to this project");
+        navigate("/dashboard");
+      }
+    };
+
     receiveMessage("project-message", handleProjectMessage);
     receiveMessage("user-joined", handleUserJoined);
     receiveMessage("user-typing", handleUserTypingEvent);
+    receiveMessage("message-deleted", handleMessageDeleted);
+    receiveMessage("project-updated", handleProjectUpdated);
 
     /* ---------- CLEANUP ---------- */
     return () => {
@@ -293,6 +382,8 @@ const Project = () => {
       removeMessageListener("project-message", handleProjectMessage);
       removeMessageListener("user-joined", handleUserJoined);
       removeMessageListener("user-typing", handleUserTypingEvent);
+      removeMessageListener("message-deleted", handleMessageDeleted);
+      removeMessageListener("project-updated", handleProjectUpdated);
 
       // Leave the project room when navigating away
       disconnectSocket();
@@ -301,22 +392,92 @@ const Project = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user?._id]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!message.trim()) return;
 
-    const userMessage = formatUserMessage(message, user);
+    // AI mode auto-mentions Vex so the server routes the message to the AI
+    const text =
+      aiMode && !/^\s*@vex\b/i.test(message) ? `@Vex ${message.trim()}` : message;
+    const userMessage = formatUserMessage(text, user);
     setMessages((prev) => [...prev, userMessage]);
+    setMessage("");
 
     // The server only answers messages that start with "@vex"
-    if (message.trim().toLowerCase().startsWith("@vex")) {
-      setIsAiThinking(true);
+    const asksAi = text.trim().toLowerCase().startsWith("@vex");
+    if (asksAi) setIsAiThinking(true);
+
+    try {
+      const ack = await sendWithAck<SendAck>("project-message", { message: text });
+      if (!ack.ok) throw new Error(ack.error);
+
+      // Attach the stored id so the message can be deleted later
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.clientId === userMessage.clientId ? { ...m, id: ack.id } : m,
+        ),
+      );
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.clientId === userMessage.clientId ? { ...m, isError: true } : m,
+        ),
+      );
+      if (asksAi) setIsAiThinking(false);
+      toast.error("Message failed to send");
     }
+  };
 
-    sendMessage("project-message", {
-      message,
-    });
+  const handleEnhancePrompt = async (text: string) => {
+    try {
+      // Don't send the mention itself to the enhancer; put it back afterwards
+      const mention = /^\s*@vex\s*/i.exec(text)?.[0] ?? "";
+      const improved = await enhancePrompt(text.slice(mention.length));
+      return mention ? `@Vex ${improved}` : improved;
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not enhance the prompt"));
+      return text;
+    }
+  };
 
-    setMessage("");
+  const handleDeleteMessage = async (id: string) => {
+    try {
+      const ack = await sendWithAck<{ ok: boolean; error?: string }>(
+        "delete-message",
+        { id },
+      );
+      if (!ack.ok) throw new Error(ack.error);
+      // Removal itself arrives via the "message-deleted" broadcast
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : "Failed to delete message");
+    }
+  };
+
+  /** Load files from an AI message into the editor (unsaved until Run/Update). */
+  const handleApplyFiles = (files: FlatFileTree) => {
+    setFlatFileTree((prev) => applyFilePatch(prev, files));
+    setIsSaved(false);
+    toast.info("Files loaded into the editor. Run or update to save them.");
+  };
+
+  const handleTransferOwnership = async (member: User) => {
+    try {
+      await transferOwnership(projectId, member._id);
+      toast.success(`${member.name || member.username} is now the owner`);
+      applyProject(await getProjectById(projectId));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to transfer ownership"));
+    }
+  };
+
+  const handleRemoveMember = async (member: User) => {
+    try {
+      await removeMember(projectId, member._id);
+      toast.success(`${member.name || member.username} was removed`);
+      applyProject(await getProjectById(projectId));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to remove member"));
+    }
   };
 
   const handleTyping = (isTyping: boolean) => {
@@ -344,7 +505,7 @@ const Project = () => {
   const handleLeaveProject = () => {
     if (isOwner) {
       toast.warning(
-        "Project owner cannot leave. Transfer ownership or delete the project.",
+        "Project owner cannot leave. Make another member the owner (Members panel) or delete the project.",
       );
       return;
     }
@@ -418,26 +579,103 @@ const Project = () => {
 
   const startServer = async () => {
     setOriginalIsRunning(true);
-    setRunProgress("Installing dependencies...");
+    setIsOutputOpen(true);
+    setRevealOutputKey((k) => k + 1);
+    appendOutput("— Starting project —", "info");
+
+    const started = await runWebcontainer(webContainer, toWebContainerTree(flatFileTree), {
+      onPreviewReady: ({ url }) => {
+        setPreviewBaseUrl(url);
+        setPreviewUrl(url);
+        setShowPreview(true);
+        setRunProgress("Server running...");
+        appendOutput(`Server ready at ${url}`, "success");
+      },
+      onProgress: setRunProgress,
+      onOutput: (chunk) => appendOutput(chunk),
+      onExit: (code) => {
+        appendOutput(`Process exited with code ${code}`, code === 0 ? "info" : "error");
+        setOriginalIsRunning(false);
+        setRunProgress("");
+        setPreviewUrl(null);
+        setShowPreview(false);
+      },
+    });
+
+    if (!started) {
+      setOriginalIsRunning(false);
+    }
+  };
+
+  /** Run the open C / C++ / Java / Python ... file on the cloud runner. */
+  const handleRunFile = async () => {
+    if (!activeFile || isRunningFile) return;
+    const language = getRunnerLanguage(activeFile);
+    if (!language) return;
+
+    setIsRunningFile(true);
+    setIsOutputOpen(true);
+    setRevealOutputKey((k) => k + 1);
+    appendOutput(`— Running ${activeFile} (${language.label}) —`, "info");
 
     try {
-      await runWebcontainer(
-        webContainer,
-        toWebContainerTree(flatFileTree),
-        ({ url }) => {
-          setPreviewBaseUrl(url);
-          setPreviewUrl(url);
-          setShowPreview(true);
-          setRunProgress("Server running...");
-        },
-        (progress) => {
-          setRunProgress(progress);
-        },
+      const result = await runFile(activeFile, flatFileTree, stdin);
+
+      if (result.compile && (result.compile.code ?? 0) !== 0) {
+        appendOutput(result.compile.stderr || result.compile.stdout, "stderr");
+        appendOutput("Compilation failed", "error");
+        return;
+      }
+      if (result.compile?.stderr) appendOutput(result.compile.stderr, "stderr");
+
+      if (result.run.stdout) appendOutput(result.run.stdout.replace(/\n$/, ""), "stdout");
+      if (result.run.stderr) appendOutput(result.run.stderr.replace(/\n$/, ""), "stderr");
+
+      const ok = result.run.code === 0;
+      const reason = result.run.signal ? ` (${result.run.signal === "SIGKILL" ? "time/memory limit" : result.run.signal})` : "";
+      appendOutput(
+        `${ok ? "Finished" : `Exited with code ${result.run.code ?? "?"}${reason}`} in ${(result.durationMs / 1000).toFixed(2)}s`,
+        ok ? "success" : "error",
       );
-    } catch (error) {
-      console.error("Failed to run webcontainer:", error);
-      setRunProgress("Error starting server");
-      setOriginalIsRunning(false);
+    } catch (err) {
+      appendOutput(getErrorMessage(err, "Could not reach the code runner"), "error");
+    } finally {
+      setIsRunningFile(false);
+    }
+  };
+
+  /** Ctrl/Cmd+S */
+  const handleSave = async () => {
+    if (isSaved || isSaving) return;
+    if (await saveFiles("Saving...")) toast.success("Saved", 1200);
+  };
+
+  const handleRenameItem = async (path: string, newName: string): Promise<boolean> => {
+    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    const target = parent ? `${parent}/${newName}` : newName;
+
+    const updated = renamePath(flatFileTree, path, target);
+    if (!updated) return false;
+
+    setFlatFileTree(updated);
+    if (activeFile === path) setActiveFile(target);
+    else if (activeFile?.startsWith(path + "/")) setActiveFile(target + activeFile.slice(path.length));
+
+    try {
+      await updateProjectFiles(projectId, updated);
+      setIsSaved(true);
+    } catch {
+      setIsSaved(false);
+      toast.warning("Renamed locally. Save pending...");
+    }
+    return true;
+  };
+
+  const handleDownload = async () => {
+    try {
+      await downloadProjectZip(flatFileTree, project?.name ?? "project");
+    } catch {
+      toast.error("Failed to create zip");
     }
   };
 
@@ -478,40 +716,35 @@ const Project = () => {
       const fullPath = path ? `${path}/${name}` : name;
 
       // Check if file/folder already exists
-      if (pathExists(flatFileTree, fullPath, emptyFolders)) {
+      if (pathExists(flatFileTree, fullPath)) {
         toast.error(`${capitalize(type)} already exists: ${fullPath}`);
         return;
       }
 
+      let updated: FlatFileTree;
+
       if (type === "file") {
-        // Add file to flatFileTree
-        const updated = addFileToTree(flatFileTree, fullPath, "");
-        setFlatFileTree(updated);
+        updated = addFileToTree(flatFileTree, fullPath, "");
+        // The parent no longer needs its empty-folder placeholder
+        if (path) delete updated[`${path}/${FOLDER_PLACEHOLDER}`];
         setActiveFile(fullPath);
-        setIsSaved(false);
+      } else {
+        // Folders only exist through their files, so an empty folder is
+        // stored as a hidden placeholder file to survive a reload
+        updated = addFileToTree(flatFileTree, `${fullPath}/${FOLDER_PLACEHOLDER}`, "");
+      }
 
-        // Remove parent folder from emptyFolders if it exists
-        if (path && emptyFolders.has(path)) {
-          const updatedEmptyFolders = new Set(emptyFolders);
-          updatedEmptyFolders.delete(path);
-          setEmptyFolders(updatedEmptyFolders);
-        }
+      setFlatFileTree(updated);
+      setIsSaved(false);
 
-        // Auto-save to backend
-        try {
-          await updateProjectFiles(projectId, updated);
-          setIsSaved(true);
-          toast.success(`File created: ${fullPath}`);
-        } catch (error) {
-          console.error("Failed to save file:", error);
-          toast.warning(`File created locally. Save pending...`);
-        }
-      } else if (type === "folder") {
-        // Add folder to emptyFolders
-        const updated = new Set(emptyFolders);
-        updated.add(fullPath);
-        setEmptyFolders(updated);
-        toast.success(`Folder created: ${fullPath}`);
+      // Auto-save to backend
+      try {
+        await updateProjectFiles(projectId, updated);
+        setIsSaved(true);
+        toast.success(`${capitalize(type)} created: ${fullPath}`);
+      } catch (error) {
+        console.error("Failed to save file:", error);
+        toast.warning(`${capitalize(type)} created locally. Save pending...`);
       }
     } catch (error) {
       console.error("Failed to create file/folder:", error);
@@ -546,9 +779,6 @@ const Project = () => {
       const updated = deleteFileFromTree(flatFileTree, path);
 
       setFlatFileTree(updated);
-      if (type === "folder") {
-        setEmptyFolders((prev) => deleteEmptyFolder(prev, path));
-      }
 
       // Save to backend
       await updateProjectFiles(projectId, updated);
@@ -565,13 +795,58 @@ const Project = () => {
     }
   };
 
+  // Warn before closing the tab with unsaved edits
+  useEffect(() => {
+    if (isSaved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isSaved]);
+
+  // Ctrl/Cmd+S also works when focus is outside the editor
+  const saveRef = useRef(handleSave);
+  useEffect(() => {
+    saveRef.current = handleSave;
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!project) {
     return <ProjectSkeleton />;
   }
 
+  const mentionables: Mentionable[] = [
+    { id: "vex", handle: "Vex", label: "Vex AI", isAI: true },
+    ...project.users
+      .filter((member) => member._id !== user?._id)
+      .map((member) => ({
+        id: member._id,
+        handle: member.username,
+        label: member.name || member.username,
+      })),
+  ];
+
+  const mobileTabs: { id: MobileTab; label: string; icon: typeof MessageSquare }[] = [
+    { id: "chat", label: "Chat", icon: MessageSquare },
+    { id: "files", label: "Files", icon: FolderTree },
+    { id: "code", label: "Code", icon: Code2 },
+  ];
+
   return (
-    <main className="h-[calc(100vh-4rem)] flex overflow-hidden">
-      <section className="flex flex-col h-full w-[23%] min-w-60 border-r border-white/10 overflow-hidden">
+    <main className="h-[calc(100dvh-4rem)] flex flex-col md:flex-row overflow-hidden">
+      <section
+        className={`${mobileTab === "chat" ? "flex" : "hidden"} md:flex relative flex-col flex-1 min-h-0 md:flex-none md:w-[23%] md:min-w-60 border-r border-white/10 overflow-hidden`}
+      >
         {/* Header */}
         <ProjectHeader
           project={project}
@@ -588,16 +863,28 @@ const Project = () => {
           onTyping={handleTyping}
           typingUsers={typingUsers}
           isAiThinking={isAiThinking}
+          onDeleteMessage={handleDeleteMessage}
+          onApplyFiles={handleApplyFiles}
+          inputProps={{
+            mentionables,
+            aiMode,
+            onToggleAiMode: toggleAiMode,
+            onEnhance: handleEnhancePrompt,
+          }}
         />
 
         {/* Side Panel */}
         <SidePanel
           isOpen={isSidePanelOpen}
+          onClose={() => setIsSidePanelOpen(false)}
           project={project}
           isOwner={isOwner}
           onAddMember={handleAddMember}
           onDelete={handleDeleteProject}
           onLeave={handleLeaveProject}
+          onTransferOwnership={handleTransferOwnership}
+          onRemoveMember={handleRemoveMember}
+          currentUserId={user?._id}
           invitePermissionError={invitePermissionError}
           deletePermissionError={deletePermissionError}
         />
@@ -652,35 +939,69 @@ const Project = () => {
         </Suspense>
       </section>
 
-      <section className="right flex bg-amber-50 w-[77%]">
-        <FileExplorer
-          fileTree={flatFileTree}
-          activeFile={activeFile}
-          onSelectFile={setActiveFile}
-          onCreateFile={handleCreateFile}
-          onDeleteFile={handleDeleteFile}
-          emptyFolders={emptyFolders}
-        />
+      <FileExplorer
+        className={`${mobileTab === "files" ? "flex" : "hidden"} md:flex flex-1 min-h-0 md:flex-none md:w-64`}
+        fileTree={flatFileTree}
+        activeFile={activeFile}
+        onSelectFile={(path) => {
+          setActiveFile(path);
+          setMobileTab("code");
+        }}
+        onCreateFile={handleCreateFile}
+        onDeleteFile={handleDeleteFile}
+        onRenameItem={handleRenameItem}
+        onDownload={handleDownload}
+      />
 
-        <CodeEditor
-          activeFile={activeFile}
-          fileTree={flatFileTree}
-          onChange={(newCode) => {
-            if (!activeFile) return;
-            setFlatFileTree((prev) => ({
-              ...prev,
-              [activeFile]: newCode,
-            }));
-            setIsSaved(false);
-          }}
-          handleRun={handleRun}
-          handleUpdate={handleUpdate}
-          handleStop={handleStop}
-          isSaving={isSaving}
-          runProgress={runProgress}
-          isSaved={isSaved}
-          originalIsRunning={originalIsRunning}
-          preview={setShowPreview}
+      <section
+        className={`${mobileTab === "code" ? "flex" : "hidden"} md:flex flex-col flex-1 min-w-0 min-h-0 bg-black`}
+      >
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-zinc-500">
+              <Loader2 size={16} className="animate-spin" /> Loading editor…
+            </div>
+          }
+        >
+          <CodeEditor
+            activeFile={activeFile}
+            fileTree={flatFileTree}
+            onChange={(newCode) => {
+              if (!activeFile) return;
+              setFlatFileTree((prev) => ({
+                ...prev,
+                [activeFile]: newCode,
+              }));
+              setIsSaved(false);
+            }}
+            onSave={handleSave}
+            handleRun={handleRun}
+            handleUpdate={handleUpdate}
+            handleStop={handleStop}
+            onRunFile={handleRunFile}
+            isRunningFile={isRunningFile}
+            isSaving={isSaving}
+            runProgress={runProgress}
+            isSaved={isSaved}
+            originalIsRunning={originalIsRunning}
+            canPreview={Boolean(previewUrl)}
+            preview={setShowPreview}
+            onOpenPreviewTab={() => {
+              // The preview server lives in this tab; keep it open while using the new one
+              if (previewUrl) window.open(previewUrl, "_blank", "noopener");
+            }}
+          />
+        </Suspense>
+
+        <OutputPanel
+          lines={outputLines}
+          isOpen={isOutputOpen}
+          onToggle={() => setIsOutputOpen((v) => !v)}
+          onClear={() => setOutputLines([])}
+          showInput={Boolean(getRunnerLanguage(activeFile))}
+          stdin={stdin}
+          onStdinChange={setStdin}
+          revealOutputKey={revealOutputKey}
         />
 
         {showPreview && (
@@ -692,6 +1013,23 @@ const Project = () => {
           />
         )}
       </section>
+
+      {/* Mobile pane switcher */}
+      <nav className="md:hidden shrink-0 h-14 flex border-t border-white/10 bg-zinc-950" aria-label="Project panes">
+        {mobileTabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setMobileTab(id)}
+            aria-current={mobileTab === id ? "page" : undefined}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] ${
+              mobileTab === id ? "text-teal-400" : "text-zinc-500"
+            }`}
+          >
+            <Icon size={18} />
+            {label}
+          </button>
+        ))}
+      </nav>
     </main>
   );
 };

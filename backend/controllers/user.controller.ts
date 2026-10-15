@@ -49,11 +49,59 @@ export const profileController = catchAsync(async (req, res) => {
         throw new AppError("Unauthorized", 401);
     }
 
-    const user = await userService.userProfiler({
+    const [user, activity] = await Promise.all([
+        userService.userProfiler({ userID: req.user!._id }),
+        userService.userProfileStats({ userID: req.user!._id }),
+    ]);
+
+    res.status(200).json({ user, ...activity });
+});
+
+/* -------------------------------------------------------------------------- */
+/* UPDATE PROFILE                                                             */
+/* -------------------------------------------------------------------------- */
+export const updateProfileController = catchAsync(async (req, res) => {
+    const { name, username, bio } = req.body;
+
+    const user = await userService.updateProfile({
         userID: req.user!._id,
+        name,
+        username,
+        bio,
     });
 
     res.status(200).json({ user });
+});
+
+/* -------------------------------------------------------------------------- */
+/* CHANGE PASSWORD                                                            */
+/* -------------------------------------------------------------------------- */
+export const changePasswordController = catchAsync(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    await userService.changePassword({
+        userID: req.user!._id,
+        currentPassword,
+        newPassword,
+    });
+
+    res.status(200).json({ message: "Password updated successfully" });
+});
+
+/* -------------------------------------------------------------------------- */
+/* DELETE ACCOUNT                                                             */
+/* -------------------------------------------------------------------------- */
+export const deleteAccountController = catchAsync(async (req, res) => {
+    await userService.deleteAccount({
+        userID: req.user!._id,
+        password: req.body.password,
+    });
+
+    const token = userService.getRequestToken(req);
+    if (token) await userService.revokeToken(token);
+    res.clearCookie("token");
+
+    res.status(200).json({ message: "Account deleted" });
 });
 
 /* -------------------------------------------------------------------------- */

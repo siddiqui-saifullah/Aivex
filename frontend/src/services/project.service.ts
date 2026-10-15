@@ -135,6 +135,23 @@ export interface IssueReportPayload {
     context?: Record<string, unknown>;
 }
 
+export const transferOwnership = async (projectId: string, newOwnerId: string) => {
+    if (!projectId) throw new Error("Project ID is required");
+    const { data } = await axios.patch<{ success: boolean; owner: string }>(
+        `/projects/${projectId}/owner`,
+        { newOwnerId },
+    );
+    return data;
+};
+
+export const removeMember = async (projectId: string, memberId: string) => {
+    if (!projectId) throw new Error("Project ID is required");
+    const { data } = await axios.delete<{ success: boolean; usersCount: number }>(
+        `/projects/${projectId}/members/${memberId}`,
+    );
+    return data;
+};
+
 export const reportIssue = async (projectId: string | undefined, report: IssueReportPayload) => {
     if (!report) throw new Error("Report cannot be empty");
 

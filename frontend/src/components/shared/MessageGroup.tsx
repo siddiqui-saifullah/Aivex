@@ -1,7 +1,7 @@
 import Message from "./Message";
 import type { BubblePosition } from "./Message/types";
 import type { GroupedMessageItem } from "../../utils/messageGrouping";
-import type { MessageType } from "../../types";
+import type { FlatFileTree, MessageType } from "../../types";
 
 interface MessageGroupProps {
   groupId: string;
@@ -10,6 +10,9 @@ interface MessageGroupProps {
   type?: MessageType;
   isAI?: boolean;
   isTyping?: boolean;
+  /** Offered on outgoing messages that have a server id. */
+  onDeleteMessage?: (id: string) => void;
+  onApplyFiles?: (files: FlatFileTree) => void;
 }
 
 const MessageGroup = ({
@@ -19,6 +22,8 @@ const MessageGroup = ({
   type = "incoming",
   isAI = false,
   isTyping = false,
+  onDeleteMessage,
+  onApplyFiles,
 }: MessageGroupProps) => {
   if (!isTyping && messages.length === 0) return null;
 
@@ -73,6 +78,17 @@ const MessageGroup = ({
               showUsername={idx === 0 && !isTyping}
               isAI={isAI}
               position={position}
+              files={msg.files}
+              onApplyFiles={
+                msg.files && onApplyFiles
+                  ? () => onApplyFiles(msg.files!)
+                  : undefined
+              }
+              onDelete={
+                msg.id && onDeleteMessage && type === "outgoing"
+                  ? () => onDeleteMessage(msg.id!)
+                  : undefined
+              }
             />
           </div>
         );

@@ -18,7 +18,7 @@ const Footer = () => {
           <h4 className="font-bold mb-4">Product</h4>
           <ul className="space-y-2 text-sm text-zinc-400">
             <li>
-              <a href="#" className="hover:text-white">
+              <a href="/#features" className="hover:text-white">
                 Features
               </a>
             </li>
@@ -93,10 +93,22 @@ const Footer = () => {
           © 2026 Aivex AI Inc. All rights reserved.
         </p>
         <div className="flex gap-4">
-          <a href="#" className="text-zinc-500 hover:text-white">
+          <a
+            href="https://github.com/siddiqui-saifullah/aivex"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Aivex on GitHub"
+            className="text-zinc-500 hover:text-white"
+          >
             <GithubIcon size={22} />
           </a>
-          <a href="#" className="text-zinc-500 hover:text-white">
+          <a
+            href="https://x.com/iamsiddiquisaif"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Aivex on X"
+            className="text-zinc-500 hover:text-white"
+          >
             <XIcon size={20} />
           </a>
           {/* <a href="#" className="text-zinc-500 hover:text-white"><X size={20} /></a> */}

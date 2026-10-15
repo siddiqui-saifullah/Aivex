@@ -2,6 +2,9 @@ import type { Request } from "express";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import type { Types } from "mongoose";
 import userModel from "../models/user.model.js";
+import Project from "../models/project.model.js";
+import * as chatService from "../services/chats.service.js";
+import ChatMessage from "../models/chat.model.js";
 import AppError from "../errors/AppError.js";
 import redisClient from "../services/redis.service.js";
 
@@ -74,26 +77,154 @@ export const loginUser = async ({ email, password }: { email: string; password: 
 /* -------------------------------------------------------------------------- */
 export const userProfiler = async ({ userID }: { userID: Types.ObjectId | string }) => {
     return userModel.findById(userID)
-        .select("name username email createdAt updatedAt")
+        .select("name username email bio createdAt updatedAt")
         .lean();
 };
 
+/** Activity numbers and recent projects shown on the profile page. */
+export const userProfileStats = async ({ userID }: { userID: Types.ObjectId | string }) => {
+    const id = String(userID);
+
+    const [projects, messagesSent] = await Promise.all([
+        Project.find({ users: userID })
+            .select("_id name stack owner users updatedAt")
+            .sort({ updatedAt: -1 })
+            .lean(),
+        ChatMessage.countDocuments({ sender: userID }),
+    ]);
+
+    const collaborators = new Set<string>();
+    let projectsOwned = 0;
+
+    for (const project of projects) {
+        if (String(project.owner) === id) projectsOwned++;
+        for (const member of project.users) {
+            if (String(member) !== id) collaborators.add(String(member));
+        }
+    }
+
+    return {
+        stats: {
+            projectsOwned,
+            projectsJoined: projects.length - projectsOwned,
+            collaborators: collaborators.size,
+            messagesSent,
+        },
+        recentProjects: projects.slice(0, 5).map(p => ({
+            _id: p._id,
+            name: p.name,
+            stack: p.stack,
+            updatedAt: p.updatedAt,
+            usersCount: p.users.length,
+            isOwner: String(p.owner) === id,
+        })),
+    };
+};
+
 /* -------------------------------------------------------------------------- */
-/* LOGOUT                                                                     */
+/* UPDATE PROFILE                                                             */
 /* -------------------------------------------------------------------------- */
-export const logoutUser = async (req: Request) => {
+export const updateProfile = async ({ userID, name, username, bio }: {
+    userID: Types.ObjectId | string;
+    name?: string;
+    username?: string;
+    bio?: string;
+}) => {
+    const updates: { name?: string; username?: string; bio?: string } = {};
+    if (name !== undefined) updates.name = name;
+    if (username !== undefined) updates.username = username;
+    if (bio !== undefined) updates.bio = bio;
+
+    if (Object.keys(updates).length === 0) {
+        throw new AppError("Nothing to update", 400);
+    }
+
+    try {
+        const user = await userModel.findByIdAndUpdate(userID, updates, {
+            new: true,
+            runValidators: true,
+        })
+            .select("name username email bio createdAt updatedAt")
+            .lean();
+
+        if (!user) throw new AppError("User not found", 404);
+        return user;
+    } catch (error) {
+        if ((error as MongoDuplicateKeyError).code === 11000) {
+            throw new AppError("Username is already taken", 400);
+        }
+        throw error;
+    }
+};
+
+/* -------------------------------------------------------------------------- */
+/* CHANGE PASSWORD                                                            */
+/* -------------------------------------------------------------------------- */
+export const changePassword = async ({ userID, currentPassword, newPassword }: {
+    userID: Types.ObjectId | string;
+    currentPassword: string;
+    newPassword: string;
+}) => {
+    const user = await userModel.findById(userID).select("+password");
+    if (!user) throw new AppError("User not found", 404);
+
+    if (!(await user.isValidPassword(currentPassword))) {
+        throw new AppError("Current password is incorrect", 400);
+    }
+
+    if (currentPassword === newPassword) {
+        throw new AppError("New password must be different", 400);
+    }
+
+    user.password = await userModel.hashPassword(newPassword);
+    await user.save();
+};
+
+/* -------------------------------------------------------------------------- */
+/* DELETE ACCOUNT                                                             */
+/* -------------------------------------------------------------------------- */
+/**
+ * Deletes the user, every project they own (with its chats) and removes
+ * them from projects they were invited to.
+ */
+export const deleteAccount = async ({ userID, password }: {
+    userID: Types.ObjectId | string;
+    password: string;
+}) => {
+    const user = await userModel.findById(userID).select("+password");
+    if (!user) throw new AppError("User not found", 404);
+
+    if (!(await user.isValidPassword(password))) {
+        throw new AppError("Password is incorrect", 400);
+    }
+
+    const ownedProjects = await Project.find({ owner: user._id }).select("_id").lean();
+    for (const project of ownedProjects) {
+        await chatService.deleteChatsByProjectId({ projectId: project._id });
+    }
+    await Project.deleteMany({ owner: user._id });
+    await Project.updateMany({ users: user._id }, { $pull: { users: user._id } });
+
+    await user.deleteOne();
+
+    return { deletedProjects: ownedProjects.map(p => String(p._id)) };
+};
+
+/* -------------------------------------------------------------------------- */
+/* TOKEN HELPERS                                                              */
+/* -------------------------------------------------------------------------- */
+export const getRequestToken = (req: Request): string | null => {
     const authHeader = req.headers.authorization;
     const tokenFromHeader =
         authHeader && authHeader.startsWith("Bearer ")
             ? authHeader.split(" ")[1]
             : null;
 
-    const token: string | null = req.cookies?.token || tokenFromHeader;
+    return req.cookies?.token || tokenFromHeader;
+};
 
-    if (!token) {
-        throw new AppError("Token not provided", 401);
-    }
-
+/** Blacklist a token in Redis until it would have expired anyway. */
+export const revokeToken = async (token: string) => {
     const decoded = jwt.decode(token) as JwtPayload | null;
     const ttl = decoded?.exp
         ? decoded.exp - Math.floor(Date.now() / 1000)
@@ -103,6 +234,19 @@ export const logoutUser = async (req: Request) => {
         // ioredis takes the expiry as positional args ("EX", seconds)
         await redisClient.set(token, "logout", "EX", ttl);
     }
+};
+
+/* -------------------------------------------------------------------------- */
+/* LOGOUT                                                                     */
+/* -------------------------------------------------------------------------- */
+export const logoutUser = async (req: Request) => {
+    const token = getRequestToken(req);
+
+    if (!token) {
+        throw new AppError("Token not provided", 401);
+    }
+
+    await revokeToken(token);
 };
 
 /* -------------------------------------------------------------------------- */

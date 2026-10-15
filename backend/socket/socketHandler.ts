@@ -2,6 +2,10 @@ import type { Server, Socket } from "socket.io";
 import * as ai from "../controllers/ai.controller.js";
 import * as chatService from "../services/chats.service.js";
 import type { AiResponse, SocketData } from "../types/index.js";
+import { flattenFileTree } from "../utils/flattenFileTree.js";
+import { fromStoredFiles } from "../utils/fileStore.js";
+import Project from "../models/project.model.js";
+import ChatMessage from "../models/chat.model.js";
 
 interface ChatSender {
     id: string;
@@ -9,6 +13,7 @@ interface ChatSender {
 }
 
 interface ProjectMessagePayload {
+    id: string;
     message: string | AiResponse;
     role?: "ai";
     sender: ChatSender;
@@ -20,12 +25,18 @@ interface ServerToClientEvents {
     "user-joined": (data: { userId: string; username: string; timestamp: number }) => void;
     "user-typing": (data: { userId: string; username: string; isTyping: boolean }) => void;
     "project-message": (data: ProjectMessagePayload) => void;
+    "message-deleted": (data: { id: string }) => void;
+    "project-updated": (data: { projectId: string; reason: string }) => void;
 }
 
+type Ack<T> = (response: T) => void;
+type SendAck = Ack<{ ok: true; id: string; timestamp?: Date } | { ok: false; error: string }>;
+type DeleteAck = Ack<{ ok: boolean; error?: string }>;
+
 interface ClientToServerEvents {
-    "project-message": (data: { message?: unknown }) => void;
+    "project-message": (data: { message?: unknown }, ack?: SendAck) => void;
     "user-typing": (data: { isTyping?: boolean }) => void;
-    event: (data: unknown) => void;
+    "delete-message": (data: { id?: unknown }, ack?: DeleteAck) => void;
 }
 
 export type AppServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -53,12 +64,22 @@ const handleUserConnection = (socket: AppSocket, io: AppServer) => {
     });
 
     // Listen for project messages
-    socket.on('project-message', (data) => {
+    socket.on('project-message', (data, ack) => {
         // Listener promises are not awaited by socket.io; an unhandled rejection
         // here would crash the whole process, so always catch.
-        handleProjectMessage(socket, data, io, roomId).catch((err) => {
+        handleProjectMessage(socket, data, io, roomId, ack).catch((err) => {
             console.error("project-message handler failed:", err);
+            ack?.({ ok: false, error: "Failed to send message" });
         });
+    });
+
+    // Delete one of your own messages
+    socket.on('delete-message', (data, ack) => {
+        handleDeleteMessage(socket, data, io, roomId)
+            .then(() => ack?.({ ok: true }))
+            .catch((err: Error) => {
+                ack?.({ ok: false, error: err.message || "Failed to delete message" });
+            });
     });
 
     // Listen for typing indicator
@@ -70,11 +91,6 @@ const handleUserConnection = (socket: AppSocket, io: AppServer) => {
         });
     });
 
-    // Generic event handler
-    socket.on('event', () => {
-        // TODO: Implement custom event handling
-    });
-
     // Handle user disconnect
     socket.on("disconnect", () => {
         handleUserDisconnect(socket, roomId);
@@ -82,16 +98,23 @@ const handleUserConnection = (socket: AppSocket, io: AppServer) => {
 };
 
 
-const handleProjectMessage = async (socket: AppSocket, data: { message?: unknown }, io: AppServer, roomId: string) => {
+const handleProjectMessage = async (
+    socket: AppSocket,
+    data: { message?: unknown },
+    io: AppServer,
+    roomId: string,
+    ack?: SendAck,
+) => {
     const message = data?.message;
 
     if (typeof message !== "string" || !message.trim()) {
+        ack?.({ ok: false, error: "Message cannot be empty" });
         return;
     }
 
     const text = message.trim();
 
-    await handleUserMessage(socket, text, io, roomId);
+    await handleUserMessage(socket, text, io, roomId, ack);
 
     if (text.toLowerCase().startsWith("@vex")) {
         await handleAiMessage(socket, text, io, roomId);
@@ -101,19 +124,43 @@ const handleProjectMessage = async (socket: AppSocket, data: { message?: unknown
 
 const handleAiMessage = async (socket: AppSocket, message: string, io: AppServer, roomId: string) => {
     const prompt = message.replace(/^@vex/i, "").trim();
+    const projectId = socket.data.project._id;
 
-    const response: AiResponse = (await ai.getResult({ prompt })) ?? {
+    // Give the AI the current project and the recent conversation so it edits
+    // what exists instead of starting from scratch
+    const [project, recentChats] = await Promise.all([
+        Project.findById(projectId).select("files").lean(),
+        ChatMessage.find({ project: projectId })
+            .sort({ createdAt: -1 })
+            .limit(8)
+            .select("role text")
+            .lean(),
+    ]);
+
+    const response: AiResponse = (await ai.getResult({
+        prompt,
+        files: fromStoredFiles(project?.files),
+        history: recentChats
+            .reverse()
+            .slice(0, -1) // the last one is the request itself, saved just before
+            .map(c => ({ role: c.role === "ai" ? "ai" : "user", text: c.text })),
+    })) ?? {
         text: "AI failed to generate response",
     };
+
+    // Persist generated files with the message so they survive a reload
+    const files = flattenFileTree(response.fileTree);
 
     const savedMessage = await chatService.createProjectChat({
         projectId: socket.data.project._id,
         senderId: null,
         role: "ai",
         text: response.text,
+        filePatch: Object.keys(files).length > 0 ? files : null,
     });
 
     const aiMessage: ProjectMessagePayload = {
+        id: String(savedMessage._id),
         message: response,
         role: "ai",
         sender: {
@@ -129,7 +176,13 @@ const handleAiMessage = async (socket: AppSocket, message: string, io: AppServer
 
 
 
-const handleUserMessage = async (socket: AppSocket, message: string, io: AppServer, roomId: string) => {
+const handleUserMessage = async (
+    socket: AppSocket,
+    message: string,
+    io: AppServer,
+    roomId: string,
+    ack?: SendAck,
+) => {
     const savedMessage = await chatService.createProjectChat({
         projectId: socket.data.project._id,
         senderId: socket.data.user.id,
@@ -138,7 +191,11 @@ const handleUserMessage = async (socket: AppSocket, message: string, io: AppServ
         filePatch: null,
     });
 
+    // Let the sender learn the stored id (needed to delete the message later)
+    ack?.({ ok: true, id: String(savedMessage._id), timestamp: savedMessage.createdAt });
+
     const safeMessage: ProjectMessagePayload = {
+        id: String(savedMessage._id),
         message: savedMessage.text,
         sender: {
             id: socket.data.user.id,
@@ -148,6 +205,28 @@ const handleUserMessage = async (socket: AppSocket, message: string, io: AppServ
     };
 
     socket.broadcast.to(roomId).emit("project-message", safeMessage);
+};
+
+
+
+const handleDeleteMessage = async (
+    socket: AppSocket,
+    data: { id?: unknown },
+    io: AppServer,
+    roomId: string,
+) => {
+    const messageId = data?.id;
+    if (typeof messageId !== "string") {
+        throw new Error("Message id is required");
+    }
+
+    await chatService.deleteMessageById({
+        messageId,
+        userId: socket.data.user.id,
+        projectId: socket.data.project._id,
+    });
+
+    io.to(roomId).emit("message-deleted", { id: messageId });
 };
 
 

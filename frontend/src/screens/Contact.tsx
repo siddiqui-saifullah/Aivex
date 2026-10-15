@@ -117,7 +117,7 @@ const Contact = () => {
               label="X"
             />
             <SocialLink
-              href="https://github.com/saifullah-siddique/Aivex"
+              href="https://github.com/siddiqui-saifullah/aivex"
               icon={<GithubIcon />}
               label="GitHub"
             />

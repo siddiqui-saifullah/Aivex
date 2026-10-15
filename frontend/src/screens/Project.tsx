@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from "react";
 import { Code2, FolderTree, Loader2, MessageSquare } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { WebContainer } from "@webcontainer/api";
@@ -56,6 +56,15 @@ import {
 import { getErrorMessage, isAckTimeout } from "../utils/getErrorMessage";
 import { toWebContainerTree } from "../utils/toWebContainerTree";
 import { applyFilePatch } from "../utils/applyFilePatch";
+import {
+  PREVIEW_MESSAGE_SOURCE,
+  PREVIEW_SANDBOX,
+  buildStaticPage,
+  getEntryPage,
+  isStaticSite,
+  resolvePath,
+  type PreviewMessage,
+} from "../utils/staticSite";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
 import type {
   ChatMessage,
@@ -201,6 +210,25 @@ const Project = () => {
       return { ...run, logs: logs.length > MAX_OUTPUT_LINES ? logs.slice(-MAX_OUTPUT_LINES) : logs };
     });
   }, []);
+
+  // HTML / CSS / JS projects: instant live preview without the WebContainer
+  const [staticPage, setStaticPage] = useState<string | null>(null);
+  const [staticTree, setStaticTree] = useState<FlatFileTree>({});
+  const previewTokenRef = useRef(Math.random().toString(36).slice(2));
+  const previewTabRef = useRef<Window | null>(null);
+  const isStatic = useMemo(() => isStaticSite(flatFileTree), [flatFileTree]);
+
+  // Follow edits (saved or not) with a short debounce so typing stays smooth
+  useEffect(() => {
+    if (!staticPage) return;
+    const timer = setTimeout(() => setStaticTree(flatFileTree), 250);
+    return () => clearTimeout(timer);
+  }, [flatFileTree, staticPage]);
+
+  const staticHtml = useMemo(
+    () => (staticPage ? buildStaticPage(staticTree, staticPage, previewTokenRef.current) : null),
+    [staticTree, staticPage],
+  );
 
   // AI mode: send every message to Vex without typing @Vex (remembered per browser)
   const [aiMode, setAiMode] = useState(() => {
@@ -654,6 +682,77 @@ const Project = () => {
     }
   };
 
+  /** Messages from the static preview: console output, errors and page links. */
+  useEffect(() => {
+    if (!staticPage) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as PreviewMessage | null;
+      if (data?.source !== PREVIEW_MESSAGE_SOURCE || data.token !== previewTokenRef.current) return;
+
+      if (data.type === "console") {
+        const kind: OutputKind = data.level === "error" || data.level === "warn" ? "stderr" : "stdout";
+        appendOutput(data.text ?? "", kind);
+      } else if (data.type === "error") {
+        appendOutput(data.text ?? "Error", "error");
+        setIsOutputOpen(true);
+      } else if (data.type === "navigate" && data.path) {
+        const target = resolvePath(staticPage, data.path);
+        const page = target in flatFileTree ? target : `${target}/index.html` in flatFileTree ? `${target}/index.html` : null;
+        if (page) setStaticPage(page);
+        else appendOutput(`Page not found: ${target}`, "error");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [staticPage, flatFileTree, appendOutput]);
+
+  // Keep a preview opened in a new tab in sync
+  useEffect(() => {
+    const tab = previewTabRef.current;
+    if (!tab || tab.closed) return;
+    const frame = tab.document.querySelector("iframe");
+    if (frame && staticHtml !== null) frame.srcdoc = staticHtml;
+  }, [staticHtml]);
+
+  const startStaticPreview = () => {
+    const page = getEntryPage(flatFileTree, activeFile);
+    if (!page) {
+      toast.warning("Add an index.html to preview this site");
+      return;
+    }
+    setStaticTree(flatFileTree);
+    setStaticPage(page);
+    setOriginalIsRunning(true);
+    setPreviewUrl(`/${page}`);
+    setShowPreview(true);
+    setRunProgress("Live preview · updates as you type");
+    appendOutput(`— Live preview of ${page} (console output appears here) —`, "info");
+  };
+
+  const openStaticPreviewTab = () => {
+    if (staticHtml === null) return;
+    const tab = previewTabRef.current && !previewTabRef.current.closed ? previewTabRef.current : window.open("", "_blank");
+    if (!tab) {
+      toast.warning("Allow pop-ups to open the preview in a new tab");
+      return;
+    }
+    previewTabRef.current = tab;
+    const doc = tab.document;
+    if (!doc.querySelector("iframe")) {
+      doc.title = `${project?.name ?? "Preview"} · Aivex`;
+      doc.body.style.cssText = "margin:0;height:100vh;background:#fff";
+      const frame = doc.createElement("iframe");
+      frame.setAttribute("sandbox", PREVIEW_SANDBOX);
+      frame.title = "Preview";
+      frame.style.cssText = "border:0;width:100%;height:100%;display:block";
+      doc.body.appendChild(frame);
+      // Relay console output and page links back to the editor
+      tab.addEventListener("message", (event) => window.postMessage(event.data, "*"));
+    }
+    doc.querySelector("iframe")!.srcdoc = staticHtml;
+    tab.focus();
+  };
+
   const startServer = async () => {
     setOriginalIsRunning(true);
     setIsOutputOpen(true);
@@ -765,6 +864,11 @@ const Project = () => {
   };
 
   const handleRun = async () => {
+    if (isStatic) {
+      startStaticPreview();
+      return;
+    }
+
     if (!webContainer) {
       toast.warning("The runtime is still starting. Please try again shortly.");
       return;
@@ -777,6 +881,12 @@ const Project = () => {
 
   const handleUpdate = async () => {
     if (isSaved) return;
+
+    // The static preview is already live: just save
+    if (staticPage) {
+      await saveFiles("Saving files...");
+      return;
+    }
 
     if (!(await saveFiles("Updating files..."))) return;
 
@@ -792,7 +902,11 @@ const Project = () => {
       setShowPreview(false);
       setPreviewUrl(null);
       setNodeRun(null);
-      toast.info("Server stopped");
+      const wasStatic = Boolean(staticPage);
+      setStaticPage(null);
+      if (previewTabRef.current && !previewTabRef.current.closed) previewTabRef.current.close();
+      previewTabRef.current = null;
+      toast.info(wasStatic ? "Preview stopped" : "Server stopped");
     } else {
       toast.error("Failed to stop server");
     }
@@ -1082,9 +1196,15 @@ const Project = () => {
             runProgress={runProgress}
             isSaved={isSaved}
             originalIsRunning={originalIsRunning}
+            isLivePreview={Boolean(staticPage)}
+            isStaticSite={isStatic}
             canPreview={Boolean(previewUrl)}
             preview={setShowPreview}
             onOpenPreviewTab={() => {
+              if (staticPage) {
+                openStaticPreviewTab();
+                return;
+              }
               // The preview server lives in this tab; keep it open while using the new one
               if (previewUrl) window.open(previewUrl, "_blank", "noopener");
             }}
@@ -1108,9 +1228,19 @@ const Project = () => {
 
         {showPreview && (
           <PreviewOverlay
-            url={previewUrl}
+            url={staticPage ? `/${staticPage}` : previewUrl}
             baseUrl={previewBaseUrl}
-            onNavigate={setPreviewUrl}
+            srcDoc={staticHtml}
+            onOpenTab={staticPage ? openStaticPreviewTab : undefined}
+            onNavigate={(target) => {
+              if (!staticPage) {
+                setPreviewUrl(target);
+                return;
+              }
+              const page = target.replace(/^\/+/, "") || "index.html";
+              if (page in flatFileTree) setStaticPage(page);
+              else toast.warning(`No page ${page}`);
+            }}
             onClose={() => setShowPreview(false)}
           />
         )}

@@ -9,16 +9,23 @@ import {
   ChevronRight,
   RotateCw,
 } from "lucide-react";
+import { PREVIEW_SANDBOX } from "../../utils/staticSite";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 
 interface PreviewOverlayProps {
   url: string | null;
   baseUrl: string | null;
+  /** Static sites: the built page itself (rendered sandboxed, no server). */
+  srcDoc?: string | null;
   onClose: () => void;
+  /** Custom "open in new tab" (static sites can't be opened by URL). */
+  onOpenTab?: () => void;
   onNavigate: (url: string) => void;
 }
 
-const PreviewOverlay = ({ url, baseUrl, onClose, onNavigate }: PreviewOverlayProps) => {
+const PreviewOverlay = ({ url, baseUrl, srcDoc = null, onClose, onOpenTab, onNavigate }: PreviewOverlayProps) => {
+  const isStatic = srcDoc !== null;
+  const [reloadKey, setReloadKey] = useState(0);
   const [input, setInput] = useState(url ?? "");
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [size, setSize] = useState({ width: 550, height: 650 });
@@ -39,15 +46,33 @@ const PreviewOverlay = ({ url, baseUrl, onClose, onNavigate }: PreviewOverlayPro
 
   const handleGo = () => {
     if (!input) return;
+    if (isStatic) {
+      onNavigate(input);
+      return;
+    }
     const targetUrl = input.startsWith("/") ? (baseUrl ?? "") + input : input;
     onNavigate(targetUrl);
   };
 
   // Browser-like Navigation Actions
-  const goBack = () => iframeRef.current?.contentWindow?.history.back();
-  const goForward = () => iframeRef.current?.contentWindow?.history.forward();
+  // Cross-origin frames may refuse history access
+  const goBack = () => {
+    try {
+      iframeRef.current?.contentWindow?.history.back();
+    } catch {
+      /* not allowed */
+    }
+  };
+  const goForward = () => {
+    try {
+      iframeRef.current?.contentWindow?.history.forward();
+    } catch {
+      /* not allowed */
+    }
+  };
   const reload = () => {
-    if (iframeRef.current && url) iframeRef.current.src = url;
+    if (isStatic) setReloadKey((k) => k + 1);
+    else if (iframeRef.current && url) iframeRef.current.src = url;
   };
 
   // --- Smooth Dragging Logic ---
@@ -145,18 +170,22 @@ const PreviewOverlay = ({ url, baseUrl, onClose, onNavigate }: PreviewOverlayPro
       >
         {/* Navigation Controls */}
         <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={goBack}
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            onClick={goForward}
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
-          >
-            <ChevronRight size={18} />
-          </button>
+          {!isStatic && (
+            <>
+              <button
+                onClick={goBack}
+                className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                onClick={goForward}
+                className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </>
+          )}
           <button
             onClick={reload}
             className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
@@ -179,7 +208,7 @@ const PreviewOverlay = ({ url, baseUrl, onClose, onNavigate }: PreviewOverlayPro
         {/* Action Controls */}
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={() => url && window.open(url, "_blank")}
+            onClick={() => (onOpenTab ? onOpenTab() : url && window.open(url, "_blank"))}
             className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg"
             title="Open in new tab"
           >
@@ -202,13 +231,24 @@ const PreviewOverlay = ({ url, baseUrl, onClose, onNavigate }: PreviewOverlayPro
 
       {/* Preview Content */}
       <div className="relative flex-1 bg-white">
-        <iframe
-          ref={iframeRef}
-          src={url ?? undefined}
-          title="App Preview"
-          sandbox="allow-scripts allow-same-origin allow-forms"
-          className="w-full h-full border-0"
-        />
+        {isStatic ? (
+          <iframe
+            key={reloadKey}
+            ref={iframeRef}
+            srcDoc={srcDoc}
+            title="App Preview"
+            sandbox={PREVIEW_SANDBOX}
+            className="w-full h-full border-0"
+          />
+        ) : (
+          <iframe
+            ref={iframeRef}
+            src={url ?? undefined}
+            title="App Preview"
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            className="w-full h-full border-0"
+          />
+        )}
         {/* Pointer-events guard for resize */}
         <div className="absolute inset-0 pointer-events-none" />
       </div>

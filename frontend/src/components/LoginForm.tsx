@@ -74,8 +74,10 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
           />
         </div>
         <div className="flex justify-end">
-          <a
-            href="#"
+          {/* No email service yet: resets are handled by support */}
+          <Link
+            to="/contact"
+            title="Contact support to reset your password"
             className={`text-xs font-medium transition-colors ${
               theme === "dark"
                 ? "text-teal-400 hover:text-teal-300"
@@ -83,7 +85,7 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
             }`}
           >
             Forgot password?
-          </a>
+          </Link>
         </div>
       </div>
 

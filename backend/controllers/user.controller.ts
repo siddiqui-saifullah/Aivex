@@ -57,6 +57,52 @@ export const profileController = catchAsync(async (req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* UPDATE PROFILE                                                             */
+/* -------------------------------------------------------------------------- */
+export const updateProfileController = catchAsync(async (req, res) => {
+    const { name, username } = req.body;
+
+    const user = await userService.updateProfile({
+        userID: req.user!._id,
+        name,
+        username,
+    });
+
+    res.status(200).json({ user });
+});
+
+/* -------------------------------------------------------------------------- */
+/* CHANGE PASSWORD                                                            */
+/* -------------------------------------------------------------------------- */
+export const changePasswordController = catchAsync(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    await userService.changePassword({
+        userID: req.user!._id,
+        currentPassword,
+        newPassword,
+    });
+
+    res.status(200).json({ message: "Password updated successfully" });
+});
+
+/* -------------------------------------------------------------------------- */
+/* DELETE ACCOUNT                                                             */
+/* -------------------------------------------------------------------------- */
+export const deleteAccountController = catchAsync(async (req, res) => {
+    await userService.deleteAccount({
+        userID: req.user!._id,
+        password: req.body.password,
+    });
+
+    const token = userService.getRequestToken(req);
+    if (token) await userService.revokeToken(token);
+    res.clearCookie("token");
+
+    res.status(200).json({ message: "Account deleted" });
+});
+
+/* -------------------------------------------------------------------------- */
 /* LOGOUT                                                                     */
 /* -------------------------------------------------------------------------- */
 export const logoutController = catchAsync(async (req, res) => {

@@ -1,6 +1,7 @@
 import ProjectMembers from "./ProjectMembers";
 import ProjectActions from "./ProjectActions";
-import type { ProjectDetails } from "../../types";
+import { STACK_FORMATTER } from "../../constants/options";
+import type { ProjectDetails, User } from "../../types";
 
 interface SidePanelProps {
   isOpen: boolean;
@@ -9,6 +10,9 @@ interface SidePanelProps {
   onAddMember: () => void;
   onDelete: () => void;
   onLeave: () => void;
+  onTransferOwnership?: (member: User) => Promise<void>;
+  onRemoveMember?: (member: User) => Promise<void>;
+  currentUserId?: string;
   invitePermissionError?: boolean;
   deletePermissionError?: boolean;
 }
@@ -20,6 +24,9 @@ const SidePanel = ({
   onAddMember,
   onDelete,
   onLeave,
+  onTransferOwnership,
+  onRemoveMember,
+  currentUserId,
   invitePermissionError,
   deletePermissionError,
 }: SidePanelProps) => {
@@ -43,7 +50,9 @@ const SidePanel = ({
           {project?.name}
         </p>
         {project?.stack && (
-          <p className="text-xs text-zinc-400">Stack: {project.stack}</p>
+          <p className="text-xs text-zinc-400">
+            Stack: {STACK_FORMATTER[project.stack] ?? project.stack}
+          </p>
         )}
       </div>
 
@@ -54,6 +63,9 @@ const SidePanel = ({
           project={project}
           isOwner={isOwner}
           onAddMember={onAddMember}
+          onTransferOwnership={onTransferOwnership}
+          onRemoveMember={onRemoveMember}
+          currentUserId={currentUserId}
           invitePermissionError={invitePermissionError}
         />
 

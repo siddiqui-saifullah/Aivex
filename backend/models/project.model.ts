@@ -1,7 +1,11 @@
 import mongoose, { type Types } from "mongoose";
 
+export const PROJECT_STACKS = ["react", "nodejs", "nextjs"] as const;
+export type ProjectStack = (typeof PROJECT_STACKS)[number];
+
 export interface IProject {
     name: string;
+    stack: ProjectStack;
     owner: Types.ObjectId;
     users: Types.ObjectId[];
     lastRenamedAt: Date | null;
@@ -37,13 +41,12 @@ const projectSchema = new mongoose.Schema<IProject>(
             },
         ],
 
-        // stack: {
-        //     type: String,
-        //     enum: ["react", "nodejs", "nextjs", "html"],
-        //     default: "nodejs",
-        //     required: true,
-        //     lowercase: true,   //removed stack for now 
-        // },
+        stack: {
+            type: String,
+            enum: PROJECT_STACKS,
+            default: "nodejs",
+            lowercase: true,
+        },
 
         lastRenamedAt: {
             type: Date,

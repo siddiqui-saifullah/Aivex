@@ -49,23 +49,25 @@ export const profileController = catchAsync(async (req, res) => {
         throw new AppError("Unauthorized", 401);
     }
 
-    const user = await userService.userProfiler({
-        userID: req.user!._id,
-    });
+    const [user, activity] = await Promise.all([
+        userService.userProfiler({ userID: req.user!._id }),
+        userService.userProfileStats({ userID: req.user!._id }),
+    ]);
 
-    res.status(200).json({ user });
+    res.status(200).json({ user, ...activity });
 });
 
 /* -------------------------------------------------------------------------- */
 /* UPDATE PROFILE                                                             */
 /* -------------------------------------------------------------------------- */
 export const updateProfileController = catchAsync(async (req, res) => {
-    const { name, username } = req.body;
+    const { name, username, bio } = req.body;
 
     const user = await userService.updateProfile({
         userID: req.user!._id,
         name,
         username,
+        bio,
     });
 
     res.status(200).json({ user });

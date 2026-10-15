@@ -1,7 +1,7 @@
-import { createElement, useState } from "react";
+import { createElement, useState, type KeyboardEvent } from "react";
 import { getFileIcon } from "../../utils/fileIconMap";
 import { FolderIcon } from "../../assets/fileIcons";
-import { MoreVertical, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import type { TreeNodeData } from "../../utils/buildFileTree";
 import type { FileItemType } from "../../types";
 
@@ -14,9 +14,15 @@ interface TreeNodeProps {
   onSelectFile: (path: string) => void;
   onCreateInFolder: (path: string) => void;
   onDeleteItem: (path: string, type: FileItemType) => void;
+  /** Returns false if the rename was rejected (name taken, invalid). */
+  onRenameItem: (path: string, newName: string) => boolean | Promise<boolean>;
 }
 
 const AUTO_OPEN_FOLDERS = ["src"];
+const VALID_NAME = /^[a-zA-Z0-9._-]+$/;
+
+const iconButton =
+  "p-1 rounded text-zinc-500 transition opacity-0 group-hover:opacity-100 focus:opacity-100";
 
 const TreeNode = ({
   name,
@@ -27,53 +33,127 @@ const TreeNode = ({
   onSelectFile,
   onCreateInFolder,
   onDeleteItem,
+  onRenameItem,
 }: TreeNodeProps) => {
   const isFile = node.__isFile;
-  // auto-open important folders
+  // auto-open important folders and the folders containing the open file
   const [open, setOpen] = useState(
-    () => !isFile && AUTO_OPEN_FOLDERS.includes(name),
+    () =>
+      !isFile &&
+      (AUTO_OPEN_FOLDERS.includes(name) || Boolean(activeFile?.startsWith(path + "/"))),
   );
-  const [showMenu, setShowMenu] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(name);
+  const [renameError, setRenameError] = useState("");
 
   const paddingLeft = 12 + depth * 14;
+  const isSystemFile = name === ".aivex";
+
+  const startRename = () => {
+    setDraftName(name);
+    setRenameError("");
+    setIsRenaming(true);
+  };
+
+  const commitRename = async () => {
+    const next = draftName.trim();
+    if (!next || next === name) {
+      setIsRenaming(false);
+      return;
+    }
+    if (!VALID_NAME.test(next)) {
+      setRenameError("Use letters, numbers, . _ -");
+      return;
+    }
+    if (await onRenameItem(path, next)) {
+      setIsRenaming(false);
+    } else {
+      setRenameError("Name already exists");
+    }
+  };
+
+  const handleRenameKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") commitRename();
+    if (e.key === "Escape") setIsRenaming(false);
+  };
+
+  const renameInput = (
+    <div className="flex-1 min-w-0">
+      <input
+        value={draftName}
+        onChange={(e) => {
+          setDraftName(e.target.value);
+          setRenameError("");
+        }}
+        onKeyDown={handleRenameKey}
+        onBlur={() => setIsRenaming(false)}
+        onClick={(e) => e.stopPropagation()}
+        autoFocus
+        onFocus={(e) => {
+          // Select the name without its extension, like VS Code
+          const dot = e.target.value.lastIndexOf(".");
+          e.target.setSelectionRange(0, dot > 0 && isFile ? dot : e.target.value.length);
+        }}
+        aria-label={`Rename ${name}`}
+        className="w-full bg-zinc-800 border border-teal-500/60 rounded px-1 text-sm text-zinc-100 focus:outline-none"
+      />
+      {renameError && <p className="text-[11px] text-red-400">{renameError}</p>}
+    </div>
+  );
 
   /* ---------- FILE ---------- */
   if (isFile) {
     // Icons are static module-level components; pick one by file name
     const fileIcon = createElement(getFileIcon(name));
-    const isSystemFile = name === ".aivex";
 
     return (
       <div
+        role="treeitem"
+        aria-selected={activeFile === path}
+        tabIndex={isSystemFile ? -1 : 0}
         onClick={() => {
-          if (!isSystemFile) onSelectFile(path);
+          if (!isSystemFile && !isRenaming) onSelectFile(path);
+        }}
+        onKeyDown={(e) => {
+          if (isRenaming || isSystemFile) return;
+          if (e.key === "Enter") onSelectFile(path);
+          if (e.key === "F2") startRename();
         }}
         style={{ paddingLeft }}
-        className={`py-1 rounded flex items-center gap-2 group
+        className={`py-1 pr-1 rounded flex items-center gap-2 group outline-none focus-visible:ring-1 focus-visible:ring-teal-500/60
           ${isSystemFile ? "cursor-not-allowed opacity-60" : "cursor-pointer"}
-          ${
-            activeFile === path
-              ? "bg-white/10 text-white"
-              : "hover:bg-white/5 text-zinc-300"
-          }
+          ${activeFile === path ? "bg-white/10 text-white" : "hover:bg-white/5 text-zinc-300"}
         `}
-        title={isSystemFile ? "System file - read only" : ""}
+        title={isSystemFile ? "System file - read only" : path}
       >
         {fileIcon}
-        <span className="truncate flex-1">{name}</span>
+        {isRenaming ? renameInput : <span className="truncate flex-1">{name}</span>}
 
-        {/* Delete Button - Show on hover (but not for system files) */}
-        {!isSystemFile && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteItem(path, "file");
-            }}
-            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition"
-            title="Delete file"
-          >
-            <Trash2 size={14} />
-          </button>
+        {!isSystemFile && !isRenaming && (
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename();
+              }}
+              className={`${iconButton} hover:bg-white/10 hover:text-zinc-200`}
+              title="Rename (F2)"
+              aria-label={`Rename ${name}`}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteItem(path, "file");
+              }}
+              className={`${iconButton} hover:bg-red-500/20 hover:text-red-400`}
+              title="Delete file"
+              aria-label={`Delete ${name}`}
+            >
+              <Trash2 size={13} />
+            </button>
+          </>
         )}
       </div>
     );
@@ -82,79 +162,94 @@ const TreeNode = ({
   /* ---------- FOLDER ---------- */
   const entries = Object.entries(node.__children);
 
-  const folders = entries.filter(([, n]) => !n.__isFile);
-  const files = entries.filter(([, n]) => n.__isFile);
+  const folders = entries
+    .filter(([, n]) => !n.__isFile)
+    .sort(([a], [b]) => a.localeCompare(b));
+  const files = entries
+    .filter(([, n]) => n.__isFile)
+    .sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <div>
+    <div role="treeitem" aria-expanded={open}>
       <div
-        className="py-1 cursor-pointer flex items-center gap-2 text-zinc-200 hover:bg-white/5 rounded group relative"
-        style={{ paddingLeft }}
+        tabIndex={0}
+        onClick={() => !isRenaming && setOpen((p) => !p)}
+        onKeyDown={(e) => {
+          if (isRenaming) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((p) => !p);
+          }
+          if (e.key === "F2") startRename();
+        }}
+        className="py-1 pr-1 cursor-pointer flex items-center gap-1.5 text-zinc-200 hover:bg-white/5 rounded group outline-none focus-visible:ring-1 focus-visible:ring-teal-500/60"
+        style={{ paddingLeft: paddingLeft - 6 }}
       >
+        <ChevronRight
+          size={12}
+          className={`shrink-0 text-zinc-500 transition-transform ${open ? "rotate-90" : ""}`}
+        />
         <FolderIcon open={open} />
-        <span className="font-medium flex-1" onClick={() => setOpen((p) => !p)}>
-          {name}
-        </span>
+        {isRenaming ? renameInput : <span className="font-medium flex-1 truncate">{name}</span>}
 
-        {/* Context Menu Button */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateInFolder(path);
-            }}
-            className="p-1 rounded hover:bg-teal-500/20 text-zinc-500 hover:text-teal-400 transition"
-            title="Create file/folder here"
-          >
-            <Plus size={14} />
-          </button>
-
-          <div className="relative">
+        {!isRenaming && (
+          <>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowMenu(!showMenu);
+                setOpen(true);
+                onCreateInFolder(path);
               }}
-              className="p-1 rounded hover:bg-white/10 text-zinc-500 hover:text-zinc-200 transition"
-              title="More options"
+              className={`${iconButton} hover:bg-teal-500/20 hover:text-teal-400`}
+              title="New file/folder here"
+              aria-label={`New file in ${name}`}
             >
-              <MoreVertical size={14} />
+              <Plus size={13} />
             </button>
-
-            {/* Dropdown Menu */}
-            {showMenu && (
-              <div className="absolute right-0 mt-1 w-40 bg-zinc-800 border border-white/10 rounded-lg shadow-lg z-10">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteItem(path, "folder");
-                    setShowMenu(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 rounded-lg transition"
-                >
-                  <Trash2 size={14} />
-                  Delete Folder
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename();
+              }}
+              className={`${iconButton} hover:bg-white/10 hover:text-zinc-200`}
+              title="Rename (F2)"
+              aria-label={`Rename ${name}`}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteItem(path, "folder");
+              }}
+              className={`${iconButton} hover:bg-red-500/20 hover:text-red-400`}
+              title="Delete folder"
+              aria-label={`Delete ${name}`}
+            >
+              <Trash2 size={13} />
+            </button>
+          </>
+        )}
       </div>
 
-      {open &&
-        [...folders, ...files].map(([childName, childNode]) => (
-          <TreeNode
-            key={childName}
-            name={childName}
-            node={childNode}
-            path={`${path}/${childName}`}
-            depth={depth + 1}
-            activeFile={activeFile}
-            onSelectFile={onSelectFile}
-            onCreateInFolder={onCreateInFolder}
-            onDeleteItem={onDeleteItem}
-          />
-        ))}
+      {open && (
+        <div role="group">
+          {[...folders, ...files].map(([childName, childNode]) => (
+            <TreeNode
+              key={childName}
+              name={childName}
+              node={childNode}
+              path={`${path}/${childName}`}
+              depth={depth + 1}
+              activeFile={activeFile}
+              onSelectFile={onSelectFile}
+              onCreateInFolder={onCreateInFolder}
+              onDeleteItem={onDeleteItem}
+              onRenameItem={onRenameItem}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

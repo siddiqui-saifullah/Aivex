@@ -5,6 +5,7 @@ export interface User {
   name: string;
   username: string;
   email?: string;
+  bio?: string;
   avatar?: string;
   isOnline?: boolean;
   createdAt?: string;
@@ -64,6 +65,8 @@ export interface ChatMessage {
   role?: string;
   senderId?: string;
   fileTree?: FlatFileTree | null;
+  /** Paths the AI asked to remove. */
+  deletedFiles?: string[];
   filePatch?: Record<string, string> | null;
 }
 
@@ -81,6 +84,7 @@ export type ToastType = "success" | "error" | "info" | "warning";
 export interface AiMessage {
   text?: string;
   fileTree?: Record<string, unknown>;
+  deletedFiles?: string[];
   buildCommand?: string[];
   runCommand?: string[];
 }

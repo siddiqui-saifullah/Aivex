@@ -4,6 +4,7 @@ import type { Types } from "mongoose";
 import userModel from "../models/user.model.js";
 import Project from "../models/project.model.js";
 import * as chatService from "../services/chats.service.js";
+import ChatMessage from "../models/chat.model.js";
 import AppError from "../errors/AppError.js";
 import redisClient from "../services/redis.service.js";
 
@@ -76,21 +77,63 @@ export const loginUser = async ({ email, password }: { email: string; password: 
 /* -------------------------------------------------------------------------- */
 export const userProfiler = async ({ userID }: { userID: Types.ObjectId | string }) => {
     return userModel.findById(userID)
-        .select("name username email createdAt updatedAt")
+        .select("name username email bio createdAt updatedAt")
         .lean();
+};
+
+/** Activity numbers and recent projects shown on the profile page. */
+export const userProfileStats = async ({ userID }: { userID: Types.ObjectId | string }) => {
+    const id = String(userID);
+
+    const [projects, messagesSent] = await Promise.all([
+        Project.find({ users: userID })
+            .select("_id name stack owner users updatedAt")
+            .sort({ updatedAt: -1 })
+            .lean(),
+        ChatMessage.countDocuments({ sender: userID }),
+    ]);
+
+    const collaborators = new Set<string>();
+    let projectsOwned = 0;
+
+    for (const project of projects) {
+        if (String(project.owner) === id) projectsOwned++;
+        for (const member of project.users) {
+            if (String(member) !== id) collaborators.add(String(member));
+        }
+    }
+
+    return {
+        stats: {
+            projectsOwned,
+            projectsJoined: projects.length - projectsOwned,
+            collaborators: collaborators.size,
+            messagesSent,
+        },
+        recentProjects: projects.slice(0, 5).map(p => ({
+            _id: p._id,
+            name: p.name,
+            stack: p.stack,
+            updatedAt: p.updatedAt,
+            usersCount: p.users.length,
+            isOwner: String(p.owner) === id,
+        })),
+    };
 };
 
 /* -------------------------------------------------------------------------- */
 /* UPDATE PROFILE                                                             */
 /* -------------------------------------------------------------------------- */
-export const updateProfile = async ({ userID, name, username }: {
+export const updateProfile = async ({ userID, name, username, bio }: {
     userID: Types.ObjectId | string;
     name?: string;
     username?: string;
+    bio?: string;
 }) => {
-    const updates: { name?: string; username?: string } = {};
+    const updates: { name?: string; username?: string; bio?: string } = {};
     if (name !== undefined) updates.name = name;
     if (username !== undefined) updates.username = username;
+    if (bio !== undefined) updates.bio = bio;
 
     if (Object.keys(updates).length === 0) {
         throw new AppError("Nothing to update", 400);
@@ -101,7 +144,7 @@ export const updateProfile = async ({ userID, name, username }: {
             new: true,
             runValidators: true,
         })
-            .select("name username email createdAt updatedAt")
+            .select("name username email bio createdAt updatedAt")
             .lean();
 
         if (!user) throw new AppError("User not found", 404);

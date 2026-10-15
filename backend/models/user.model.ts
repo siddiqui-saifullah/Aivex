@@ -7,6 +7,7 @@ export interface IUser {
     username: string;
     email: string;
     password: string;
+    bio: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -51,6 +52,12 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
             lowercase: true,
             minlength: [6, "Email must be at least 6 characters long"],
             maxlength: [254, "Email must be less than 254 characters"],
+        },
+        bio: {
+            type: String,
+            trim: true,
+            default: "",
+            maxlength: [160, "Bio must be at most 160 characters"],
         },
         password: {
             type: String,

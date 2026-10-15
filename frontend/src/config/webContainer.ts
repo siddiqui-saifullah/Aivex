@@ -1,135 +1,23 @@
-// These code are commented for Vercel , and will not work on any free tire production use it when u are use paid , or devlopment env
-
-// import { WebContainer } from "@webcontainer/api";
-
-// let webcontainerInstance = null;
-
-// export const getWebContainer = async () => {
-//     if (webcontainerInstance === null) {
-//         webcontainerInstance = await WebContainer.boot();
-//     }
-
-//     return webcontainerInstance;
-// }
-
-
-
-// /**
-//  * Utility to mount files, install deps, and start the server
-//  * @param {object} webContainer - The WebContainer instance
-//  * @param {object} fileTree - The file tree structure to mount
-//  * @param {function} onPreviewReady - Callback when server is ready with URL
-//  * @param {function} onProgress - Callback for progress updates
-//  */
-
-// let runningProcess = null;
-// let portListenerAttached = null; // Per-container instance instead of global
-
-// export const runWebcontainer = async (
-//     webContainer,
-//     fileTree,
-//     onPreviewReady,
-//     onProgress
-// ) => {
-//     if (!webContainer || !fileTree) {
-//         console.warn("WebContainer or fileTree missing");
-//         return;
-//     }
-
-//     /* Reset port listener flag for this container instance */
-//     portListenerAttached = null;
-
-//     /* ---------------- STOP PREVIOUS SERVER ---------------- */
-//     if (runningProcess) {
-//         console.log("[WebContainer] Stopping previous server...");
-//         try {
-//             runningProcess.kill(); // STOPS NODE
-//         } catch (err) {
-//             console.warn("Failed to kill previous process", err);
-//         }
-//         runningProcess = null;
-//     }
-
-//     onProgress?.("Mounting files...");
-//     console.log("[WebContainer] Mounting files...");
-//     await webContainer.mount(fileTree);
-
-//     onProgress?.("Installing dependencies...");
-//     console.log("[WebContainer] Running 'npm install'...");
-//     const installProcess = await webContainer.spawn("npm", ["install"]);
-
-//     installProcess.output.pipeTo(
-//         new WritableStream({
-//             write(data) {
-//                 console.log("[npm install]", data);
-//             },
-//         })
-//     );
-
-//     const installExitCode = await installProcess.exit;
-//     if (installExitCode !== 0) {
-//         console.error("Install failed", installExitCode);
-//         onProgress?.("Install failed");
-//         return;
-//     }
-
-//     onProgress?.("Starting development server...");
-//     console.log("[WebContainer] Running 'npm start'...");
-//     runningProcess = await webContainer.spawn("npm", ["start"]);
-
-//     runningProcess.output.pipeTo(
-//         new WritableStream({
-//             write(data) {
-//                 console.log("[npm start]", data);
-//             },
-//         })
-//     );
-
-//     /* ---------------- PORT LISTENER (ATTACH ONCE) ---------------- */
-//     if (!portListenerAttached) {
-//         webContainer.on("port", (port, type, url) => {
-//             if (type === "open") {
-//                 console.log("Server listening on:", url, port);
-//                 onProgress?.("Server running...");
-//                 onPreviewReady?.({ port, url });
-//             }
-//         });
-//         portListenerAttached = true;
-//     }
-// };
-
-// /**
-//  * Stop the currently running server process
-//  */
-// export const stopWebcontainer = () => {
-//     if (runningProcess) {
-//         console.log("[WebContainer] Stopping server...");
-//         try {
-//             runningProcess.kill();
-//             runningProcess = null;
-//             return true;
-//         } catch (err) {
-//             console.error("Failed to kill server process", err);
-//             return false;
-//         }
-//     }
-//     return true;
-// };
-
-
-//this code is for dynamic import
-
+/**
+ * In-browser Node.js runtime (StackBlitz WebContainer), loaded on demand.
+ *
+ * WebContainers need cross-origin isolation (COOP/COEP headers, see
+ * vercel.json / vite.config.ts) and only run Node.js; other languages go
+ * through the server-side runner (services/runner.service.ts).
+ */
 import type { WebContainer, WebContainerProcess } from "@webcontainer/api";
 import type { WebContainerTree } from "../types";
 
 let webcontainerInstance: WebContainer | null = null;
+let bootPromise: Promise<WebContainer> | null = null;
 let runningProcess: WebContainerProcess | null = null;
 let portListenerAttached = false;
 // Latest callback; the port listener is attached once, so it must not capture a stale one
 let previewReadyHandler: ((info: { port: number; url: string }) => void) | undefined;
+// package.json that dependencies were last installed for; reinstall only when it changes
+let installedPackageJson: string | null = null;
 
-
-/* Browser-only WebContainer loader */
+/* Browser-only WebContainer loader (boots once, shared by every caller) */
 export const getWebContainer = async (): Promise<WebContainer> => {
     if (typeof window === "undefined") {
         throw new Error("WebContainer can only run in the browser");
@@ -137,66 +25,152 @@ export const getWebContainer = async (): Promise<WebContainer> => {
 
     if (webcontainerInstance) return webcontainerInstance;
 
-    const { WebContainer } = await import("@webcontainer/api"); //dynamic import
-    webcontainerInstance = await WebContainer.boot();
+    bootPromise ??= import("@webcontainer/api")
+        .then(({ WebContainer }) => WebContainer.boot())
+        .then((instance) => {
+            webcontainerInstance = instance;
+            return instance;
+        })
+        .catch((err) => {
+            bootPromise = null;
+            throw err;
+        });
 
-    return webcontainerInstance;
+    return bootPromise;
 };
 
+const pipeOutput = (process: WebContainerProcess, onOutput?: (chunk: string) => void) => {
+    if (!onOutput) return;
+    process.output
+        .pipeTo(
+            new WritableStream({
+                write(data) {
+                    onOutput(data);
+                },
+            }),
+        )
+        .catch(() => {
+            /* stream closes when the process is killed */
+        });
+};
+
+const readPackageJson = (tree: WebContainerTree): string | null => {
+    const node = tree["package.json"];
+    return node && "file" in node ? node.file.contents : null;
+};
+
+/** Pick what to start: `npm start` when defined, else `node <main | index.js>`. */
+const getStartCommand = (tree: WebContainerTree, packageJson: string | null): [string, string[]] | null => {
+    if (packageJson) {
+        try {
+            const pkg = JSON.parse(packageJson) as { scripts?: Record<string, string>; main?: string };
+            if (pkg.scripts?.start) return ["npm", ["start"]];
+            if (pkg.scripts?.dev) return ["npm", ["run", "dev"]];
+            if (pkg.main && tree[pkg.main]) return ["node", [pkg.main]];
+        } catch {
+            // Invalid JSON: npm will report it during install
+            return ["npm", ["start"]];
+        }
+    }
+
+    for (const entry of ["index.js", "server.js", "app.js", "main.js", "index.mjs"]) {
+        if (tree[entry] && "file" in tree[entry]) return ["node", [entry]];
+    }
+    return null;
+};
+
+export interface RunCallbacks {
+    onPreviewReady?: (info: { port: number; url: string }) => void;
+    onProgress?: (message: string) => void;
+    /** Raw process output (npm install + the app itself). */
+    onOutput?: (chunk: string) => void;
+    /** The started process exited (crash or normal end). */
+    onExit?: (code: number) => void;
+}
+
+/** Mount files, install dependencies if needed and start the app. Returns false on failure. */
 export const runWebcontainer = async (
     webContainer: WebContainer | null,
     fileTree: WebContainerTree | null,
-    onPreviewReady?: (info: { port: number; url: string }) => void,
-    onProgress?: (message: string) => void
-): Promise<void> => {
+    { onPreviewReady, onProgress, onOutput, onExit }: RunCallbacks = {},
+): Promise<boolean> => {
     try {
-        if (!webContainer || !fileTree) return;
+        if (!webContainer || !fileTree) return false;
 
         previewReadyHandler = onPreviewReady;
 
-        /* Stop previous process */
-        if (runningProcess) {
-            console.log("Stopping previous process...");
-            try {
-                runningProcess.kill();
-            } catch (e) { console.error(e) }
-            runningProcess = null;
-        }
+        await stopWebcontainer();
 
         onProgress?.("Mounting files...");
         await webContainer.mount(fileTree);
 
-        onProgress?.("Installing dependencies...");
-        const installProcess = await webContainer.spawn("npm", ["install"]);
-        const installExitCode = await installProcess.exit;
-        if (installExitCode !== 0) {
-            onProgress?.("Install failed");
-            return;
+        const packageJson = readPackageJson(fileTree);
+
+        if (packageJson && packageJson !== installedPackageJson) {
+            onProgress?.("Installing dependencies...");
+            onOutput?.("$ npm install\n");
+            // Skip audit/funding lookups and reuse cached packages: noticeably faster
+            const installProcess = await webContainer.spawn("npm", [
+                "install",
+                "--prefer-offline",
+                "--no-audit",
+                "--no-fund",
+                "--loglevel=error",
+            ]);
+            pipeOutput(installProcess, onOutput);
+            const installExitCode = await installProcess.exit;
+            if (installExitCode !== 0) {
+                onProgress?.("Install failed");
+                onOutput?.(`\nnpm install failed (exit code ${installExitCode})\n`);
+                return false;
+            }
+            installedPackageJson = packageJson;
+        } else if (packageJson) {
+            onOutput?.("Dependencies unchanged, skipping npm install\n");
         }
 
-        onProgress?.("Starting dev server...");
-        runningProcess = await webContainer.spawn("npm", ["start"]);
+        const command = getStartCommand(fileTree, packageJson);
+        if (!command) {
+            onProgress?.("Nothing to run");
+            onOutput?.("No start script found. Add a \"start\" script to package.json or create index.js\n");
+            return false;
+        }
+
+        const [cmd, args] = command;
+        onProgress?.("Starting...");
+        onOutput?.(`$ ${cmd} ${args.join(" ")}\n`);
+        const process = await webContainer.spawn(cmd, args);
+        runningProcess = process;
+        pipeOutput(process, onOutput);
+
+        process.exit.then((code) => {
+            if (runningProcess === process) runningProcess = null;
+            onExit?.(code);
+        });
 
         if (!portListenerAttached) {
             webContainer.on("port", (port, type, url) => {
-
                 if (type === "open" && runningProcess) {
                     previewReadyHandler?.({ port, url });
                 }
             });
             portListenerAttached = true;
         }
+        return true;
     } catch (error) {
-        console.log(error);
-        onProgress?.("Failed To Start")
+        console.error(error);
+        onProgress?.("Failed To Start");
+        onOutput?.(`\n${error instanceof Error ? error.message : String(error)}\n`);
+        return false;
     }
 };
 
 export const stopWebcontainer = async (): Promise<boolean> => {
     if (runningProcess) {
         try {
-            runningProcess.kill();
+            const process = runningProcess;
             runningProcess = null;
+            process.kill();
             return true;
         } catch {
             return false;

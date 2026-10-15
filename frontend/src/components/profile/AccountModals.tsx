@@ -83,6 +83,7 @@ interface EditProfileModalProps {
 export const EditProfileModal = ({ user, onClose, onSaved }: EditProfileModalProps) => {
   const [name, setName] = useState(user.name);
   const [username, setUsername] = useState(user.username);
+  const [bio, setBio] = useState(user.bio ?? "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -101,10 +102,16 @@ export const EditProfileModal = ({ user, onClose, onSaved }: EditProfileModalPro
       return;
     }
 
+    if (bio.trim().length > 160) {
+      setError("Bio must be at most 160 characters");
+      return;
+    }
+
     // Only send what changed
-    const updates: { name?: string; username?: string } = {};
+    const updates: { name?: string; username?: string; bio?: string } = {};
     if (trimmedName !== user.name) updates.name = trimmedName;
     if (trimmedUsername !== user.username) updates.username = trimmedUsername;
+    if (bio.trim() !== (user.bio ?? "")) updates.bio = bio.trim();
 
     if (Object.keys(updates).length === 0) {
       onClose();
@@ -149,6 +156,18 @@ export const EditProfileModal = ({ user, onClose, onSaved }: EditProfileModalPro
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
+        </div>
+        <div>
+          <FieldLabel>Bio</FieldLabel>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            rows={3}
+            maxLength={160}
+            placeholder="What are you building?"
+            className="w-full px-3 py-2 rounded-xl border bg-white/5 border-white/10 text-white placeholder-zinc-500 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 resize-none text-sm"
+          />
+          <p className="mt-1 text-right text-[11px] text-zinc-500">{bio.trim().length}/160</p>
         </div>
         <ErrorText error={error} />
         <div className="space-y-3 pt-2">

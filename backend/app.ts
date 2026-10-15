@@ -4,6 +4,8 @@ import connect from './db/db.js';
 import userRoutes from './routes/user.routes.js';
 import projectRoutes from './routes/project.routes.js';
 import aiRoutes from './routes/ai.routes.js';
+import runnerRoutes from './routes/runner.routes.js';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import corsMiddleware from "./config/cors.js";
 import { errorHandler } from "./middleware/error.middleware.js"
@@ -13,6 +15,8 @@ connect();
 const app: Express = express();
 
 app.use(corsMiddleware);
+// gzip JSON responses (project files, chat history)
+app.use(compression());
 app.use(morgan('dev'));
 // Project file trees are sent as JSON, so allow more than the 100kb default
 app.use(express.json({ limit: '5mb' }));
@@ -28,6 +32,7 @@ app.get("/", (req, res) => {
 app.use('/users', userRoutes);
 app.use('/projects', projectRoutes);
 app.use('/ai', aiRoutes);
+app.use('/run', runnerRoutes);
 
 app.use(errorHandler);
 

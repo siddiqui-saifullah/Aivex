@@ -66,6 +66,14 @@ export const updateProfileValidator = [
         .toLowerCase()
         .matches(/^[a-z0-9_]+$/)
         .withMessage("Invalid Username"),
+
+    body("bio")
+        .optional()
+        .isString().withMessage("Bio must be text")
+        .bail()
+        .trim()
+        .isLength({ max: 160 })
+        .withMessage("Bio must be at most 160 characters"),
 ];
 
 

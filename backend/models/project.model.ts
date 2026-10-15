@@ -1,4 +1,5 @@
 import mongoose, { type Types } from "mongoose";
+import type { StoredFile } from "../utils/fileStore.js";
 
 export const PROJECT_STACKS = ["react", "nodejs", "nextjs"] as const;
 export type ProjectStack = (typeof PROJECT_STACKS)[number];
@@ -9,8 +10,11 @@ export interface IProject {
     owner: Types.ObjectId;
     users: Types.ObjectId[];
     lastRenamedAt: Date | null;
-    /** Flat file tree: `{ "src/index.js": "<contents>" }` */
-    files: Record<string, string>;
+    /**
+     * Stored as `[{ path, contents }]` (see utils/fileStore). Older projects
+     * may still hold a `{ path: contents }` object; read via `fromStoredFiles`.
+     */
+    files: StoredFile[] | Record<string, string>;
     settings: {
         entry: string;
         port: number;
@@ -55,8 +59,8 @@ const projectSchema = new mongoose.Schema<IProject>(
 
 
         files: {
-            type: Object,
-            default: {}
+            type: mongoose.Schema.Types.Mixed,
+            default: () => []
         },
 
         settings: {

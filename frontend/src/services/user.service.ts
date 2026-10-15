@@ -38,12 +38,32 @@ export const logOut = async (): Promise<void> => {
 };
 
 
+export interface ProfileStats {
+    projectsOwned: number;
+    projectsJoined: number;
+    collaborators: number;
+    messagesSent: number;
+}
+
+export interface RecentProject {
+    _id: string;
+    name: string;
+    stack?: string;
+    updatedAt: string;
+    usersCount: number;
+    isOwner: boolean;
+}
+
 export const userProfile = async () => {
-    const response = await axios.get<{ user: User }>("/users/profile");
+    const response = await axios.get<{
+        user: User;
+        stats?: ProfileStats;
+        recentProjects?: RecentProject[];
+    }>("/users/profile");
     return response.data;
 };
 
-export const updateProfile = async (updates: { name?: string; username?: string }) => {
+export const updateProfile = async (updates: { name?: string; username?: string; bio?: string }) => {
     const response = await axios.patch<{ user: User }>("/users/profile", updates);
     return response.data;
 };

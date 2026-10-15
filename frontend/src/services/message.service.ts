@@ -100,6 +100,9 @@ export const normalizeSocketMessage = (
         id: socketData.id,
         text: messageObj.text ?? '',
         fileTree: Object.keys(fileTree).length > 0 ? fileTree : null,
+        deletedFiles: Array.isArray(messageObj.deletedFiles)
+            ? messageObj.deletedFiles.filter((p): p is string => typeof p === "string")
+            : undefined,
         username,
         role: socketData.role,
         senderId: socketData.sender?.id,

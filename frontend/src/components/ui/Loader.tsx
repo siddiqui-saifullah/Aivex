@@ -4,7 +4,7 @@ const Loader = () => {
   return (
     <>
       <PublicHeader />
-      <div className="flex items-center justify-center min-h-screen bg-black">
+      <div className="flex items-center justify-center min-h-dvh bg-black">
         <div className="relative w-40 h-40">
           <svg
             width="100%"

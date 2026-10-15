@@ -24,6 +24,7 @@ import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
 import PreviewOverlay from "../components/project/PreviewOverlay";
 import QuickOpen from "../components/project/QuickOpen";
+import { CollabSession, type Peer } from "../config/collab";
 import OutputPanel, { type OutputKind, type OutputLine } from "../components/project/OutputPanel";
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
@@ -194,6 +195,17 @@ const Project = () => {
   const [flatFileTree, setFlatFileTree] = useState<FlatFileTree>({});
   // Last saved contents, to mark edited tabs
   const [savedTree, setSavedTree] = useState<FlatFileTree>({});
+
+  // Live collaborative editing (shared document synced over the socket)
+  const collabRef = useRef<CollabSession | null>(null);
+  const [collab, setCollab] = useState<CollabSession | null>(null);
+  const [peers, setPeers] = useState<Peer[]>([]);
+
+  /** Change the project's files: through the shared document when live editing is on. */
+  const commitTree = (next: FlatFileTree) => {
+    if (collabRef.current?.ready) collabRef.current.applyTree(next);
+    else setFlatFileTree(next);
+  };
 
   // Web Container State
   const [webContainer, setWebContainer] = useState<WebContainer | null>(null);
@@ -375,7 +387,36 @@ const Project = () => {
     clearAllTypingUsers();
 
     /* ---------- SOCKET INIT ---------- */
-    initializeSocket(projectId);
+    const socket = initializeSocket(projectId);
+
+    const session = new CollabSession(
+      socket,
+      { id: currentUserId, name: user.name || user.username || "Someone" },
+      {
+        onReady: (files) => {
+          if (!isMounted) return;
+          // The shared document includes teammates' unsaved edits
+          setFlatFileTree(files);
+          setCollab(session);
+        },
+        onFilesChanged: (changes) => {
+          setFlatFileTree((prev) => {
+            const next = { ...prev };
+            for (const [path, contents] of Object.entries(changes)) {
+              if (contents === null) delete next[path];
+              else next[path] = contents;
+            }
+            return next;
+          });
+        },
+        onPeersChanged: setPeers,
+        onRemoteSaved: (username) => {
+          setSavedTree(session.toTree());
+          toast.info(`${username} saved the project`, 1500);
+        },
+      },
+    );
+    collabRef.current = session;
 
     const loadProjectAndChats = async () => {
       let projectData: ProjectDetails;
@@ -390,7 +431,8 @@ const Project = () => {
 
       applyProject(projectData);
       const files = projectData.files || projectData.flatFileTree || {};
-      setFlatFileTree(files);
+      // Live editing may already have delivered the shared (newer) state
+      if (!collabRef.current?.ready) setFlatFileTree(files);
       setSavedTree(files);
       setIsSaved(true);
       // Open the project's main file so there's something to work with right away
@@ -458,7 +500,10 @@ const Project = () => {
         // The AI sends only what it changed; merge it into the project.
         // The server saves those changes itself, so they only count as
         // unsaved here if it couldn't (or is an older server).
-        setFlatFileTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
+        // With live editing the server already put them into the shared document
+        if (!(socketData.filesSynced && collabRef.current?.ready)) {
+          setFlatFileTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
+        }
         if (socketData.filesSaved) setSavedTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
         else setIsSaved(false);
       }
@@ -516,6 +561,11 @@ const Project = () => {
       removeMessageListener("user-typing", handleUserTypingEvent);
       removeMessageListener("message-deleted", handleMessageDeleted);
       removeMessageListener("project-updated", handleProjectUpdated);
+
+      session.destroy();
+      collabRef.current = null;
+      setCollab(null);
+      setPeers([]);
 
       // Leave the project room when navigating away
       disconnectSocket();
@@ -608,7 +658,7 @@ const Project = () => {
 
   /** Load files from an AI message into the editor (unsaved until Run/Update). */
   const handleApplyFiles = (files: FlatFileTree) => {
-    setFlatFileTree((prev) => applyFilePatch(prev, files));
+    commitTree(applyFilePatch(flatFileTree, files));
     setIsSaved(false);
     toast.info("Files loaded into the editor. Run or update to save them.");
   };
@@ -732,6 +782,7 @@ const Project = () => {
       await updateProjectFiles(projectId, flatFileTree);
       setSavedTree(flatFileTree);
       setIsSaved(true);
+      collabRef.current?.notifySaved();
       return true;
     } catch (error) {
       console.error("Failed to save files:", error);
@@ -747,6 +798,18 @@ const Project = () => {
   useEffect(() => {
     if (project?.name) document.title = `${isSaved ? "" : "● "}${project.name} · Aivex`;
   }, [project?.name, isSaved]);
+
+  // With live editing teammates change files too: compare with the last save
+  useEffect(() => {
+    if (!collab) return;
+    const paths = new Set([...Object.keys(flatFileTree), ...Object.keys(savedTree)]);
+    setIsSaved([...paths].every((p) => flatFileTree[p] === savedTree[p]));
+  }, [collab, flatFileTree, savedTree]);
+
+  // Let teammates see which file we're in
+  useEffect(() => {
+    collab?.setActiveFile(activeFile);
+  }, [collab, activeFile]);
 
   // Don't lose unsaved edits to an accidental tab close / reload
   useEffect(() => {
@@ -938,7 +1001,7 @@ const Project = () => {
     const updated = renamePath(flatFileTree, path, target);
     if (!updated) return false;
 
-    setFlatFileTree(updated);
+    commitTree(updated);
     const move = (p: string) => (p === path ? target : p.startsWith(path + "/") ? target + p.slice(path.length) : p);
     if (activeFile) setActiveFile(move(activeFile));
     setOpenFiles((tabs) => tabs.map(move));
@@ -1034,7 +1097,7 @@ const Project = () => {
         updated = addFileToTree(flatFileTree, `${fullPath}/${FOLDER_PLACEHOLDER}`, "");
       }
 
-      setFlatFileTree(updated);
+      commitTree(updated);
       setIsSaved(false);
 
       // Auto-save to backend
@@ -1083,7 +1146,7 @@ const Project = () => {
       // Removes the file, or every file under the folder
       const updated = deleteFileFromTree(flatFileTree, path);
 
-      setFlatFileTree(updated);
+      commitTree(updated);
 
       // Save to backend
       await updateProjectFiles(projectId, updated);
@@ -1307,6 +1370,8 @@ const Project = () => {
             preview={setShowPreview}
             openFiles={openFiles}
             dirtyFiles={dirtyFiles}
+            collab={collab}
+            peers={peers}
             onSelectTab={selectFile}
             onCloseTab={closeTab}
             onQuickOpen={() => setIsQuickOpen(true)}

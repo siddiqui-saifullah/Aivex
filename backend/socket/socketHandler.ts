@@ -8,6 +8,8 @@ import { flattenFileTree } from "../utils/flattenFileTree.js";
 import { fromStoredFiles } from "../utils/fileStore.js";
 import Project from "../models/project.model.js";
 import ChatMessage from "../models/chat.model.js";
+import * as Y from "yjs";
+import * as collab from "./collab.js";
 
 interface ChatSender {
     id: string;
@@ -22,6 +24,8 @@ interface ProjectMessagePayload {
     isAI?: boolean;
     /** AI file changes were already saved to the project on the server. */
     filesSaved?: boolean;
+    /** ...and applied to the live shared document (clients must not re-apply them). */
+    filesSynced?: boolean;
     timestamp: Date | undefined;
 }
 
@@ -31,16 +35,25 @@ interface ServerToClientEvents {
     "project-message": (data: ProjectMessagePayload) => void;
     "message-deleted": (data: { id: string }) => void;
     "project-updated": (data: { projectId: string; reason: string }) => void;
+    "collab:update": (update: Uint8Array) => void;
+    "collab:awareness": (update: Uint8Array) => void;
+    "collab:left": (data: { clientId: number }) => void;
+    "collab:saved": (data: { userId: string; username: string }) => void;
 }
 
 type Ack<T> = (response: T) => void;
 type SendAck = Ack<{ ok: true; id: string; timestamp?: Date } | { ok: false; error: string }>;
 type DeleteAck = Ack<{ ok: boolean; error?: string }>;
+type CollabJoinAck = Ack<{ ok: true; update: Uint8Array; stateVector: Uint8Array } | { ok: false; error: string }>;
 
 interface ClientToServerEvents {
     "project-message": (data: { message?: unknown; context?: unknown }, ack?: SendAck) => void;
     "user-typing": (data: { isTyping?: boolean }) => void;
     "delete-message": (data: { id?: unknown }, ack?: DeleteAck) => void;
+    "collab:join": (data: { stateVector?: unknown; clientId?: unknown }, ack?: CollabJoinAck) => void;
+    "collab:update": (update: unknown) => void;
+    "collab:awareness": (update: unknown) => void;
+    "collab:saved": () => void;
 }
 
 export type AppServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -95,12 +108,71 @@ const handleUserConnection = (socket: AppSocket, io: AppServer) => {
         });
     });
 
+    handleCollab(socket, roomId);
+
     // Handle user disconnect
     socket.on("disconnect", () => {
         handleUserDisconnect(socket, roomId);
     });
 };
 
+
+/** Live collaborative editing: sync the project's shared document and cursors. */
+const handleCollab = (socket: AppSocket, roomId: string) => {
+    let joined = false;
+    let clientId: number | null = null;
+
+    socket.on("collab:join", (data, ack) => {
+        collab.joinRoom(roomId, socket.id)
+            .then((room) => {
+                joined = true;
+                clientId = Number.isInteger(data?.clientId) ? (data.clientId as number) : null;
+                const stateVector = collab.toUpdate(data?.stateVector) ?? undefined;
+                ack?.({
+                    ok: true,
+                    // Only what the client is missing
+                    update: Y.encodeStateAsUpdate(room.doc, stateVector),
+                    stateVector: Y.encodeStateVector(room.doc),
+                });
+            })
+            .catch((err) => {
+                console.error("collab:join failed:", err);
+                ack?.({ ok: false, error: "Live editing is unavailable" });
+            });
+    });
+
+    socket.on("collab:update", (raw) => {
+        const update = collab.toUpdate(raw);
+        if (!joined || !update) return;
+        collab.getRoom(roomId)
+            .then((room) => {
+                if (!room) return;
+                Y.applyUpdate(room.doc, update, socket.id);
+                socket.broadcast.to(roomId).emit("collab:update", update);
+            })
+            .catch((err) => console.error("collab:update failed:", err));
+    });
+
+    // Cursors / selections: nothing to store, just relay
+    socket.on("collab:awareness", (raw) => {
+        const update = collab.toUpdate(raw);
+        if (joined && update) socket.broadcast.to(roomId).emit("collab:awareness", update);
+    });
+
+    socket.on("collab:saved", () => {
+        if (!joined) return;
+        socket.broadcast.to(roomId).emit("collab:saved", {
+            userId: socket.data.user.id,
+            username: socket.data.user.username,
+        });
+    });
+
+    socket.on("disconnect", () => {
+        if (!joined) return;
+        if (clientId !== null) socket.broadcast.to(roomId).emit("collab:left", { clientId });
+        collab.leaveRoom(roomId, socket.id).catch(() => { /* already gone */ });
+    });
+};
 
 /** What the editor sends along with an AI request (validated, size-capped). */
 interface AiRequestContext {
@@ -231,6 +303,21 @@ const handleAiMessage = async (
         console.error("Failed to save AI changes:", err);
     }
 
+    // Put the AI's edits into the live document so open editors update in place
+    let filesSynced = false;
+    if (Object.keys(changedFiles).length || deletedFiles.length) {
+        try {
+            const room = await collab.getRoom(String(projectId));
+            if (room) {
+                const update = collab.applyFileChanges(room.doc, changedFiles, deletedFiles);
+                if (update) io.to(roomId).emit("collab:update", update);
+                filesSynced = true;
+            }
+        } catch (err) {
+            console.error("Failed to sync AI changes:", err);
+        }
+    }
+
     // Also keep the files on the message so they can be re-applied from chat history
     const savedMessage = await chatService.createProjectChat({
         projectId: socket.data.project._id,
@@ -250,6 +337,7 @@ const handleAiMessage = async (
         },
         isAI: true,
         filesSaved,
+        filesSynced,
         timestamp: savedMessage.createdAt,
     };
 

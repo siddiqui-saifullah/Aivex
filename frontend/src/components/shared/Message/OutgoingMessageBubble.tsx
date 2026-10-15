@@ -1,4 +1,5 @@
 import { Trash2 } from "lucide-react";
+import MentionText from "../MentionText";
 import type { BubblePosition, BubbleProps } from "./types";
 
 const OutgoingMessageBubble = ({
@@ -47,7 +48,9 @@ const OutgoingMessageBubble = ({
         `}
       >
         {/* Message text */}
-        <span>{text}</span>
+        <span>
+          <MentionText text={text ?? ""} tone="outgoing" />
+        </span>
 
         {/* WhatsApp-style time */}
         {formattedTime && (

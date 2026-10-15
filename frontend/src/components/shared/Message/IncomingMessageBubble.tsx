@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Bot, Check, Copy, FileCode2 } from "lucide-react";
 import MarkdownRenderer from "../MarkdownRenderer";
+import MentionText from "../MentionText";
 import type { BubblePosition, BubbleProps } from "./types";
 
 interface IncomingMessageBubbleProps extends BubbleProps {
@@ -85,7 +86,9 @@ const IncomingMessageBubble = ({
           {isAI && text ? (
             <MarkdownRenderer content={text} />
           ) : (
-            <span>{text}</span>
+            <span className="whitespace-pre-wrap">
+              <MentionText text={text ?? ""} tone="incoming" />
+            </span>
           )}
 
           {/* Generated files */}

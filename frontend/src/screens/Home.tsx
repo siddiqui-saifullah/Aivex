@@ -15,7 +15,7 @@ const Home = () => {
   const primaryCta = user ? { to: "/dashboard", label: "Open Dashboard" } : { to: "/register", label: "Start Coding Now" };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 selection:bg-teal-500/30 font-sans overflow-x-hidden">
+    <div className="min-h-dvh bg-black text-zinc-100 selection:bg-teal-500/30 font-sans overflow-x-hidden">
       {/* --- HERO SECTION --- */}
       <section className="relative pt-32 pb-16 md:pt-48 md:pb-32 px-6 border-b border-white/5">
         {/* Background Gradients */}

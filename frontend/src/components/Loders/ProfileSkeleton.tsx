@@ -2,7 +2,7 @@ import React from "react";
 
 const ProfileSkeleton = () => {
   return (
-    <div className="min-h-screen bg-black text-zinc-100 px-6 py-12">
+    <div className="min-h-dvh bg-black text-zinc-100 px-6 py-12">
       <div className="max-w-4xl mx-auto space-y-10">
         {/* Header Skeleton */}
         <div>

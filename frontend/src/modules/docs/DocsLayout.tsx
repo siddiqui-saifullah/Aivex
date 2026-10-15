@@ -6,7 +6,7 @@ const DocsLayout = () => {
   const [, setTitle] = useState("Introduction");
 
   return (
-    <div className="flex min-h-screen bg-black text-white">
+    <div className="flex min-h-dvh bg-black text-white">
       {/* Sidebar */}
       <div className="hidden md:block">
         <DocsSidebar />

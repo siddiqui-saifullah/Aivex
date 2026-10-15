@@ -23,6 +23,7 @@ import MessageArea from "../components/project/MessageArea";
 import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
 import PreviewOverlay from "../components/project/PreviewOverlay";
+import QuickOpen from "../components/project/QuickOpen";
 import OutputPanel, { type OutputKind, type OutputLine } from "../components/project/OutputPanel";
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
@@ -127,6 +128,34 @@ const MAX_OUTPUT_LINES = 2000;
 
 type MobileTab = "chat" | "files" | "code";
 
+/** File to open when a project loads: the page or entry point a person would start with. */
+const pickEntryFile = (files: FlatFileTree): string | null => {
+  const paths = Object.keys(files).filter((p) => p !== ".aivex" && !p.endsWith(FOLDER_PLACEHOLDER));
+  if (paths.length === 0) return null;
+  let main: string | undefined;
+  try {
+    main = (JSON.parse(files["package.json"] ?? "{}") as { main?: string }).main?.replace(/^\.\//, "");
+  } catch {
+    /* invalid package.json */
+  }
+  const preferred = [
+    main,
+    "index.html",
+    "src/App.jsx",
+    "src/App.tsx",
+    "src/main.jsx",
+    "server.js",
+    "index.js",
+    "app.js",
+    "main.js",
+    "main.py",
+    "main.cpp",
+    "main.c",
+    "Main.java",
+  ];
+  return preferred.find((p) => p && p in files) ?? paths.find((p) => !p.includes("/") && p !== "package.json") ?? paths[0];
+};
+
 const Project = () => {
   const { projectId = "" } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -163,6 +192,8 @@ const Project = () => {
 
   // FileTree states
   const [flatFileTree, setFlatFileTree] = useState<FlatFileTree>({});
+  // Last saved contents, to mark edited tabs
+  const [savedTree, setSavedTree] = useState<FlatFileTree>({});
 
   // Web Container State
   const [webContainer, setWebContainer] = useState<WebContainer | null>(null);
@@ -254,10 +285,33 @@ const Project = () => {
   const [editorSelection, setEditorSelection] = useState<EditorSelection | null>(null);
   const [aiContextDismissed, setAiContextDismissed] = useState(false);
 
+  // Editor tabs (most recent last) and the "Go to file" palette
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [isQuickOpen, setIsQuickOpen] = useState(false);
+
   const selectFile = (path: string | null) => {
     setActiveFile(path);
     setEditorSelection(null);
     setAiContextDismissed(false);
+    if (path) {
+      setOpenFiles((tabs) => {
+        if (tabs.includes(path)) return tabs;
+        // Keep the tab bar manageable: drop the oldest tab beyond 10
+        const next = [...tabs, path];
+        return next.length > 10 ? next.slice(-10) : next;
+      });
+    }
+  };
+
+  const closeTab = (path: string) => {
+    const index = openFiles.indexOf(path);
+    const next = openFiles.filter((p) => p !== path);
+    setOpenFiles(next);
+    if (activeFile === path) {
+      const neighbour = next[Math.min(index, next.length - 1)] ?? null;
+      setActiveFile(neighbour);
+      setEditorSelection(null);
+    }
   };
 
   // Small screens show one pane at a time
@@ -335,8 +389,13 @@ const Project = () => {
       if (!isMounted) return;
 
       applyProject(projectData);
-      setFlatFileTree(projectData.files || projectData.flatFileTree || {});
+      const files = projectData.files || projectData.flatFileTree || {};
+      setFlatFileTree(files);
+      setSavedTree(files);
       setIsSaved(true);
+      // Open the project's main file so there's something to work with right away
+      const entry = pickEntryFile(files);
+      if (entry) selectFile(entry);
 
       try {
         const response = await getProjectChats(projectId);
@@ -400,7 +459,8 @@ const Project = () => {
         // The server saves those changes itself, so they only count as
         // unsaved here if it couldn't (or is an older server).
         setFlatFileTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
-        if (!socketData.filesSaved) setIsSaved(false);
+        if (socketData.filesSaved) setSavedTree((prev) => applyFilePatch(prev, aiFiles, deletedFiles));
+        else setIsSaved(false);
       }
     };
 
@@ -670,6 +730,7 @@ const Project = () => {
 
     try {
       await updateProjectFiles(projectId, flatFileTree);
+      setSavedTree(flatFileTree);
       setIsSaved(true);
       return true;
     } catch (error) {
@@ -681,6 +742,42 @@ const Project = () => {
       setIsSaving(false);
     }
   };
+
+  // Tab title: project name, with a dot while there are unsaved changes
+  useEffect(() => {
+    if (project?.name) document.title = `${isSaved ? "" : "● "}${project.name} · Aivex`;
+  }, [project?.name, isSaved]);
+
+  // Don't lose unsaved edits to an accidental tab close / reload
+  useEffect(() => {
+    if (isSaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isSaved]);
+
+  const dirtyFiles = useMemo(
+    () => new Set(openFiles.filter((p) => p in flatFileTree && flatFileTree[p] !== savedTree[p])),
+    [openFiles, flatFileTree, savedTree],
+  );
+  const visibleFiles = useMemo(
+    () => Object.keys(flatFileTree).filter((p) => !p.endsWith(FOLDER_PLACEHOLDER) && p !== ".aivex").sort(),
+    [flatFileTree],
+  );
+
+  // Ctrl/Cmd+P anywhere in the workspace (the editor registers its own too)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setIsQuickOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /** Messages from the static preview: console output, errors and page links. */
   useEffect(() => {
@@ -842,11 +939,13 @@ const Project = () => {
     if (!updated) return false;
 
     setFlatFileTree(updated);
-    if (activeFile === path) setActiveFile(target);
-    else if (activeFile?.startsWith(path + "/")) setActiveFile(target + activeFile.slice(path.length));
+    const move = (p: string) => (p === path ? target : p.startsWith(path + "/") ? target + p.slice(path.length) : p);
+    if (activeFile) setActiveFile(move(activeFile));
+    setOpenFiles((tabs) => tabs.map(move));
 
     try {
       await updateProjectFiles(projectId, updated);
+      setSavedTree(updated);
       setIsSaved(true);
     } catch {
       setIsSaved(false);
@@ -941,6 +1040,7 @@ const Project = () => {
       // Auto-save to backend
       try {
         await updateProjectFiles(projectId, updated);
+        setSavedTree(updated);
         setIsSaved(true);
         toast.success(`${capitalize(type)} created: ${fullPath}`);
       } catch (error) {
@@ -971,9 +1071,13 @@ const Project = () => {
     try {
       setIsDeleting(true);
 
-      // Deselect active file if it's being deleted
-      if (activeFile === path || activeFile?.startsWith(path + "/")) {
-        selectFile(null);
+      // Close tabs of deleted files
+      const removed = (p: string) => p === path || p.startsWith(path + "/");
+      const remaining = openFiles.filter((p) => !removed(p));
+      setOpenFiles(remaining);
+      if (activeFile && removed(activeFile)) {
+        setActiveFile(remaining[remaining.length - 1] ?? null);
+        setEditorSelection(null);
       }
 
       // Removes the file, or every file under the folder
@@ -983,6 +1087,7 @@ const Project = () => {
 
       // Save to backend
       await updateProjectFiles(projectId, updated);
+      setSavedTree(updated);
       setIsSaved(true);
 
       toast.success(`${type === "file" ? "File" : "Folder"} deleted: ${path}`);
@@ -1200,6 +1305,12 @@ const Project = () => {
             isStaticSite={isStatic}
             canPreview={Boolean(previewUrl)}
             preview={setShowPreview}
+            openFiles={openFiles}
+            dirtyFiles={dirtyFiles}
+            onSelectTab={selectFile}
+            onCloseTab={closeTab}
+            onQuickOpen={() => setIsQuickOpen(true)}
+            onBrowseFiles={() => setMobileTab("files")}
             onOpenPreviewTab={() => {
               if (staticPage) {
                 openStaticPreviewTab();
@@ -1225,6 +1336,17 @@ const Project = () => {
           revealOutputKey={revealOutputKey}
           run={nodeRun}
         />
+
+        {isQuickOpen && (
+          <QuickOpen
+            files={visibleFiles}
+            onOpen={(path) => {
+              selectFile(path);
+              setMobileTab("code");
+            }}
+            onClose={() => setIsQuickOpen(false)}
+          />
+        )}
 
         {showPreview && (
           <PreviewOverlay

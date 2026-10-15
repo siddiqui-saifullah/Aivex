@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { createElement, useEffect, useRef } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import "../../config/monaco";
 import getLanguageFromFilename from "../../utils/getLanguageFromFilename";
 import { getRunnerLanguage } from "../../services/runner.service";
-import { ExternalLink, Eye, Loader2, Play, RefreshCw, Square } from "lucide-react";
+import { ExternalLink, Eye, FolderOpen, Loader2, Play, RefreshCw, Search, Square, X } from "lucide-react";
+import { getFileIcon } from "../../utils/fileIconMap";
 import type { EditorSelection, FlatFileTree } from "../../types";
 
 interface CodeEditorProps {
@@ -31,7 +32,19 @@ interface CodeEditorProps {
   preview: (show: boolean) => void;
   /** Open the running app in a separate browser tab. */
   onOpenPreviewTab?: () => void;
+  /** Editor tabs. */
+  openFiles?: string[];
+  dirtyFiles?: Set<string>;
+  onSelectTab?: (path: string) => void;
+  onCloseTab?: (path: string) => void;
+  /** Ctrl/Cmd+P */
+  onQuickOpen?: () => void;
+  /** Mobile: jump to the file explorer. */
+  onBrowseFiles?: () => void;
 }
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD = isMac ? "⌘" : "Ctrl";
 
 const CodeEditor = ({
   activeFile,
@@ -53,19 +66,41 @@ const CodeEditor = ({
   isStaticSite = false,
   preview,
   onOpenPreviewTab,
+  openFiles = [],
+  dirtyFiles,
+  onSelectTab,
+  onCloseTab,
+  onQuickOpen,
+  onBrowseFiles,
 }: CodeEditorProps) => {
-  // Monaco registers the shortcut once; keep it pointing at the latest handler
+  const runnerLanguage = getRunnerLanguage(activeFile);
+
+  /** Ctrl/Cmd+Enter: the main action (run file, run/preview project, update). */
+  const primaryAction = () => {
+    if (runnerLanguage) {
+      if (!isRunningFile) onRunFile();
+    } else if (!originalIsRunning) handleRun();
+    else if (!isSaved && !isLivePreview) handleUpdate();
+  };
+
+  // Monaco registers shortcuts once; keep them pointing at the latest handlers
   const onSaveRef = useRef(onSave);
   const onSelectionRef = useRef(onSelectionChange);
+  const primaryRef = useRef(primaryAction);
+  const quickOpenRef = useRef(onQuickOpen);
   useEffect(() => {
     onSaveRef.current = onSave;
     onSelectionRef.current = onSelectionChange;
-  }, [onSave, onSelectionChange]);
+    primaryRef.current = primaryAction;
+    quickOpenRef.current = onQuickOpen;
+  });
 
   const handleMount: OnMount = (editor, monaco) => {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onSaveRef.current();
     });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => primaryRef.current());
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => quickOpenRef.current?.());
 
     // Report the selection (debounced) so "@Vex fix this" targets it
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -84,12 +119,47 @@ const CodeEditor = ({
   };
 
   if (!activeFile) {
+    const shortcuts: [string, string][] = [
+      [`${MOD} P`, "Go to file"],
+      [`${MOD} S`, "Save"],
+      [`${MOD} Enter`, "Run / Preview"],
+    ];
     return (
-      <div className="flex-1 bg-black flex flex-col items-center justify-center gap-2 text-zinc-500 px-6 text-center">
-        <p>Select a file from Explorer</p>
-        <p className="text-xs text-zinc-600">
-          HTML/CSS/JS sites preview instantly · Node.js projects run in your browser · C, C++, Java, Python and more run on the cloud runner
-        </p>
+      <div className="flex-1 bg-black flex flex-col items-center justify-center gap-5 text-zinc-500 px-6 text-center">
+        <div className="space-y-1.5">
+          <p className="text-zinc-300 font-medium">No file open</p>
+          <p className="text-xs text-zinc-600 max-w-sm">
+            HTML/CSS/JS sites preview instantly · Node.js runs in your browser · C, C++, Java, Python and more run on the cloud runner
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          {onBrowseFiles && (
+            <button
+              onClick={onBrowseFiles}
+              className="md:hidden flex items-center gap-2 rounded-lg bg-teal-500/90 px-4 py-2 text-sm font-medium text-black hover:bg-teal-400"
+            >
+              <FolderOpen size={15} /> Browse files
+            </button>
+          )}
+          {onQuickOpen && (
+            <button
+              onClick={onQuickOpen}
+              className="flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-white/5"
+            >
+              <Search size={15} /> Go to file
+            </button>
+          )}
+        </div>
+        <dl className="hidden md:grid grid-cols-[auto_auto] gap-x-4 gap-y-1.5 text-xs">
+          {shortcuts.map(([keys, label]) => (
+            <div key={label} className="contents">
+              <dt className="text-right">
+                <kbd className="rounded border border-white/10 bg-zinc-900 px-1.5 py-0.5 font-sans text-[11px] text-zinc-400">{keys}</kbd>
+              </dt>
+              <dd className="text-left text-zinc-500">{label}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     );
   }
@@ -111,7 +181,6 @@ const CodeEditor = ({
   // Get file content from fileTree (older saves may hold line arrays or { contents })
   const rawFile: unknown = fileTree?.[activeFile];
   const language = getLanguageFromFilename(activeFile);
-  const runnerLanguage = getRunnerLanguage(activeFile);
 
   let code = "";
 
@@ -131,19 +200,48 @@ const CodeEditor = ({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-black">
-      {/* Header */}
-      <div className="h-14 shrink-0 px-4 flex items-center justify-between gap-3 bg-zinc-900 border-b border-white/10 shadow-sm">
-        {/* File Info */}
-        <div className="flex flex-col min-w-0">
-          <span className="text-sm font-medium text-zinc-200 truncate" title={activeFile}>
-            {activeFile}
-          </span>
-
-          {(runProgress || isSaving) && (
-            <span className="text-xs text-teal-400 animate-breathe truncate">
-              {isSaving ? "Saving files…" : runProgress}
-            </span>
-          )}
+      {/* Header: tabs + actions */}
+      <div className="h-12 shrink-0 pr-3 flex items-stretch justify-between gap-3 bg-zinc-950 border-b border-white/10">
+        <div role="tablist" aria-label="Open files" className="flex min-w-0 items-stretch overflow-x-auto no-scrollbar">
+          {(openFiles.length ? openFiles : [activeFile]).map((path) => {
+            const name = path.split("/").pop() ?? path;
+            const active = path === activeFile;
+            const dirty = dirtyFiles?.has(path);
+            return (
+              <div
+                key={path}
+                role="tab"
+                aria-selected={active}
+                tabIndex={0}
+                title={path}
+                onClick={() => onSelectTab?.(path)}
+                onKeyDown={(e) => e.key === "Enter" && onSelectTab?.(path)}
+                onAuxClick={(e) => e.button === 1 && onCloseTab?.(path)}
+                className={`group relative flex shrink-0 cursor-pointer items-center gap-2 border-r border-white/5 pl-3 pr-2 text-[13px] transition-colors ${
+                  active ? "bg-black text-zinc-100" : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
+                }`}
+              >
+                {active && <span className="absolute inset-x-0 top-0 h-0.5 bg-teal-400" />}
+                <span className="[&_svg]:h-3.5 [&_svg]:w-3.5">{createElement(getFileIcon(name))}</span>
+                <span className="max-w-[10rem] truncate">{name}</span>
+                {onCloseTab && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCloseTab(path);
+                    }}
+                    aria-label={`Close ${name}`}
+                    className={`relative flex h-5 w-5 items-center justify-center rounded hover:bg-white/10 ${
+                      active || dirty ? "" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    }`}
+                  >
+                    {dirty && <span className="absolute h-2 w-2 rounded-full bg-amber-400 group-hover:opacity-0" />}
+                    <X size={13} className={dirty ? "opacity-0 group-hover:opacity-100" : ""} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Actions */}
@@ -153,7 +251,7 @@ const CodeEditor = ({
             <button
               disabled={isRunningFile}
               onClick={onRunFile}
-              title={`Run ${fileName} (${runnerLanguage.label})`}
+              title={`Run ${fileName} (${MOD}+Enter)`}
               className="flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium bg-teal-500/90 text-black hover:bg-teal-400 transition disabled:opacity-60"
             >
               {isRunningFile ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -161,14 +259,17 @@ const CodeEditor = ({
             </button>
           ) : (
             <>
-              <button
-                onClick={() => preview(true)}
-                disabled={!canPreview}
-                title={canPreview ? "Open preview" : "Run the project to enable preview"}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-white/10 text-zinc-300 text-sm hover:bg-white/5 transition disabled:opacity-40 disabled:hover:bg-transparent"
-              >
-                <Eye size={14} /> Preview
-              </button>
+              {/* Static sites: the main button already opens the preview */}
+              {(!isStaticSite || originalIsRunning) && (
+                <button
+                  onClick={() => preview(true)}
+                  disabled={!canPreview}
+                  title={canPreview ? "Open preview" : "Run the project to enable preview"}
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-white/10 text-zinc-300 text-sm hover:bg-white/5 transition disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  <Eye size={14} /> Preview
+                </button>
+              )}
               {onOpenPreviewTab && (
                 <button
                   onClick={onOpenPreviewTab}
@@ -184,6 +285,7 @@ const CodeEditor = ({
               {/* Unified Primary Action */}
               <button
                 disabled={isSaving}
+                title={!originalIsRunning ? `${isStaticSite ? "Preview" : "Run"} (${MOD}+Enter)` : undefined}
                 onClick={() => {
                   if (!originalIsRunning) handleRun();
                   else if (!isSaved && !isLivePreview) handleUpdate();
@@ -243,12 +345,15 @@ const CodeEditor = ({
       {/* Status Bar */}
       <div className="h-7 shrink-0 px-4 flex items-center justify-between text-xs bg-zinc-950 border-t border-white/10 text-zinc-400">
         {/* Left: File status */}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {(runProgress || isSaving) && (
+            <span className="truncate text-teal-400 animate-breathe">{isSaving ? "Saving files…" : runProgress}</span>
+          )}
           {isSaved ? (
-            <span className="text-emerald-400">● Saved</span>
+            <span className="shrink-0 text-emerald-400">● Saved</span>
           ) : (
             <span className="text-amber-400">
-              ● Unsaved <span className="text-zinc-600">(Ctrl+S)</span>
+              ● Unsaved <span className="hidden sm:inline text-zinc-600">({MOD}+S)</span>
             </span>
           )}
         </div>

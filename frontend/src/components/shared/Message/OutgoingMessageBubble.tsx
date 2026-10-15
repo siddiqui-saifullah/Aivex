@@ -37,10 +37,10 @@ const OutgoingMessageBubble = ({
       <div
         className={`
           group relative
-          max-w-[78%] sm:max-w-[65%]
+          max-w-[85%]
           px-4 py-2.5
           text-sm leading-snug
-          bg-[#00aeb0] text-black
+          bg-teal-500 text-black
           break-words whitespace-pre-wrap
           overflow-hidden
           ${radiusMap[position]}

@@ -163,3 +163,30 @@ body {
 .animate-breathe {
   animation: breathe 2s infinite ease-in-out;
 }
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.animate-fade-in { animation: fade-in 0.15s ease-out; }
+.animate-pop-in { animation: pop-in 0.18s ease-out; }
+
+/* Visible keyboard focus everywhere (mouse clicks stay clean) */
+:where(button, a, [role="button"], [role="tab"], [role="treeitem"], [role="link"]):focus-visible {
+  outline: 2px solid rgb(45 212 191 / 0.7);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

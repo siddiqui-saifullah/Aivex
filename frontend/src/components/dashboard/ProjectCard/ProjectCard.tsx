@@ -1,10 +1,19 @@
 import { useNavigate } from "react-router-dom";
-import { MoreVertical, Code2, Clock, User, Crown } from "lucide-react";
+import { MoreVertical, Code2, Clock, User, Crown, Atom, Server, Triangle, Globe } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { plural } from "../../../utils/plural";
 import ProjectMenu from "./ProjectMenu";
 import { useProjectCard } from "./useProjectCard";
 import type { MouseEvent } from "react";
 import type { Project } from "../../../types";
+
+/** Icon + accent per stack, so projects are recognisable at a glance. */
+const STACK_STYLE: Record<string, { icon: LucideIcon; className: string }> = {
+  htmlcssjs: { icon: Globe, className: "text-orange-400 bg-orange-500/10 border-orange-500/20" },
+  react: { icon: Atom, className: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
+  nextjs: { icon: Triangle, className: "text-zinc-100 bg-white/5 border-white/15" },
+  nodejs: { icon: Server, className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+};
 
 type ProjectAction = (projectId: string, projectName: string) => void;
 
@@ -35,20 +44,35 @@ const ProjectCard = ({ project, onDelete, onRename, onLeave, isOwner }: ProjectC
     setShowMenu(false);
   };
 
+  const stackStyle = STACK_STYLE[project.stack?.toLowerCase() ?? ""];
+  const StackIcon = stackStyle?.icon ?? Code2;
+
   return (
     <div
       onClick={handleCardClick}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          handleCardClick();
+        }
+      }}
+      role="link"
+      tabIndex={0}
+      aria-label={`Open ${project.name}`}
       className="group relative cursor-pointer bg-zinc-900/50 border border-white/5 hover:border-teal-500/30 rounded-xl p-5 transition-all duration-300 hover:bg-zinc-900 hover:shadow-xl hover:shadow-teal-900/10"
     >
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
-        <div className="p-3 bg-black border border-white/10 rounded-lg text-teal-500">
-          <Code2 size={24} />
+        <div className={`p-3 border rounded-lg ${stackStyle?.className ?? "bg-black border-white/10 text-teal-500"}`}>
+          <StackIcon size={24} />
         </div>
 
         <div ref={menuRef} className="relative z-20">
           <button
             onClick={handleMenuToggle}
+            aria-label="Project options"
+            aria-haspopup="menu"
+            aria-expanded={showMenu}
             className="p-1.5 text-zinc-500 hover:text-white rounded-md hover:bg-white/10"
           >
             <MoreVertical size={18} />

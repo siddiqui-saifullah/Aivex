@@ -1,3 +1,4 @@
+import { Bot } from "lucide-react";
 import MessageGroup from "../shared/MessageGroup";
 import ChatInput from "../shared/ChatTextarea";
 import { useEffect, useRef, useMemo, type ComponentProps } from "react";
@@ -25,6 +26,12 @@ interface MessageAreaProps {
 /* -------------------------------------------------------------------------- */
 /* MESSAGE AREA                                                               */
 /* -------------------------------------------------------------------------- */
+
+const STARTER_PROMPTS = [
+  "Build a responsive landing page with HTML, CSS and JS",
+  "Explain how this project works",
+  "Find and fix bugs in the open file",
+];
 
 const MessageArea = ({
   messages = [],
@@ -67,8 +74,25 @@ const MessageArea = ({
             />
           ))
         ) : (
-          <div className="flex items-center justify-center h-full text-zinc-500">
-            <p className="text-sm">No messages yet. Start the conversation!</p>
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-300">
+              <Bot size={22} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-zinc-200">Ask Vex AI or chat with your team</p>
+              <p className="text-xs text-zinc-500">Start with @Vex, or turn on AI mode with the bot button.</p>
+            </div>
+            <div className="flex w-full max-w-xs flex-col gap-2">
+              {STARTER_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => onMessageChange(`@Vex ${prompt}`)}
+                  className="rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-2 text-left text-xs text-zinc-300 transition hover:border-teal-500/40 hover:text-white"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

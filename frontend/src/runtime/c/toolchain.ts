@@ -187,7 +187,47 @@ export interface RunIo {
   readStdin: () => Uint8Array | null;
   /** Files the program can open (fopen) under its working directory. */
   files?: Record<string, string>;
+  /** Pause for sleep()/usleep(); defaults to a busy wait. */
+  sleep?: (ms: number) => void;
 }
+
+/** WASI layout: subscription (48 bytes) and event (32 bytes). */
+const EVENTTYPE_CLOCK = 0;
+const SUBCLOCKFLAGS_ABSTIME = 1;
+
+/**
+ * poll_oneoff for the single clock subscription libc's sleep() makes. The
+ * shim's version spins and never reports the event count.
+ */
+const makePollOneoff = (w: WASI, sleep: (ms: number) => void) =>
+  (inPtr: number, outPtr: number, nsubscriptions: number, neventsPtr: number): number => {
+    const memory = (w.inst as unknown as { exports: { memory: WebAssembly.Memory } }).exports.memory;
+    let view = new DataView(memory.buffer);
+    if (nsubscriptions !== 1 || view.getUint8(inPtr + 8) !== EVENTTYPE_CLOCK) return wasi.ERRNO_NOTSUP;
+    const userdata = view.getBigUint64(inPtr, true);
+    const clockId = view.getUint32(inPtr + 16, true);
+    const timeout = view.getBigUint64(inPtr + 24, true);
+    const flags = view.getUint16(inPtr + 40, true);
+    let ns = Number(timeout);
+    if (flags & SUBCLOCKFLAGS_ABSTIME) {
+      const now = clockId === wasi.CLOCKID_REALTIME ? Date.now() * 1e6 : performance.now() * 1e6;
+      ns -= now;
+    }
+    if (ns > 0) sleep(ns / 1e6);
+    view = new DataView(memory.buffer);
+    view.setBigUint64(outPtr, userdata, true);
+    view.setUint16(outPtr + 8, 0, true);
+    view.setUint8(outPtr + 10, EVENTTYPE_CLOCK);
+    view.setUint32(neventsPtr, 1, true);
+    return wasi.ERRNO_SUCCESS;
+  };
+
+const busySleep = (ms: number) => {
+  const end = performance.now() + ms;
+  while (performance.now() < end) {
+    /* spin */
+  }
+};
 
 /** Run a compiled program to completion. */
 export const runProgram = (wasm: Uint8Array, io: RunIo): ExitReason => {
@@ -203,7 +243,10 @@ export const runProgram = (wasm: Uint8Array, io: RunIo): ExitReason => {
     ),
     new PreopenDirectory("/tmp", new Map()),
   ];
-  const w = new WASI(["a.out"], [], fds, { debug: false });
+  // localtime() uses the browser's UTC offset (minutes east of UTC)
+  const env = [`TZOFFSET=${-new Date().getTimezoneOffset()}`];
+  const w = new WASI(["a.out"], env, fds, { debug: false });
+  (w.wasiImport as Record<string, unknown>).poll_oneoff = makePollOneoff(w, io.sleep ?? busySleep);
   try {
     return { kind: "exit", code: runWasi(module, w) };
   } catch (err) {

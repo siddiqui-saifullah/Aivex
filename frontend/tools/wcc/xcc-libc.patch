@@ -1,3 +1,825 @@
+diff --git a/include/conio.h b/include/conio.h
+new file mode 100644
+index 0000000..639b04d
+--- /dev/null
++++ b/include/conio.h
+@@ -0,0 +1,9 @@
++#pragma once
++
++// Minimal Turbo C <conio.h> compatibility for course material.
++#include <stdio.h>
++
++static inline int getch(void) { fflush(stdout); return getchar(); }
++static inline int getche(void) { fflush(stdout); return getchar(); }
++static inline void clrscr(void) {}
++static inline int kbhit(void) { return 0; }
+diff --git a/include/ctype.h b/include/ctype.h
+index 1644884..7d63f0e 100644
+--- a/include/ctype.h
++++ b/include/ctype.h
+@@ -5,6 +5,7 @@ int isxdigit(int c);
+ int isalpha(int c);
+ int isalnum(int c);
+ int isspace(int c);
++int isblank(int c);
+ int isupper(int c);
+ int islower(int c);
+ int isascii(int c);
+diff --git a/include/inttypes.h b/include/inttypes.h
+index 43896d6..ffe5fd8 100644
+--- a/include/inttypes.h
++++ b/include/inttypes.h
+@@ -44,3 +44,8 @@
+ #define PRIu16   PRIu32
+ #define PRIo16   PRIo32
+ #define PRIx16   PRIx32
++
++typedef struct { intmax_t quot, rem; } imaxdiv_t;
++intmax_t imaxabs(intmax_t x);
++intmax_t strtoimax(const char *restrict p, char **restrict pp, int base);
++uintmax_t strtoumax(const char *restrict p, char **restrict pp, int base);
+diff --git a/include/math.h b/include/math.h
+index 1c4682a..1a1f202 100644
+--- a/include/math.h
++++ b/include/math.h
+@@ -17,6 +17,7 @@
+ #define NAN         (__builtin_nan("0x7ff8000000000000"))
+ #define INFINITY    (1.0 / 0.0)
+ #define HUGE_VAL    INFINITY
++#define HUGE_VALF   INFINITY
+ 
+ #if defined(__riscv) || defined(__wasm)  // newlib environments.
+ #define FP_NAN        0
+@@ -64,6 +65,68 @@ double ldexp(double x, int exp);
+ float fabsf(float);
+ long double fabsl(long double x);
+ 
++double trunc(double x);
++double fmax(double x, double y);
++double fmin(double x, double y);
++double fdim(double x, double y);
++double hypot(double x, double y);
++double cbrt(double x);
++double exp2(double x);
++double expm1(double x);
++double log1p(double x);
++double rint(double x);
++double nearbyint(double x);
++long lrint(double x);
++long long llrint(double x);
++long lround(double x);
++long long llround(double x);
++double remainder(double x, double y);
++double fma(double x, double y, double z);
++double erf(double x);
++double erfc(double x);
++double tgamma(double x);
++double lgamma(double x);
++double scalbn(double x, int n);
++int ilogb(double x);
++double logb(double x);
++
++float sqrtf(float x);
++float powf(float x, float y);
++float floorf(float x);
++float ceilf(float x);
++float roundf(float x);
++float truncf(float x);
++float fmodf(float x, float y);
++float sinf(float x);
++float cosf(float x);
++float tanf(float x);
++float asinf(float x);
++float acosf(float x);
++float atanf(float x);
++float atan2f(float y, float x);
++float expf(float x);
++float exp2f(float x);
++float logf(float x);
++float log10f(float x);
++float log2f(float x);
++float hypotf(float x, float y);
++float cbrtf(float x);
++float fmaxf(float x, float y);
++float fminf(float x, float y);
++long lroundf(float x);
++
++long double sqrtl(long double x);
++long double powl(long double x, long double y);
++long double floorl(long double x);
++long double ceill(long double x);
++long double roundl(long double x);
++long double truncl(long double x);
++long double fmodl(long double x, long double y);
++long double expl(long double x);
++long double logl(long double x);
++long double sinl(long double x);
++long double cosl(long double x);
++
+ int finite(double x);
+ 
+ static inline int signbit(double x) {
+diff --git a/include/signal.h b/include/signal.h
+index 1e093d9..cf7eee2 100644
+--- a/include/signal.h
++++ b/include/signal.h
+@@ -80,3 +80,44 @@ int raise(int sig);
+ 
+ void (*signal(int sig, void (*func)(int)))(int);
+ #endif
++
++#if defined(__wasm)
++#define	SIGHUP     1
++#define	SIGINT     2
++#define	SIGQUIT    3
++#define	SIGILL     4
++#define	SIGTRAP    5
++#define	SIGABRT    6
++#define	SIGBUS     7
++#define	SIGFPE     8
++#define	SIGKILL    9
++#define	SIGUSR1    10
++#define	SIGSEGV    11
++#define	SIGUSR2    12
++#define	SIGPIPE    13
++#define	SIGALRM    14
++#define	SIGTERM    15
++#define	SIGCHLD    17
++#define	SIGCONT    18
++#define	SIGSTOP    19
++#define	SIGTSTP    20
++#define	SIGURG     23
++#define	SIGWINCH   28
++#endif
++
++#if defined(__wasm)
++// Function pointers are table indices on wasm, so 1 could be a real function.
++#define SIG_IGN  ((void (*)(int))-2)
++#else
++#define SIG_IGN  ((void (*)(int))1)
++#endif
++#define SIG_ERR  ((void (*)(int))-1)
++
++typedef int sig_atomic_t;
++
++#if defined(__wasm)
++#define SIG_DFL  ((void (*)(int))0)
++
++int raise(int sig);
++void (*signal(int sig, void (*func)(int)))(int);
++#endif
+diff --git a/include/stdio.h b/include/stdio.h
+index c268ea9..c06b890 100644
+--- a/include/stdio.h
++++ b/include/stdio.h
+@@ -6,6 +6,14 @@
+ 
+ #define EOF  (-1)
+ 
++#define BUFSIZ        1024
++#define FILENAME_MAX  4096
++#define FOPEN_MAX     20
++#define L_tmpnam      20
++#define _IOFBF  0
++#define _IOLBF  1
++#define _IONBF  2
++
+ enum {
+   SEEK_SET,  // 0
+   SEEK_CUR,  // 1
+@@ -53,12 +61,18 @@ int fflush(FILE *fp);
+ int fseek(FILE *fp, long offset, int origin);
+ long ftell(FILE *fp);
+ int feof(FILE *fp);
++int ferror(FILE *fp);
++void clearerr(FILE *fp);
++void rewind(FILE *fp);
++int setvbuf(FILE *fp, char *buf, int mode, size_t size);
++void setbuf(FILE *fp, char *buf);
+ int rename(const char *oldpath, const char *newpath);
+ int remove(const char *fn);
+ 
+ int fgetc(FILE *fp);
+ int fputc(int c, FILE *fp);
+ char *fgets(char *s, int n, FILE *fp);
++char *gets(char *s);
+ int fputs(const char *s, FILE *fp);
+ int puts(const char *s);
+ int ungetc(int c, FILE *fp);
+diff --git a/include/stdlib.h b/include/stdlib.h
+index 5bb98e0..c919647 100644
+--- a/include/stdlib.h
++++ b/include/stdlib.h
+@@ -38,6 +38,7 @@ void srand(unsigned int seed);
+ double atof(const char *p);
+ double strtod(const char* restrict p, char ** restrict pp);
+ long double strtold(const char* restrict p, char ** restrict pp);
++float strtof(const char* restrict p, char ** restrict pp);
+ double drand48(void);                     // [0.0, 1.0)
+ double erand48(unsigned short xsubi[3]);  // [0.0, 1.0)
+ #endif
+@@ -50,7 +51,12 @@ int mkstemps(char *tmpl, int suffixlen);
+ 
+ char *getenv(const char *varname);
+ 
+-#if !defined(__wasm)
+ int system(const char *command);
+-void abort(void);
+-#endif
++_Noreturn void abort(void);
++
++typedef struct { int quot, rem; } div_t;
++typedef struct { long quot, rem; } ldiv_t;
++typedef struct { long long quot, rem; } lldiv_t;
++div_t div(int numer, int denom);
++ldiv_t ldiv(long numer, long denom);
++lldiv_t lldiv(long long numer, long long denom);
+diff --git a/include/string.h b/include/string.h
+index 0ce9ba0..a23c5a0 100644
+--- a/include/string.h
++++ b/include/string.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <stddef.h>  // size_t
++#include <strings.h>  // strcasecmp, strncasecmp (as glibc does)
+ 
+ size_t strlen(const char *s);
+ size_t strnlen(const char *s, size_t n);
+@@ -12,6 +13,7 @@ char *strstr(const char *s1, const char *s2);
+ int strcmp(const char *p, const char *q);
+ int strncmp(const char *p, const char *q, size_t n);
+ int strcoll(const char *p, const char *q);
++size_t strxfrm(char *dst, const char *src, size_t n);
+ 
+ char *strcpy(char *dst, const char *src);
+ char *strncpy(char *dst, const char *src, size_t n);
+diff --git a/include/time.h b/include/time.h
+index d33b24e..8905503 100644
+--- a/include/time.h
++++ b/include/time.h
+@@ -1,16 +1,50 @@
+ #pragma once
+ 
++#include <stddef.h>  // size_t, NULL
++
+ typedef long time_t;
++typedef long clock_t;
++
++#define CLOCKS_PER_SEC  ((clock_t)1000000)
+ 
+ struct timespec {
+   time_t tv_sec;
+   long tv_nsec;
+ };
+ 
++struct tm {
++  int tm_sec;
++  int tm_min;
++  int tm_hour;
++  int tm_mday;
++  int tm_mon;
++  int tm_year;
++  int tm_wday;
++  int tm_yday;
++  int tm_isdst;
++  long tm_gmtoff;
++  const char *tm_zone;
++};
++
+ typedef enum {
+   CLOCK_REALTIME = 0,
++  CLOCK_MONOTONIC = 1,
++  CLOCK_PROCESS_CPUTIME_ID = 2,
+   CLOCK_REALTIME_COARSE = 5,
+ } clockid_t;
+ 
+ time_t time(time_t *timer);
+ int clock_gettime(clockid_t clk_id, struct timespec *tp);
++
++clock_t clock(void);
++int nanosleep(const struct timespec *req, struct timespec *rem);
++double difftime(time_t end, time_t start);
++struct tm *gmtime(const time_t *timer);
++struct tm *gmtime_r(const time_t *timer, struct tm *result);
++struct tm *localtime(const time_t *timer);
++struct tm *localtime_r(const time_t *timer, struct tm *result);
++time_t mktime(struct tm *tm);
++time_t timegm(struct tm *tm);
++size_t strftime(char *s, size_t max, const char *format, const struct tm *tm);
++char *asctime(const struct tm *tm);
++char *ctime(const time_t *timer);
+diff --git a/include/unistd.h b/include/unistd.h
+index 46e7da8..94a7d39 100644
+--- a/include/unistd.h
++++ b/include/unistd.h
+@@ -38,6 +38,9 @@ int rmdir(const char *pathname);
+ char *getcwd(char *buffer, size_t size);
+ int chdir(const char *path);
+ 
++unsigned int sleep(unsigned int seconds);
++int usleep(unsigned int usec);
++
+ int brk(void *addr);
+ void *sbrk(intptr_t increment);
+ 
+diff --git a/libsrc/_wasm/unistd/clock.c b/libsrc/_wasm/unistd/clock.c
+new file mode 100644
+index 0000000..0a7eb41
+--- /dev/null
++++ b/libsrc/_wasm/unistd/clock.c
+@@ -0,0 +1,18 @@
++#include "time.h"
++#include "stdint.h"
++#include "../wasi.h"
++
++static uint64_t start_ns;
++
++__attribute__((constructor))
++static void init_clock(void) {
++  clock_time_get(CLOCK_MONOTONIC, 1, &start_ns);
++}
++
++// The sandbox has no CPU-time clock, so this is the time since the program
++// started (close to CPU time for programs that are not waiting for input).
++clock_t clock(void) {
++  uint64_t now;
++  clock_time_get(CLOCK_MONOTONIC, 1, &now);
++  return (clock_t)((now - start_ns) / (1000000000ULL / CLOCKS_PER_SEC));
++}
+diff --git a/libsrc/_wasm/unistd/signal.c b/libsrc/_wasm/unistd/signal.c
+new file mode 100644
+index 0000000..6bfee6b
+--- /dev/null
++++ b/libsrc/_wasm/unistd/signal.c
+@@ -0,0 +1,34 @@
++// signal()/raise() for the browser sandbox: there are no asynchronous
++// signals, but programs can install handlers and raise() them.
++#include "signal.h"
++#include "stdio.h"
++#include "stddef.h"  // NULL
++#include "../wasi.h"
++
++#define NSIG_  32
++
++static void (*handlers[NSIG_])(int);
++
++void (*signal(int sig, void (*func)(int)))(int) {
++  if (sig <= 0 || sig >= NSIG_ || sig == SIGKILL || sig == SIGSTOP)
++    return SIG_ERR;
++  void (*old)(int) = handlers[sig];
++  handlers[sig] = func;
++  return old;
++}
++
++int raise(int sig) {
++  if (sig <= 0 || sig >= NSIG_)
++    return -1;
++  void (*func)(int) = handlers[sig];
++  if (func == SIG_IGN)
++    return 0;
++  if (func == SIG_DFL) {
++    if (sig == SIGCHLD || sig == SIGURG || sig == SIGWINCH || sig == SIGCONT)
++      return 0;
++    fflush(stdout);
++    proc_exit(128 + sig);
++  }
++  func(sig);
++  return 0;
++}
+diff --git a/libsrc/_wasm/unistd/sleep.c b/libsrc/_wasm/unistd/sleep.c
+new file mode 100644
+index 0000000..84f9651
+--- /dev/null
++++ b/libsrc/_wasm/unistd/sleep.c
+@@ -0,0 +1,60 @@
++// sleep/usleep/nanosleep via a WASI clock subscription.
++#include "unistd.h"
++#include "time.h"
++#include "errno.h"
++#include "stdio.h"
++#include "stdint.h"
++#include "../wasi.h"
++
++typedef struct {
++  uint64_t userdata;
++  uint8_t tag;  // 0: clock
++  uint8_t pad[7];
++  uint32_t clock_id;
++  uint32_t pad2;
++  uint64_t timeout;
++  uint64_t precision;
++  uint16_t flags;
++  uint8_t pad3[6];
++} Subscription;
++
++typedef struct {
++  uint64_t userdata;
++  uint16_t error;
++  uint8_t type;
++  uint8_t pad[21];
++} Event;
++
++WASI_MODULE int poll_oneoff(const Subscription *in, Event *out, size_t nsubscriptions, size_t *nevents);
++
++static void sleep_ns(uint64_t ns) {
++  fflush(stdout);  // show what was printed before pausing
++  Subscription sub = {0};
++  sub.tag = 0;
++  sub.clock_id = CLOCK_MONOTONIC;
++  sub.timeout = ns;
++  Event ev;
++  size_t n;
++  poll_oneoff(&sub, &ev, 1, &n);
++}
++
++unsigned int sleep(unsigned int seconds) {
++  sleep_ns((uint64_t)seconds * 1000000000ULL);
++  return 0;
++}
++
++int usleep(unsigned int usec) {
++  sleep_ns((uint64_t)usec * 1000ULL);
++  return 0;
++}
++
++int nanosleep(const struct timespec *req, struct timespec *rem) {
++  if (req == NULL || req->tv_nsec < 0 || req->tv_nsec >= 1000000000L) {
++    errno = EINVAL;
++    return -1;
++  }
++  sleep_ns((uint64_t)req->tv_sec * 1000000000ULL + req->tv_nsec);
++  if (rem != NULL)
++    rem->tv_sec = rem->tv_nsec = 0;
++  return 0;
++}
+diff --git a/libsrc/math/acosf.c b/libsrc/math/acosf.c
+new file mode 100644
+index 0000000..fc5ee1c
+--- /dev/null
++++ b/libsrc/math/acosf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float acosf(float x) { return (float)acos(x); }
++#endif
+diff --git a/libsrc/math/asinf.c b/libsrc/math/asinf.c
+new file mode 100644
+index 0000000..8e861d5
+--- /dev/null
++++ b/libsrc/math/asinf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float asinf(float x) { return (float)asin(x); }
++#endif
+diff --git a/libsrc/math/atan2f.c b/libsrc/math/atan2f.c
+new file mode 100644
+index 0000000..0cc7a87
+--- /dev/null
++++ b/libsrc/math/atan2f.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float atan2f(float y, float x) { return (float)atan2(y, x); }
++#endif
+diff --git a/libsrc/math/atanf.c b/libsrc/math/atanf.c
+new file mode 100644
+index 0000000..40d91a0
+--- /dev/null
++++ b/libsrc/math/atanf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float atanf(float x) { return (float)atan(x); }
++#endif
+diff --git a/libsrc/math/cbrt.c b/libsrc/math/cbrt.c
+new file mode 100644
+index 0000000..3d2f6c6
+--- /dev/null
++++ b/libsrc/math/cbrt.c
+@@ -0,0 +1,13 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double cbrt(double x) {
++  if (x == 0 || !isfinite(x))
++    return x;
++  double a = fabs(x);
++  double r = pow(a, 1.0 / 3.0);
++  r = r - (r * r * r - a) / (3 * r * r);  // one Newton step for accuracy
++  return x < 0 ? -r : r;
++}
++#endif
+diff --git a/libsrc/math/cbrtf.c b/libsrc/math/cbrtf.c
+new file mode 100644
+index 0000000..10a136d
+--- /dev/null
++++ b/libsrc/math/cbrtf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float cbrtf(float x) { return (float)cbrt(x); }
++#endif
+diff --git a/libsrc/math/ceilf.c b/libsrc/math/ceilf.c
+new file mode 100644
+index 0000000..eeca2fb
+--- /dev/null
++++ b/libsrc/math/ceilf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float ceilf(float x) { return (float)ceil(x); }
++#endif
+diff --git a/libsrc/math/ceill.c b/libsrc/math/ceill.c
+new file mode 100644
+index 0000000..3a56b66
+--- /dev/null
++++ b/libsrc/math/ceill.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double ceill(long double x) { return ceil((double)x); }
++#endif
+diff --git a/libsrc/math/cosf.c b/libsrc/math/cosf.c
+new file mode 100644
+index 0000000..40ad9cf
+--- /dev/null
++++ b/libsrc/math/cosf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float cosf(float x) { return (float)cos(x); }
++#endif
+diff --git a/libsrc/math/cosl.c b/libsrc/math/cosl.c
+new file mode 100644
+index 0000000..0566623
+--- /dev/null
++++ b/libsrc/math/cosl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double cosl(long double x) { return cos((double)x); }
++#endif
+diff --git a/libsrc/math/erf.c b/libsrc/math/erf.c
+new file mode 100644
+index 0000000..1486f78
+--- /dev/null
++++ b/libsrc/math/erf.c
+@@ -0,0 +1,26 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double erf(double x) {
++  // Abramowitz & Stegun 7.1.26 refined with a series near 0
++  double ax = fabs(x);
++  double r;
++  if (ax < 0.5) {
++    double x2 = x * x, term = x, sum = x;
++    for (int n = 1; n < 30; ++n) {
++      term *= -x2 / n;
++      double add = term / (2 * n + 1);
++      sum += add;
++      if (fabs(add) < 1e-17)
++        break;
++    }
++    return sum * 1.1283791670955126;  // 2/sqrt(pi)
++  }
++  double t = 1.0 / (1.0 + 0.3275911 * ax);
++  double y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t +
++                    0.254829592) * t * exp(-ax * ax);
++  r = y;
++  return x < 0 ? -r : r;
++}
++#endif
+diff --git a/libsrc/math/erfc.c b/libsrc/math/erfc.c
+new file mode 100644
+index 0000000..3529f00
+--- /dev/null
++++ b/libsrc/math/erfc.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double erfc(double x) { return 1.0 - erf(x); }
++#endif
+diff --git a/libsrc/math/exp2.c b/libsrc/math/exp2.c
+new file mode 100644
+index 0000000..e424aa5
+--- /dev/null
++++ b/libsrc/math/exp2.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double exp2(double x) { return pow(2.0, x); }
++#endif
+diff --git a/libsrc/math/exp2f.c b/libsrc/math/exp2f.c
+new file mode 100644
+index 0000000..8602b6a
+--- /dev/null
++++ b/libsrc/math/exp2f.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float exp2f(float x) { return (float)exp2(x); }
++#endif
+diff --git a/libsrc/math/expf.c b/libsrc/math/expf.c
+new file mode 100644
+index 0000000..f2a75d4
+--- /dev/null
++++ b/libsrc/math/expf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float expf(float x) { return (float)exp(x); }
++#endif
+diff --git a/libsrc/math/expl.c b/libsrc/math/expl.c
+new file mode 100644
+index 0000000..bc9f93c
+--- /dev/null
++++ b/libsrc/math/expl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double expl(long double x) { return exp((double)x); }
++#endif
+diff --git a/libsrc/math/expm1.c b/libsrc/math/expm1.c
+new file mode 100644
+index 0000000..2062a60
+--- /dev/null
++++ b/libsrc/math/expm1.c
+@@ -0,0 +1,10 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double expm1(double x) {
++  if (fabs(x) < 1e-5)
++    return x + x * x / 2 + x * x * x / 6;
++  return exp(x) - 1.0;
++}
++#endif
+diff --git a/libsrc/math/fdim.c b/libsrc/math/fdim.c
+new file mode 100644
+index 0000000..edabbec
+--- /dev/null
++++ b/libsrc/math/fdim.c
+@@ -0,0 +1,10 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double fdim(double x, double y) {
++  if (isnan(x) || isnan(y))
++    return x + y;
++  return x > y ? x - y : 0.0;
++}
++#endif
+diff --git a/libsrc/math/floorf.c b/libsrc/math/floorf.c
+new file mode 100644
+index 0000000..287270a
+--- /dev/null
++++ b/libsrc/math/floorf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float floorf(float x) { return (float)floor(x); }
++#endif
+diff --git a/libsrc/math/floorl.c b/libsrc/math/floorl.c
+new file mode 100644
+index 0000000..cfa7b60
+--- /dev/null
++++ b/libsrc/math/floorl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double floorl(long double x) { return floor((double)x); }
++#endif
+diff --git a/libsrc/math/fma.c b/libsrc/math/fma.c
+new file mode 100644
+index 0000000..658386a
+--- /dev/null
++++ b/libsrc/math/fma.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double fma(double x, double y, double z) { return x * y + z; }
++#endif
+diff --git a/libsrc/math/fmax.c b/libsrc/math/fmax.c
+new file mode 100644
+index 0000000..80ecaf1
+--- /dev/null
++++ b/libsrc/math/fmax.c
+@@ -0,0 +1,10 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double fmax(double x, double y) {
++  if (isnan(x)) return y;
++  if (isnan(y)) return x;
++  return x > y ? x : y;
++}
++#endif
+diff --git a/libsrc/math/fmaxf.c b/libsrc/math/fmaxf.c
+new file mode 100644
+index 0000000..07448a7
+--- /dev/null
++++ b/libsrc/math/fmaxf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float fmaxf(float x, float y) { return (float)fmax(x, y); }
++#endif
+diff --git a/libsrc/math/fmin.c b/libsrc/math/fmin.c
+new file mode 100644
+index 0000000..c7ba196
+--- /dev/null
++++ b/libsrc/math/fmin.c
+@@ -0,0 +1,10 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double fmin(double x, double y) {
++  if (isnan(x)) return y;
++  if (isnan(y)) return x;
++  return x < y ? x : y;
++}
++#endif
+diff --git a/libsrc/math/fminf.c b/libsrc/math/fminf.c
+new file mode 100644
+index 0000000..9ff32b6
+--- /dev/null
++++ b/libsrc/math/fminf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float fminf(float x, float y) { return (float)fmin(x, y); }
++#endif
+diff --git a/libsrc/math/fmodf.c b/libsrc/math/fmodf.c
+new file mode 100644
+index 0000000..d1874c3
+--- /dev/null
++++ b/libsrc/math/fmodf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float fmodf(float x, float y) { return (float)fmod(x, y); }
++#endif
+diff --git a/libsrc/math/fmodl.c b/libsrc/math/fmodl.c
+new file mode 100644
+index 0000000..0765137
+--- /dev/null
++++ b/libsrc/math/fmodl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double fmodl(long double x, long double y) { return fmod((double)x, (double)y); }
++#endif
 diff --git a/libsrc/math/frexp.c b/libsrc/math/frexp.c
 index 1884985..191bbce 100644
 --- a/libsrc/math/frexp.c
@@ -15,6 +837,745 @@ index 1884985..191bbce 100644
    *p = GET_EXPO(q);
    int64_t r = (q & (FRAC_MASK | SIGN_MASK)) | ((int64_t)EXPO_BIAS << EXPO_POS);
    return *(double*)&r;
+diff --git a/libsrc/math/hypot.c b/libsrc/math/hypot.c
+new file mode 100644
+index 0000000..9d49ab9
+--- /dev/null
++++ b/libsrc/math/hypot.c
+@@ -0,0 +1,18 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double hypot(double x, double y) {
++  x = fabs(x);
++  y = fabs(y);
++  if (isinf(x) || isinf(y))
++    return INFINITY;
++  if (x < y) {
++    double t = x; x = y; y = t;
++  }
++  if (x == 0)
++    return 0;
++  double r = y / x;  // scaled to avoid overflow
++  return x * sqrt(1 + r * r);
++}
++#endif
+diff --git a/libsrc/math/hypotf.c b/libsrc/math/hypotf.c
+new file mode 100644
+index 0000000..512f86c
+--- /dev/null
++++ b/libsrc/math/hypotf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float hypotf(float x, float y) { return (float)hypot(x, y); }
++#endif
+diff --git a/libsrc/math/ilogb.c b/libsrc/math/ilogb.c
+new file mode 100644
+index 0000000..d0d8289
+--- /dev/null
++++ b/libsrc/math/ilogb.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++int ilogb(double x) { int e; frexp(x, &e); return e - 1; }
++#endif
+diff --git a/libsrc/math/lgamma.c b/libsrc/math/lgamma.c
+new file mode 100644
+index 0000000..63ade97
+--- /dev/null
++++ b/libsrc/math/lgamma.c
+@@ -0,0 +1,22 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++// Lanczos approximation (g = 7, n = 9)
++static const double kLanczos[] = {
++  0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
++  -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
++  1.5056327351493116e-7,
++};
++
++double lgamma(double x) {
++  if (x < 0.5)
++    return log(M_PI / fabs(sin(M_PI * x))) - lgamma(1 - x);
++  x -= 1;
++  double a = kLanczos[0];
++  double t = x + 7.5;
++  for (int i = 1; i < 9; ++i)
++    a += kLanczos[i] / (x + i);
++  return 0.5 * log(2 * M_PI) + (x + 0.5) * log(t) - t + log(a);
++}
++#endif
+diff --git a/libsrc/math/llrint.c b/libsrc/math/llrint.c
+new file mode 100644
+index 0000000..bee1ffb
+--- /dev/null
++++ b/libsrc/math/llrint.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long long llrint(double x) { return (long long)rint(x); }
++#endif
+diff --git a/libsrc/math/llround.c b/libsrc/math/llround.c
+new file mode 100644
+index 0000000..9187cd8
+--- /dev/null
++++ b/libsrc/math/llround.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long long llround(double x) { return (long long)round(x); }
++#endif
+diff --git a/libsrc/math/log10f.c b/libsrc/math/log10f.c
+new file mode 100644
+index 0000000..00cf032
+--- /dev/null
++++ b/libsrc/math/log10f.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float log10f(float x) { return (float)log10(x); }
++#endif
+diff --git a/libsrc/math/log1p.c b/libsrc/math/log1p.c
+new file mode 100644
+index 0000000..435e5d6
+--- /dev/null
++++ b/libsrc/math/log1p.c
+@@ -0,0 +1,10 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double log1p(double x) {
++  if (fabs(x) < 1e-4)
++    return x - x * x / 2 + x * x * x / 3;
++  return log(1.0 + x);
++}
++#endif
+diff --git a/libsrc/math/log2f.c b/libsrc/math/log2f.c
+new file mode 100644
+index 0000000..f0b6c5d
+--- /dev/null
++++ b/libsrc/math/log2f.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float log2f(float x) { return (float)log2(x); }
++#endif
+diff --git a/libsrc/math/logb.c b/libsrc/math/logb.c
+new file mode 100644
+index 0000000..5ddee6f
+--- /dev/null
++++ b/libsrc/math/logb.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double logb(double x) { return (double)ilogb(x); }
++#endif
+diff --git a/libsrc/math/logf.c b/libsrc/math/logf.c
+new file mode 100644
+index 0000000..f953325
+--- /dev/null
++++ b/libsrc/math/logf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float logf(float x) { return (float)log(x); }
++#endif
+diff --git a/libsrc/math/logl.c b/libsrc/math/logl.c
+new file mode 100644
+index 0000000..d26a432
+--- /dev/null
++++ b/libsrc/math/logl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double logl(long double x) { return log((double)x); }
++#endif
+diff --git a/libsrc/math/lrint.c b/libsrc/math/lrint.c
+new file mode 100644
+index 0000000..665aaa1
+--- /dev/null
++++ b/libsrc/math/lrint.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long lrint(double x) { return (long)rint(x); }
++#endif
+diff --git a/libsrc/math/lround.c b/libsrc/math/lround.c
+new file mode 100644
+index 0000000..a0e192d
+--- /dev/null
++++ b/libsrc/math/lround.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long lround(double x) { return (long)round(x); }
++#endif
+diff --git a/libsrc/math/lroundf.c b/libsrc/math/lroundf.c
+new file mode 100644
+index 0000000..342c52a
+--- /dev/null
++++ b/libsrc/math/lroundf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long lroundf(float x) { return lround(x); }
++#endif
+diff --git a/libsrc/math/nearbyint.c b/libsrc/math/nearbyint.c
+new file mode 100644
+index 0000000..1d7f6a0
+--- /dev/null
++++ b/libsrc/math/nearbyint.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double nearbyint(double x) { return rint(x); }
++#endif
+diff --git a/libsrc/math/powf.c b/libsrc/math/powf.c
+new file mode 100644
+index 0000000..9a688d3
+--- /dev/null
++++ b/libsrc/math/powf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float powf(float x, float y) { return (float)pow(x, y); }
++#endif
+diff --git a/libsrc/math/powl.c b/libsrc/math/powl.c
+new file mode 100644
+index 0000000..3702727
+--- /dev/null
++++ b/libsrc/math/powl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double powl(long double x, long double y) { return pow((double)x, (double)y); }
++#endif
+diff --git a/libsrc/math/remainder.c b/libsrc/math/remainder.c
+new file mode 100644
+index 0000000..e91ab1e
+--- /dev/null
++++ b/libsrc/math/remainder.c
+@@ -0,0 +1,11 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double remainder(double x, double y) {
++  if (y == 0 || isnan(x) || isnan(y) || isinf(x))
++    return NAN;
++  double n = rint(x / y);
++  return x - n * y;
++}
++#endif
+diff --git a/libsrc/math/rint.c b/libsrc/math/rint.c
+new file mode 100644
+index 0000000..70666e3
+--- /dev/null
++++ b/libsrc/math/rint.c
+@@ -0,0 +1,20 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double rint(double x) {
++  // Round half to even (the default rounding mode)
++  if (!isfinite(x))
++    return x;
++  double f = floor(x);
++  double diff = x - f;
++  double r;
++  if (diff > 0.5)
++    r = f + 1;
++  else if (diff < 0.5)
++    r = f;
++  else
++    r = fmod(f, 2.0) == 0 ? f : f + 1;
++  return copysign(r, x);  // keeps -0.0 for -0.5 < x < 0
++}
++#endif
+diff --git a/libsrc/math/roundf.c b/libsrc/math/roundf.c
+new file mode 100644
+index 0000000..8df6098
+--- /dev/null
++++ b/libsrc/math/roundf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float roundf(float x) { return (float)round(x); }
++#endif
+diff --git a/libsrc/math/roundl.c b/libsrc/math/roundl.c
+new file mode 100644
+index 0000000..de23d0d
+--- /dev/null
++++ b/libsrc/math/roundl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double roundl(long double x) { return round((double)x); }
++#endif
+diff --git a/libsrc/math/scalbn.c b/libsrc/math/scalbn.c
+new file mode 100644
+index 0000000..49d10a2
+--- /dev/null
++++ b/libsrc/math/scalbn.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double scalbn(double x, int n) { return ldexp(x, n); }
++#endif
+diff --git a/libsrc/math/sinf.c b/libsrc/math/sinf.c
+new file mode 100644
+index 0000000..0cfdbec
+--- /dev/null
++++ b/libsrc/math/sinf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float sinf(float x) { return (float)sin(x); }
++#endif
+diff --git a/libsrc/math/sinl.c b/libsrc/math/sinl.c
+new file mode 100644
+index 0000000..1524160
+--- /dev/null
++++ b/libsrc/math/sinl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double sinl(long double x) { return sin((double)x); }
++#endif
+diff --git a/libsrc/math/sqrtf.c b/libsrc/math/sqrtf.c
+new file mode 100644
+index 0000000..28e80b9
+--- /dev/null
++++ b/libsrc/math/sqrtf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float sqrtf(float x) { return (float)sqrt(x); }
++#endif
+diff --git a/libsrc/math/sqrtl.c b/libsrc/math/sqrtl.c
+new file mode 100644
+index 0000000..f21e597
+--- /dev/null
++++ b/libsrc/math/sqrtl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double sqrtl(long double x) { return sqrt((double)x); }
++#endif
+diff --git a/libsrc/math/tanf.c b/libsrc/math/tanf.c
+new file mode 100644
+index 0000000..ead10cb
+--- /dev/null
++++ b/libsrc/math/tanf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float tanf(float x) { return (float)tan(x); }
++#endif
+diff --git a/libsrc/math/tgamma.c b/libsrc/math/tgamma.c
+new file mode 100644
+index 0000000..a711bf4
+--- /dev/null
++++ b/libsrc/math/tgamma.c
+@@ -0,0 +1,22 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++// Lanczos approximation (g = 7, n = 9)
++static const double kLanczos[] = {
++  0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
++  -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
++  1.5056327351493116e-7,
++};
++
++double tgamma(double x) {
++  if (x < 0.5)
++    return M_PI / (sin(M_PI * x) * tgamma(1 - x));  // reflection
++  x -= 1;
++  double a = kLanczos[0];
++  double t = x + 7.5;
++  for (int i = 1; i < 9; ++i)
++    a += kLanczos[i] / (x + i);
++  return sqrt(2 * M_PI) * pow(t, x + 0.5) * exp(-t) * a;
++}
++#endif
+diff --git a/libsrc/math/trunc.c b/libsrc/math/trunc.c
+new file mode 100644
+index 0000000..c83e279
+--- /dev/null
++++ b/libsrc/math/trunc.c
+@@ -0,0 +1,10 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++double trunc(double x) {
++  if (!isfinite(x))
++    return x;
++  return x < 0 ? -floor(-x) : floor(x);
++}
++#endif
+diff --git a/libsrc/math/truncf.c b/libsrc/math/truncf.c
+new file mode 100644
+index 0000000..0803716
+--- /dev/null
++++ b/libsrc/math/truncf.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++float truncf(float x) { return (float)trunc(x); }
++#endif
+diff --git a/libsrc/math/truncl.c b/libsrc/math/truncl.c
+new file mode 100644
+index 0000000..14b8d5b
+--- /dev/null
++++ b/libsrc/math/truncl.c
+@@ -0,0 +1,6 @@
++#include "math.h"
++
++#ifndef __NO_FLONUM
++
++long double truncl(long double x) { return trunc((double)x); }
++#endif
+diff --git a/libsrc/misc/_time.h b/libsrc/misc/_time.h
+new file mode 100644
+index 0000000..eaf61fc
+--- /dev/null
++++ b/libsrc/misc/_time.h
+@@ -0,0 +1,20 @@
++#pragma once
++
++#include "time.h"
++
++// Days since 1970-01-01 for a proleptic Gregorian date (month 1..12).
++static inline long _days_from_civil(long y, int m, int d) {
++  y -= m <= 2;
++  long era = (y >= 0 ? y : y - 399) / 400;
++  long yoe = y - era * 400;
++  long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
++  long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
++  return era * 146097 + doe - 719468;
++}
++
++static inline int _is_leap(long y) {
++  return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
++}
++
++extern struct tm *_time_to_tm(time_t t, long gmtoff, const char *zone, struct tm *tm);
++extern long _local_gmtoff(void);
+diff --git a/libsrc/misc/asctime.c b/libsrc/misc/asctime.c
+new file mode 100644
+index 0000000..603657b
+--- /dev/null
++++ b/libsrc/misc/asctime.c
+@@ -0,0 +1,7 @@
++#include "time.h"
++
++char *asctime(const struct tm *tm) {
++  static char buf[64];
++  strftime(buf, sizeof(buf), "%a %b %e %H:%M:%S %Y\n", tm);
++  return buf;
++}
+diff --git a/libsrc/misc/ctime.c b/libsrc/misc/ctime.c
+new file mode 100644
+index 0000000..88807a1
+--- /dev/null
++++ b/libsrc/misc/ctime.c
+@@ -0,0 +1,5 @@
++#include "time.h"
++
++char *ctime(const time_t *timer) {
++  return asctime(localtime(timer));
++}
+diff --git a/libsrc/misc/difftime.c b/libsrc/misc/difftime.c
+new file mode 100644
+index 0000000..731b028
+--- /dev/null
++++ b/libsrc/misc/difftime.c
+@@ -0,0 +1,7 @@
++#include "time.h"
++
++#ifndef __NO_FLONUM
++double difftime(time_t end, time_t start) {
++  return (double)(end - start);
++}
++#endif
+diff --git a/libsrc/misc/gmtime.c b/libsrc/misc/gmtime.c
+new file mode 100644
+index 0000000..8a4ff65
+--- /dev/null
++++ b/libsrc/misc/gmtime.c
+@@ -0,0 +1,48 @@
++#include "time.h"
++#include "_time.h"
++
++static const int kCumDays[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
++
++struct tm *_time_to_tm(time_t t, long gmtoff, const char *zone, struct tm *tm) {
++  t += gmtoff;
++  long days = t / 86400;
++  long secs = t % 86400;
++  if (secs < 0) {
++    secs += 86400;
++    --days;
++  }
++  tm->tm_hour = secs / 3600;
++  tm->tm_min = secs / 60 % 60;
++  tm->tm_sec = secs % 60;
++  tm->tm_wday = (int)(((days + 4) % 7 + 7) % 7);  // 1970-01-01 was a Thursday
++
++  // civil_from_days (Howard Hinnant)
++  long z = days + 719468;
++  long era = (z >= 0 ? z : z - 146096) / 146097;
++  long doe = z - era * 146097;
++  long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
++  long y = yoe + era * 400;
++  long doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
++  long mp = (5 * doy + 2) / 153;
++  int d = (int)(doy - (153 * mp + 2) / 5 + 1);
++  int m = (int)(mp < 10 ? mp + 3 : mp - 9);
++  y += m <= 2;
++
++  tm->tm_year = (int)(y - 1900);
++  tm->tm_mon = m - 1;
++  tm->tm_mday = d;
++  tm->tm_yday = kCumDays[m - 1] + d - 1 + (m > 2 && _is_leap(y));
++  tm->tm_isdst = 0;
++  tm->tm_gmtoff = gmtoff;
++  tm->tm_zone = zone;
++  return tm;
++}
++
++struct tm *gmtime_r(const time_t *timer, struct tm *result) {
++  return _time_to_tm(*timer, 0, "UTC", result);
++}
++
++struct tm *gmtime(const time_t *timer) {
++  static struct tm tm;
++  return gmtime_r(timer, &tm);
++}
+diff --git a/libsrc/misc/isblank.c b/libsrc/misc/isblank.c
+new file mode 100644
+index 0000000..c7a9a20
+--- /dev/null
++++ b/libsrc/misc/isblank.c
+@@ -0,0 +1,5 @@
++#include "ctype.h"
++
++int isblank(int c) {
++  return c == ' ' || c == '\t';
++}
+diff --git a/libsrc/misc/localtime.c b/libsrc/misc/localtime.c
+new file mode 100644
+index 0000000..edceabd
+--- /dev/null
++++ b/libsrc/misc/localtime.c
+@@ -0,0 +1,19 @@
++#include "time.h"
++#include "stdlib.h"
++#include "_time.h"
++
++// The browser passes its UTC offset in minutes (east positive) in TZOFFSET.
++long _local_gmtoff(void) {
++  const char *s = getenv("TZOFFSET");
++  return s != NULL ? strtol(s, NULL, 10) * 60 : 0;
++}
++
++struct tm *localtime_r(const time_t *timer, struct tm *result) {
++  long off = _local_gmtoff();
++  return _time_to_tm(*timer, off, off == 0 ? "UTC" : "", result);
++}
++
++struct tm *localtime(const time_t *timer) {
++  static struct tm tm;
++  return localtime_r(timer, &tm);
++}
+diff --git a/libsrc/misc/mktime.c b/libsrc/misc/mktime.c
+new file mode 100644
+index 0000000..0d8bf71
+--- /dev/null
++++ b/libsrc/misc/mktime.c
+@@ -0,0 +1,25 @@
++#include "time.h"
++#include "_time.h"
++
++static time_t normalize(struct tm *tm, long gmtoff, const char *zone) {
++  // Fold out-of-range months into years first; the rest is linear.
++  long y = 1900L + tm->tm_year + tm->tm_mon / 12;
++  int m = tm->tm_mon % 12;
++  if (m < 0) {
++    m += 12;
++    --y;
++  }
++  long days = _days_from_civil(y, m + 1, 1) + tm->tm_mday - 1;
++  time_t t = days * 86400 + tm->tm_hour * 3600L + tm->tm_min * 60L + tm->tm_sec - gmtoff;
++  _time_to_tm(t, gmtoff, zone, tm);
++  return t;
++}
++
++time_t mktime(struct tm *tm) {
++  long off = _local_gmtoff();
++  return normalize(tm, off, off == 0 ? "UTC" : "");
++}
++
++time_t timegm(struct tm *tm) {
++  return normalize(tm, 0, "UTC");
++}
+diff --git a/libsrc/misc/strftime.c b/libsrc/misc/strftime.c
+new file mode 100644
+index 0000000..e24906b
+--- /dev/null
++++ b/libsrc/misc/strftime.c
+@@ -0,0 +1,94 @@
++#include "time.h"
++#include "stdio.h"
++#include "string.h"
++
++static const char *const kWday[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
++static const char *const kMon[] = {"January", "February", "March", "April", "May", "June", "July",
++                                   "August", "September", "October", "November", "December"};
++
++static int wday_ok(const struct tm *tm) { return tm->tm_wday >= 0 && tm->tm_wday < 7; }
++static int mon_ok(const struct tm *tm) { return tm->tm_mon >= 0 && tm->tm_mon < 12; }
++
++size_t strftime(char *s, size_t max, const char *format, const struct tm *tm) {
++  size_t n = 0;
++  char tmp[64];
++  for (const char *p = format; *p != '\0'; ++p) {
++    const char *out = tmp;
++    if (*p != '%') {
++      tmp[0] = *p;
++      tmp[1] = '\0';
++    } else {
++      ++p;
++      while (*p == 'E' || *p == 'O')
++        ++p;
++      int hour12 = tm->tm_hour % 12 == 0 ? 12 : tm->tm_hour % 12;
++      switch (*p) {
++      case 'a': out = wday_ok(tm) ? kWday[tm->tm_wday] : "?"; snprintf(tmp, 4, "%s", out); out = tmp; break;
++      case 'A': out = wday_ok(tm) ? kWday[tm->tm_wday] : "?"; break;
++      case 'b': case 'h': out = mon_ok(tm) ? kMon[tm->tm_mon] : "?"; snprintf(tmp, 4, "%s", out); out = tmp; break;
++      case 'B': out = mon_ok(tm) ? kMon[tm->tm_mon] : "?"; break;
++      case 'c': {
++        char a[8], b[8];
++        strftime(a, sizeof(a), "%a", tm);
++        strftime(b, sizeof(b), "%b", tm);
++        snprintf(tmp, sizeof(tmp), "%s %s %2d %02d:%02d:%02d %d", a, b, tm->tm_mday, tm->tm_hour,
++                 tm->tm_min, tm->tm_sec, tm->tm_year + 1900);
++        break;
++      }
++      case 'C': snprintf(tmp, sizeof(tmp), "%02d", (tm->tm_year + 1900) / 100); break;
++      case 'd': snprintf(tmp, sizeof(tmp), "%02d", tm->tm_mday); break;
++      case 'D': snprintf(tmp, sizeof(tmp), "%02d/%02d/%02d", tm->tm_mon + 1, tm->tm_mday, (tm->tm_year + 1900) % 100); break;
++      case 'e': snprintf(tmp, sizeof(tmp), "%2d", tm->tm_mday); break;
++      case 'F': snprintf(tmp, sizeof(tmp), "%d-%02d-%02d", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday); break;
++      case 'H': snprintf(tmp, sizeof(tmp), "%02d", tm->tm_hour); break;
++      case 'I': snprintf(tmp, sizeof(tmp), "%02d", hour12); break;
++      case 'j': snprintf(tmp, sizeof(tmp), "%03d", tm->tm_yday + 1); break;
++      case 'k': snprintf(tmp, sizeof(tmp), "%2d", tm->tm_hour); break;
++      case 'l': snprintf(tmp, sizeof(tmp), "%2d", hour12); break;
++      case 'm': snprintf(tmp, sizeof(tmp), "%02d", tm->tm_mon + 1); break;
++      case 'M': snprintf(tmp, sizeof(tmp), "%02d", tm->tm_min); break;
++      case 'n': out = "\n"; break;
++      case 'p': out = tm->tm_hour < 12 ? "AM" : "PM"; break;
++      case 'P': out = tm->tm_hour < 12 ? "am" : "pm"; break;
++      case 'r': snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d %s", hour12, tm->tm_min, tm->tm_sec, tm->tm_hour < 12 ? "AM" : "PM"); break;
++      case 'R': snprintf(tmp, sizeof(tmp), "%02d:%02d", tm->tm_hour, tm->tm_min); break;
++      case 'S': snprintf(tmp, sizeof(tmp), "%02d", tm->tm_sec); break;
++      case 't': out = "\t"; break;
++      case 'T': snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", tm->tm_hour, tm->tm_min, tm->tm_sec); break;
++      case 'u': snprintf(tmp, sizeof(tmp), "%d", tm->tm_wday == 0 ? 7 : tm->tm_wday); break;
++      case 'U': snprintf(tmp, sizeof(tmp), "%02d", (tm->tm_yday + 7 - tm->tm_wday) / 7); break;
++      case 'W': snprintf(tmp, sizeof(tmp), "%02d", (tm->tm_yday + 7 - (tm->tm_wday + 6) % 7) / 7); break;
++      case 'w': snprintf(tmp, sizeof(tmp), "%d", tm->tm_wday); break;
++      case 'x': snprintf(tmp, sizeof(tmp), "%02d/%02d/%02d", tm->tm_mon + 1, tm->tm_mday, (tm->tm_year + 1900) % 100); break;
++      case 'X': snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", tm->tm_hour, tm->tm_min, tm->tm_sec); break;
++      case 'y': snprintf(tmp, sizeof(tmp), "%02d", (tm->tm_year + 1900) % 100); break;
++      case 'Y': snprintf(tmp, sizeof(tmp), "%d", tm->tm_year + 1900); break;
++      case 'z': {
++        long off = tm->tm_gmtoff / 60;
++        char sign = off < 0 ? '-' : '+';
++        if (off < 0) off = -off;
++        snprintf(tmp, sizeof(tmp), "%c%02ld%02ld", sign, off / 60, off % 60);
++        break;
++      }
++      case 'Z': out = tm->tm_zone != NULL ? tm->tm_zone : ""; break;
++      case 's': {
++        struct tm copy = *tm;
++        snprintf(tmp, sizeof(tmp), "%ld", (long)mktime(&copy));
++        break;
++      }
++      case '%': out = "%"; break;
++      case '\0': --p; out = ""; break;
++      default: tmp[0] = '%'; tmp[1] = *p; tmp[2] = '\0'; break;
++      }
++    }
++    size_t len = strlen(out);
++    if (n + len >= max)
++      return 0;
++    memcpy(s + n, out, len);
++    n += len;
++  }
++  if (n >= max)
++    return 0;
++  s[n] = '\0';
++  return n;
++}
 diff --git a/libsrc/stdio/_file.c b/libsrc/stdio/_file.c
 index c2a8779..1c0f0e6 100644
 --- a/libsrc/stdio/_file.c
@@ -38,6 +1599,91 @@ index c2a8779..1c0f0e6 100644
    if (total < fp->rcapa * 3 / 4) {
      // Read more than requested size and store them to the buffer.
      ssize_t len = read(fp->fd, fp->rbuf, fp->rcapa);
+diff --git a/libsrc/stdio/clearerr.c b/libsrc/stdio/clearerr.c
+new file mode 100644
+index 0000000..91df74a
+--- /dev/null
++++ b/libsrc/stdio/clearerr.c
+@@ -0,0 +1,7 @@
++#include "stdio.h"
++
++#include "./_file.h"
++
++void clearerr(FILE *fp) {
++  fp->flag &= ~FF_EOF;
++}
+diff --git a/libsrc/stdio/ferror.c b/libsrc/stdio/ferror.c
+new file mode 100644
+index 0000000..e3ca1f6
+--- /dev/null
++++ b/libsrc/stdio/ferror.c
+@@ -0,0 +1,6 @@
++#include "stdio.h"
++
++int ferror(FILE *fp) {
++  (void)fp;
++  return 0;
++}
+diff --git a/libsrc/stdio/gets.c b/libsrc/stdio/gets.c
+new file mode 100644
+index 0000000..eb379f0
+--- /dev/null
++++ b/libsrc/stdio/gets.c
+@@ -0,0 +1,14 @@
++#include "stdio.h"
++
++// Removed from C11 but still common in course material; reads a line
++// without the trailing newline.
++char *gets(char *s) {
++  char *p = s;
++  int c;
++  while ((c = fgetc(stdin)) != EOF && c != '\n')
++    *p++ = c;
++  if (c == EOF && p == s)
++    return NULL;
++  *p = '\0';
++  return s;
++}
+diff --git a/libsrc/stdio/rewind.c b/libsrc/stdio/rewind.c
+new file mode 100644
+index 0000000..0a2e133
+--- /dev/null
++++ b/libsrc/stdio/rewind.c
+@@ -0,0 +1,8 @@
++#include "stdio.h"
++
++#include "./_file.h"
++
++void rewind(FILE *fp) {
++  fseek(fp, 0, SEEK_SET);
++  fp->flag &= ~FF_EOF;
++}
+diff --git a/libsrc/stdio/setbuf.c b/libsrc/stdio/setbuf.c
+new file mode 100644
+index 0000000..cee2a8f
+--- /dev/null
++++ b/libsrc/stdio/setbuf.c
+@@ -0,0 +1,5 @@
++#include "stdio.h"
++
++void setbuf(FILE *fp, char *buf) {
++  setvbuf(fp, buf, buf != NULL ? _IOFBF : _IONBF, BUFSIZ);
++}
+diff --git a/libsrc/stdio/setvbuf.c b/libsrc/stdio/setvbuf.c
+new file mode 100644
+index 0000000..61a66fb
+--- /dev/null
++++ b/libsrc/stdio/setvbuf.c
+@@ -0,0 +1,9 @@
++#include "stdio.h"
++
++// Buffering is managed by the runtime; accepted and ignored.
++int setvbuf(FILE *fp, char *buf, int mode, size_t size) {
++  (void)buf; (void)size;
++  if (mode == _IONBF)
++    fflush(fp);
++  return 0;
++}
 diff --git a/libsrc/stdio/vfprintf.c b/libsrc/stdio/vfprintf.c
 index 5a69730..83a0e1f 100644
 --- a/libsrc/stdio/vfprintf.c
@@ -1470,6 +3116,71 @@ index b3259ba..67f8433 100644
 +#undef INPUT_FAILURE
    return count;
  }
+diff --git a/libsrc/stdlib/abort.c b/libsrc/stdlib/abort.c
+index 2dd0f0d..801d879 100644
+--- a/libsrc/stdlib/abort.c
++++ b/libsrc/stdlib/abort.c
+@@ -6,4 +6,13 @@
+ void abort(void) {
+   raise(SIGABRT);
+ }
++#else
++#include "stdio.h"
++#include "../_wasm/wasi.h"
++
++void abort(void) {
++  raise(SIGABRT);  // A handler may run, but abort never returns.
++  fflush(stdout);
++  proc_exit(128 + SIGABRT);
++}
+ #endif
+diff --git a/libsrc/stdlib/div.c b/libsrc/stdlib/div.c
+new file mode 100644
+index 0000000..360b684
+--- /dev/null
++++ b/libsrc/stdlib/div.c
+@@ -0,0 +1,6 @@
++#include "stdlib.h"
++
++div_t div(int numer, int denom) {
++  div_t r = {numer / denom, numer % denom};
++  return r;
++}
+diff --git a/libsrc/stdlib/imaxabs.c b/libsrc/stdlib/imaxabs.c
+new file mode 100644
+index 0000000..2251e20
+--- /dev/null
++++ b/libsrc/stdlib/imaxabs.c
+@@ -0,0 +1,5 @@
++#include "inttypes.h"
++
++intmax_t imaxabs(intmax_t x) {
++  return x < 0 ? -x : x;
++}
+diff --git a/libsrc/stdlib/ldiv.c b/libsrc/stdlib/ldiv.c
+new file mode 100644
+index 0000000..9ac8bdc
+--- /dev/null
++++ b/libsrc/stdlib/ldiv.c
+@@ -0,0 +1,6 @@
++#include "stdlib.h"
++
++ldiv_t ldiv(long numer, long denom) {
++  ldiv_t r = {numer / denom, numer % denom};
++  return r;
++}
+diff --git a/libsrc/stdlib/lldiv.c b/libsrc/stdlib/lldiv.c
+new file mode 100644
+index 0000000..f900d94
+--- /dev/null
++++ b/libsrc/stdlib/lldiv.c
+@@ -0,0 +1,6 @@
++#include "stdlib.h"
++
++lldiv_t lldiv(long long numer, long long denom) {
++  lldiv_t r = {numer / denom, numer % denom};
++  return r;
++}
 diff --git a/libsrc/stdlib/strtod.c b/libsrc/stdlib/strtod.c
 index 6ff80ff..d53affa 100644
 --- a/libsrc/stdlib/strtod.c
@@ -1785,3 +3496,279 @@ index 6ff80ff..d53affa 100644
    }
    if (p == op)
      p = orig;
+diff --git a/libsrc/stdlib/strtof.c b/libsrc/stdlib/strtof.c
+new file mode 100644
+index 0000000..21699c8
+--- /dev/null
++++ b/libsrc/stdlib/strtof.c
+@@ -0,0 +1,7 @@
++#include "stdlib.h"
++
++#ifndef __NO_FLONUM
++float strtof(const char *restrict p, char **restrict pp) {
++  return (float)strtod(p, pp);
++}
++#endif
+diff --git a/libsrc/stdlib/strtoimax.c b/libsrc/stdlib/strtoimax.c
+new file mode 100644
+index 0000000..d7a9733
+--- /dev/null
++++ b/libsrc/stdlib/strtoimax.c
+@@ -0,0 +1,6 @@
++#include "inttypes.h"
++#include "stdlib.h"
++
++intmax_t strtoimax(const char *restrict p, char **restrict pp, int base) {
++  return strtoll(p, pp, base);
++}
+diff --git a/libsrc/stdlib/strtoumax.c b/libsrc/stdlib/strtoumax.c
+new file mode 100644
+index 0000000..aa69e32
+--- /dev/null
++++ b/libsrc/stdlib/strtoumax.c
+@@ -0,0 +1,6 @@
++#include "inttypes.h"
++#include "stdlib.h"
++
++uintmax_t strtoumax(const char *restrict p, char **restrict pp, int base) {
++  return strtoull(p, pp, base);
++}
+diff --git a/libsrc/stdlib/system.c b/libsrc/stdlib/system.c
+index e48c951..dcaf306 100644
+--- a/libsrc/stdlib/system.c
++++ b/libsrc/stdlib/system.c
+@@ -91,3 +91,11 @@ int system(const char *command) {
+   return status;
+ }
+ #endif
++
++#if defined(__wasm)
++// There is no shell in the browser sandbox: report that none is available
++// (so `system("pause")`/`system("cls")` are harmless no-ops).
++int system(const char *command) {
++  return command == NULL ? 0 : -1;
++}
++#endif
+diff --git a/libsrc/string/strcasecmp.c b/libsrc/string/strcasecmp.c
+index ed94ec0..5d26589 100644
+--- a/libsrc/string/strcasecmp.c
++++ b/libsrc/string/strcasecmp.c
+@@ -3,8 +3,8 @@
+ 
+ int strcasecmp(const char *p, const char *q) {
+   for (;; ++p, ++q) {
+-    unsigned char c1 = *(unsigned char*)p;
+-    unsigned char c2 = *(unsigned char*)q;
++    int c1 = tolower(*(unsigned char*)p);
++    int c2 = tolower(*(unsigned char*)q);
+     int d = (int)c1 - (int)c2;
+     if (d != 0)
+       return d;
+diff --git a/libsrc/string/strxfrm.c b/libsrc/string/strxfrm.c
+new file mode 100644
+index 0000000..23fd23f
+--- /dev/null
++++ b/libsrc/string/strxfrm.c
+@@ -0,0 +1,12 @@
++#include "string.h"
++
++// Only the "C" locale exists, so the transform is a plain copy.
++size_t strxfrm(char *dst, const char *src, size_t n) {
++  size_t len = strlen(src);
++  if (n > 0) {
++    size_t m = len < n - 1 ? len : n - 1;
++    memcpy(dst, src, m);
++    dst[m] = '\0';
++  }
++  return len;
++}
+diff --git a/src/cc/frontend/ast.h b/src/cc/frontend/ast.h
+index d40a42e..5df58e8 100644
+--- a/src/cc/frontend/ast.h
++++ b/src/cc/frontend/ast.h
+@@ -442,6 +442,7 @@ typedef struct Stmt {
+     struct {
+       Vector *stmts;
+       const Name *label;
++      bool is_loop;  // Encloses `label: ...` up to the block end, for backward gotos.
+     } block_for_label;
+ #endif
+   };
+@@ -492,6 +493,10 @@ typedef struct GotoLabel {
+ #if XCC_TARGET_ARCH == XCC_ARCH_WASM
+   // gen_wasm
+   int depth;
++  // Backward gotos: the loop enclosing the label and the rest of its block.
++  Stmt *loop_block;
++  int loop_depth;
++  bool in_loop;
+ #endif
+ } GotoLabel;
+ 
+diff --git a/src/wcc/gen_wasm.c b/src/wcc/gen_wasm.c
+index 6e0245b..400aaed 100644
+--- a/src/wcc/gen_wasm.c
++++ b/src/wcc/gen_wasm.c
+@@ -516,6 +516,24 @@ static void gen_block_for_label(Stmt *stmt, bool is_last) {
+   assert(curfunc->label_table != NULL);
+   GotoLabel *goto_label = table_get(curfunc->label_table, stmt->block_for_label.label);
+   assert(goto_label != NULL);
++
++  if (stmt->block_for_label.is_loop) {
++    // `label: ...` with backward gotos: they branch to the loop start.
++    goto_label->loop_depth = cur_depth;
++    goto_label->in_loop = true;
++    ++cur_depth;
++    ADD_CODE(OP_LOOP, WT_VOID); {
++      gen_stmts(stmt->block_for_label.stmts, false);
++    } ADD_CODE(OP_END);
++    --cur_depth;
++    goto_label->in_loop = false;
++    // Never falls out (ends with goto/return): keep the validator happy at function end.
++    if (stmt->reach & REACH_STOP)
++      ADD_CODE(OP_UNREACHABLE);
++    UNUSED(is_last);
++    return;
++  }
++
+   goto_label->depth = cur_depth;
+ 
+   ++cur_depth;
+@@ -530,9 +548,10 @@ static void gen_goto(Stmt *stmt) {
+   assert(curfunc->label_table != NULL);
+   GotoLabel *goto_label = table_get(curfunc->label_table, stmt->goto_.label->ident);
+   assert(goto_label != NULL);
+-  assert(cur_depth > goto_label->depth);
++  int target = goto_label->in_loop ? goto_label->loop_depth : goto_label->depth;
++  assert(cur_depth > target);
+   ADD_CODE(OP_BR);
+-  ADD_ULEB128(cur_depth - goto_label->depth - 1);
++  ADD_ULEB128(cur_depth - target - 1);
+ }
+ 
+ void gen_stmt(Stmt *stmt, bool is_last) {
+diff --git a/src/wcc/traverse.c b/src/wcc/traverse.c
+index fad418a..7150d23 100644
+--- a/src/wcc/traverse.c
++++ b/src/wcc/traverse.c
+@@ -634,10 +634,61 @@ static void traverse_goto(Stmt *stmt) {
+   Stmt *label = goto_label->label_stmt;
+   assert(label != NULL);
+ 
+-  Stmt *block = is_ancestor(label->parent, stmt);
+-  if (block == NULL || !is_just_after(label, block)) {
+-    parse_error(PE_NOFATAL, stmt->token, "only escape goto supported");
++  // Backward goto: inside the loop that starts at the label.
++  Stmt *loop = goto_label->loop_block;
++  if (loop != NULL && is_ancestor(loop, stmt) != NULL)
++    return;
++
++  // Forward goto: escapes the block enclosing the statements before the label.
++  Stmt *anchor = loop != NULL ? loop : label;
++  Stmt *block = is_ancestor(anchor->parent, stmt);
++  if (block == NULL || !is_just_after(anchor, block)) {
++    parse_error(PE_NOFATAL, stmt->token,
++                "goto into or out of a nested block is not supported; jump to a label in the same or an enclosing block");
++  }
++}
++
++// Index of the last statement in stmts[at..] containing a goto to `goto_label`
++// (a backward goto), or -1.
++static int last_backward_goto(GotoLabel *goto_label, Vector *stmts, int at) {
++  int last = -1;
++  Vector *gotos = goto_label->gotos;
++  for (int g = 0; g < gotos->len; ++g) {
++    for (Stmt *s = gotos->data[g]; s != NULL; s = s->parent) {
++      for (int i = at; i < stmts->len; ++i) {
++        if (stmts->data[i] == s && i > last)
++          last = i;
++      }
++    }
++  }
++  return last;
++}
++
++static int enclose_stmts_for_loop(GotoLabel *goto_label, Stmt *parent, Vector *stmts, int at,
++                                  int last) {
++  // Before:
++  //   label: stmt; ...; if (c) goto label; rest...;
++  // After:
++  //   loop { label: stmt; ...; if (c) goto label; }  rest...;
++  // (goto = branch to the loop start; falling off the end leaves the loop)
++  Stmt *loop = new_stmt(ST_BLOCK_FOR_LABEL, NULL);
++  loop->parent = parent;
++  Vector *enclosed = new_vector();
++  for (int i = at; i <= last; ++i) {
++    Stmt *s = stmts->data[i];
++    s->parent = loop;
++    vec_push(enclosed, s);
+   }
++  loop->block_for_label.label = goto_label->label_stmt->token->ident;
++  loop->block_for_label.stmts = enclosed;
++  loop->block_for_label.is_loop = true;
++  loop->reach = ((Stmt*)enclosed->data[enclosed->len - 1])->reach;
++
++  for (int i = at; i < last; ++i)
++    vec_remove_at(stmts, at + 1);
++  stmts->data[at] = loop;
++  goto_label->loop_block = loop;
++  return at;
+ }
+ 
+ static int enclose_stmts_for_label(const Name *label, Stmt *parent, Vector *stmts, int at) {
+@@ -711,15 +762,33 @@ static void traverse_stmt(Stmt *stmt) {
+   }
+ }
+ 
++static void traverse_stmts_from(Vector *stmts, int start);
++
+ static inline int traverse_label(Stmt *stmt, Vector *stmts, int i) {
+-  i = enclose_stmts_for_label(stmt->token->ident, stmt->parent, stmts, i);
++  Stmt *parent = stmt->parent;
++  i = enclose_stmts_for_label(stmt->token->ident, parent, stmts, i);
++
++  GotoLabel *goto_label = table_get(curfunc->label_table, stmt->token->ident);
++  int last = goto_label != NULL ? last_backward_goto(goto_label, stmts, i) : -1;
++  if (last >= 0) {
++    i = enclose_stmts_for_loop(goto_label, parent, stmts, i, last);
++    Stmt *loop = stmts->data[i];
++    traverse_stmt(stmt->label.stmt);
++    traverse_stmts_from(loop->block_for_label.stmts, 1);  // The rest after the label.
++    return i;
++  }
++
+   traverse_stmt(stmt->label.stmt);
+   return i;
+ }
+ 
+ static void traverse_stmts(Vector *stmts) {
++  traverse_stmts_from(stmts, 0);
++}
++
++static void traverse_stmts_from(Vector *stmts, int start) {
+   assert(stmts != NULL);
+-  for (int i = 0, len = stmts->len; i < len; ++i) {
++  for (int i = start, len = stmts->len; i < len; ++i) {
+     Stmt *stmt = stmts->data[i];
+     if (stmt->kind == ST_LABEL) {
+       i = traverse_label(stmt, stmts, i);
+diff --git a/src/wcc/www/lib_list.json b/src/wcc/www/lib_list.json
+index f877203..16735fd 100644
+--- a/src/wcc/www/lib_list.json
++++ b/src/wcc/www/lib_list.json
+@@ -12,6 +12,7 @@
+       "alloca.h": "./include/alloca.h",
+       "ar.h": "./include/ar.h",
+       "assert.h": "./include/assert.h",
++      "conio.h": "./include/conio.h",
+       "ctype.h": "./include/ctype.h",
+       "errno.h": "./include/errno.h",
+       "fcntl.h": "./include/fcntl.h",
+@@ -21,6 +22,7 @@
+       "limits.h": "./include/limits.h",
+       "math.h": "./include/math.h",
+       "setjmp.h": "./include/setjmp.h",
++      "signal.h": "./include/signal.h",
+       "stdarg.h": "./include/stdarg.h",
+       "stdbool.h": "./include/stdbool.h",
+       "stddef.h": "./include/stddef.h",

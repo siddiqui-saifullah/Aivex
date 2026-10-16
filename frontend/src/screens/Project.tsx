@@ -29,7 +29,7 @@ import OutputPanel, { type OutputKind, type OutputLine } from "../components/pro
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
 import { getRunnerLanguage, runFile } from "../services/runner.service";
-import { runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
+import { describeExitCode, runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
 import { downloadProjectZip } from "../utils/downloadZip";
@@ -1033,7 +1033,7 @@ const Project = () => {
               break;
             case "exit":
               appendOutput(
-                `${result.code === 0 ? "Finished" : `Exited with code ${result.code}`}${timing(result.compileMs, result.runMs)}`,
+                `${result.code === 0 ? "Finished" : describeExitCode(result.code)}${timing(result.compileMs, result.runMs)}`,
                 result.code === 0 ? "success" : "error",
               );
               break;

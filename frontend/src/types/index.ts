@@ -39,8 +39,42 @@ export interface Project {
   stack?: string;
   status?: string;
   usersCount?: number;
+  /** Class this project belongs to (a student's copy of an assignment). */
+  classroom?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type ClassroomRole = "teacher" | "student";
+
+/** A class as listed on the dashboard. */
+export interface ClassroomSummary {
+  _id: string;
+  name: string;
+  stack: string;
+  role: ClassroomRole;
+  /** Join code (teacher only). */
+  code?: string;
+  teacher: { name?: string; username?: string };
+  studentCount: number;
+  /** The student's own project. */
+  projectId?: string;
+  createdAt: string;
+}
+
+export interface ClassroomStudent {
+  userId: string;
+  name?: string;
+  username?: string;
+  projectId: string;
+  joinedAt: string;
+  lastActive: string;
+  online: boolean;
+}
+
+export interface ClassroomDetails extends Omit<ClassroomSummary, "createdAt"> {
+  /** Teacher only. */
+  students?: ClassroomStudent[];
 }
 
 /** A project loaded on the project page, where `users` is populated. */

@@ -1331,7 +1331,7 @@ const Project = () => {
   return (
     <main className="h-[calc(100dvh-4rem)] flex flex-col md:flex-row overflow-hidden">
       <section
-        className={`${mobileTab === "chat" ? "flex" : "hidden"} md:flex relative flex-col flex-1 min-h-0 md:flex-none md:w-[23%] md:min-w-60 border-r border-white/10 overflow-hidden`}
+        className={`${mobileTab === "chat" ? "flex" : "hidden"} md:flex relative flex-col flex-1 min-h-0 md:flex-none md:w-[30%] lg:w-[28%] md:min-w-72 md:max-w-[460px] border-r border-white/10 bg-zinc-950 overflow-hidden`}
       >
         {/* Header */}
         <ProjectHeader

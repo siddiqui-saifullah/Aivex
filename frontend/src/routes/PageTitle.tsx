@@ -6,6 +6,8 @@ const TITLES: [RegExp, string][] = [
   [/^\/dashboard/, "Dashboard · Aivex"],
   [/^\/projects\//, "Project · Aivex"],
   [/^\/profile/, "Profile · Aivex"],
+  [/^\/classes\//, "Class · Aivex"],
+  [/^\/join/, "Join a class · Aivex"],
   [/^\/login/, "Sign in · Aivex"],
   [/^\/register/, "Create account · Aivex"],
   [/^\/about/, "About · Aivex"],

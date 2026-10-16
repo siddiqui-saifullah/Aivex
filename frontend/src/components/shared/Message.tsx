@@ -34,7 +34,11 @@ const Message = ({
 }: MessageProps) => {
   /* ---------------- System Message ---------------- */
   if (type === "system") {
-    return <div className="my-3 text-center text-xs text-zinc-500">{text}</div>;
+    return (
+      <div className="my-3 flex justify-center">
+        <span className="rounded-full bg-zinc-900 px-3 py-1 text-[11px] text-zinc-400 ring-1 ring-white/5">{text}</span>
+      </div>
+    );
   }
 
   if (type === "outgoing") {

@@ -21,6 +21,8 @@ export interface IProject {
         entry: string;
         port: number;
     };
+    /** Set on a student's copy of a classroom assignment. */
+    classroom: Types.ObjectId | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -74,6 +76,12 @@ const projectSchema = new mongoose.Schema<IProject>(
         settings: {
             entry: { type: String, default: "npm start" },
             port: { type: Number, default: 5173 },
+        },
+
+        classroom: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Classroom",
+            default: null,
         },
     },
     { timestamps: true }

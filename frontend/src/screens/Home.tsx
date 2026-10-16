@@ -109,8 +109,8 @@ const Home = () => {
             />
             <FeatureCard
               icon={<Cpu size={24} className="text-white" />}
-              title="C, C++, Java, Python & more"
-              desc="Compile and run programs on the cloud runner with input support: great for practice, DSA and assignments."
+              title="C in your browser, and more"
+              desc="C compiles and runs right in your browser in milliseconds, with interactive scanf input. C++, Java, Python and more run on the cloud runner."
             />
             <FeatureCard
               icon={<Users size={24} className="text-white" />}

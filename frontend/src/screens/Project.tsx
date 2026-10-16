@@ -29,6 +29,7 @@ import OutputPanel, { type OutputKind, type OutputLine } from "../components/pro
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
 import { getRunnerLanguage, runFile } from "../services/runner.service";
+import { runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
 import { downloadProjectZip } from "../utils/downloadZip";
@@ -339,6 +340,47 @@ const Project = () => {
       return next.length > MAX_OUTPUT_LINES ? next.slice(-MAX_OUTPUT_LINES) : next;
     });
   }, []);
+
+  /**
+   * Streamed program output: continues the last line until a newline arrives,
+   * so "Enter n: " and what the user types stay on one line like a terminal.
+   */
+  const streamOpenRef = useRef(false);
+  const appendStream = useCallback((chunk: string, kind: OutputKind) => {
+    if (!chunk) return;
+    const continueLast = streamOpenRef.current;
+    streamOpenRef.current = !chunk.endsWith("\n");
+    const parts = chunk.replace(/\r\n/g, "\n").split("\n");
+    if (!streamOpenRef.current) parts.pop(); // nothing after the final newline
+    setOutputLines((prev) => {
+      const next = [...prev];
+      let start = 0;
+      const last = next[next.length - 1];
+      if (continueLast && last && last.kind === kind && last.input === undefined) {
+        next[next.length - 1] = { ...last, text: last.text + parts[0] };
+        start = 1;
+      }
+      for (let i = start; i < parts.length; i++) next.push({ id: outputIdRef.current++, text: parts[i], kind });
+      return next.length > MAX_OUTPUT_LINES ? next.slice(-MAX_OUTPUT_LINES) : next;
+    });
+  }, []);
+
+  /** Echo typed input after the prompt (or on its own line). */
+  const echoInput = useCallback((text: string) => {
+    const continueLast = streamOpenRef.current;
+    streamOpenRef.current = false;
+    setOutputLines((prev) => {
+      const last = prev[prev.length - 1];
+      if (continueLast && last && last.input === undefined) {
+        return [...prev.slice(0, -1), { ...last, input: text }];
+      }
+      return [...prev, { id: outputIdRef.current++, text: "", kind: "stdout", input: text }];
+    });
+  }, []);
+
+  // Running C program (in-browser compiler) and whether it waits for input
+  const cRunRef = useRef<CRunHandle | null>(null);
+  const [awaitingInput, setAwaitingInput] = useState(false);
 
   // Typing indicator state
   const { typingUsers, handleUserTyping, clearAllTypingUsers } =
@@ -952,10 +994,85 @@ const Project = () => {
   };
 
   /** Run the open C / C++ / Java / Python ... file on the cloud runner. */
+  /** C runs in the browser: compiled to WebAssembly in ~50 ms, interactive input. */
+  const runCFile = (entry: string) => {
+    setIsRunningFile(true);
+    setIsOutputOpen(true);
+    setRevealOutputKey((k) => k + 1);
+    streamOpenRef.current = false;
+    appendOutput(`— Running ${entry} (C · in your browser) —`, "info");
+
+    cRunRef.current = runC(
+      { files: flatFileTree, entry, stdin },
+      {
+        onStatus: (phase) => {
+          if (phase === "loading") appendOutput("Loading the C compiler (one time, ~180 KB)…", "info");
+          setRunProgress(phase === "running" ? "Running…" : phase === "compiling" ? "Compiling…" : "Loading compiler…");
+        },
+        onWarnings: (text) => appendOutput(text.replace(/\n$/, ""), "stderr"),
+        onOutput: (stream, text) => {
+          setAwaitingInput(false);
+          appendStream(text, stream);
+        },
+        onInputRequest: () => {
+          setAwaitingInput(true);
+          setIsOutputOpen(true);
+        },
+        onDone: (result) => {
+          cRunRef.current = null;
+          setAwaitingInput(false);
+          setIsRunningFile(false);
+          setRunProgress("");
+          if (streamOpenRef.current) appendStream("\n", "stdout");
+          const timing = (compileMs: number, runMs: number) =>
+            ` in ${(runMs / 1000).toFixed(2)}s (compiled in ${Math.max(1, Math.round(compileMs))} ms)`;
+          switch (result.kind) {
+            case "compile-error":
+              appendOutput(result.diagnostics.replace(/\n$/, ""), "stderr");
+              appendOutput("Compilation failed", "error");
+              break;
+            case "exit":
+              appendOutput(
+                `${result.code === 0 ? "Finished" : `Exited with code ${result.code}`}${timing(result.compileMs, result.runMs)}`,
+                result.code === 0 ? "success" : "error",
+              );
+              break;
+            case "crash":
+              appendOutput(`${result.message}${timing(result.compileMs, result.runMs)}`, "error");
+              break;
+            case "stopped":
+              appendOutput(
+                result.reason === "timeout"
+                  ? "Stopped: time limit exceeded (20 s of CPU). Is there an infinite loop?"
+                  : "Stopped",
+                "error",
+              );
+              break;
+            case "error":
+              appendOutput(result.message, "error");
+              break;
+          }
+        },
+      },
+    );
+  };
+
+  const stopCRun = () => cRunRef.current?.stop();
+
+  // Start loading the compiler as soon as a C file is opened, so Run is instant
+  useEffect(() => {
+    if (activeFile && /\.c$/i.test(activeFile)) warmCRunner();
+  }, [activeFile]);
+
   const handleRunFile = async () => {
     if (!activeFile || isRunningFile) return;
     const language = getRunnerLanguage(activeFile);
     if (!language) return;
+
+    if (language.id === "c") {
+      runCFile(activeFile);
+      return;
+    }
 
     setIsRunningFile(true);
     setIsOutputOpen(true);
@@ -1359,6 +1476,7 @@ const Project = () => {
             handleUpdate={handleUpdate}
             handleStop={handleStop}
             onRunFile={handleRunFile}
+            onStopFile={stopCRun}
             isRunningFile={isRunningFile}
             isSaving={isSaving}
             runProgress={runProgress}
@@ -1400,6 +1518,16 @@ const Project = () => {
           onStdinChange={setStdin}
           revealOutputKey={revealOutputKey}
           run={nodeRun}
+          awaitingInput={awaitingInput}
+          onSubmitInput={(text) => {
+            echoInput(text);
+            setAwaitingInput(false);
+            cRunRef.current?.provideInput(text);
+          }}
+          onEndInput={() => {
+            setAwaitingInput(false);
+            cRunRef.current?.sendEof();
+          }}
         />
 
         {isQuickOpen && (

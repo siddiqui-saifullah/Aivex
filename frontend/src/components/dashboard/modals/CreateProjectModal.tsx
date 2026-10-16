@@ -120,7 +120,7 @@ const CreateProjectModal = ({ isOpen, onClose, onCreate }: CreateProjectModalPro
             <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">
               Tech Stack
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {TECH_STACKS.map((tech) => (
                 <button
                   key={tech}

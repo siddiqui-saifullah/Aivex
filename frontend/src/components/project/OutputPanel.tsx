@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Terminal, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, CornerDownLeft, Terminal, Trash2 } from "lucide-react";
 import RunLoader from "./RunLoader";
 import type { RunStep } from "../../utils/runSteps";
 
@@ -9,6 +9,8 @@ export interface OutputLine {
   id: number;
   text: string;
   kind: OutputKind;
+  /** What the user typed on this line (interactive programs), shown highlighted. */
+  input?: string;
 }
 
 interface OutputPanelProps {
@@ -29,6 +31,11 @@ interface OutputPanelProps {
     logs: OutputLine[];
     previewErrors: string[];
   } | null;
+  /** The running program waits for input: show a terminal-style input line. */
+  awaitingInput?: boolean;
+  onSubmitInput?: (text: string) => void;
+  /** Ctrl+D: end of input. */
+  onEndInput?: () => void;
 }
 
 const KIND_CLASSES: Record<OutputKind, string> = {
@@ -49,7 +56,12 @@ const OutputPanel = ({
   onStdinChange,
   revealOutputKey = 0,
   run = null,
+  awaitingInput = false,
+  onSubmitInput,
+  onEndInput,
 }: OutputPanelProps) => {
+  const [typed, setTyped] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<"output" | "input">("output");
 
   // Switch to Output whenever a new run starts
@@ -65,7 +77,12 @@ const OutputPanel = ({
     if (isOpen && activeTab === "output") {
       bottomRef.current?.scrollIntoView({ block: "end" });
     }
-  }, [lines, run, isOpen, activeTab]);
+  }, [lines, run, isOpen, activeTab, awaitingInput]);
+
+  // Focus the input line as soon as the program asks for input
+  useEffect(() => {
+    if (awaitingInput) inputRef.current?.focus({ preventScroll: true });
+  }, [awaitingInput, isOpen, activeTab]);
 
   return (
     <div
@@ -135,9 +152,41 @@ const OutputPanel = ({
             ) : (
               lines.map((line) => (
                 <div key={line.id} className={`whitespace-pre-wrap break-all ${KIND_CLASSES[line.kind]}`}>
-                  {line.text || " "}
+                  {line.text || (line.input === undefined ? " " : "")}
+                  {line.input !== undefined && <span className="text-teal-300">{line.input}</span>}
                 </div>
               ))
+            )}
+            {awaitingInput && onSubmitInput && (
+              <form
+                className="mt-1 flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  onSubmitInput(typed);
+                  setTyped("");
+                }}
+              >
+                <span className="text-teal-400 select-none">›</span>
+                <input
+                  ref={inputRef}
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+                      e.preventDefault();
+                      onEndInput?.();
+                    }
+                  }}
+                  aria-label="Program input"
+                  placeholder="Type input and press Enter · Ctrl+D ends input"
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="flex-1 min-w-0 bg-transparent text-teal-200 placeholder:text-zinc-600 focus:outline-none"
+                />
+                <button type="submit" aria-label="Send input" className="text-zinc-500 hover:text-teal-300">
+                  <CornerDownLeft size={13} />
+                </button>
+              </form>
             )}
             <div ref={bottomRef} />
           </div>

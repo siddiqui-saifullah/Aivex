@@ -11,6 +11,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.4.2",
     "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.1.17",
     "@vercel/analytics": "^1.6.1",

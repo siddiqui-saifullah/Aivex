@@ -1,0 +1,1787 @@
+diff --git a/libsrc/math/frexp.c b/libsrc/math/frexp.c
+index 1884985..191bbce 100644
+--- a/libsrc/math/frexp.c
++++ b/libsrc/math/frexp.c
+@@ -9,6 +9,12 @@ double frexp(double x, int *p) {
+     return x;
+   }
+   int64_t q = *(int64_t*)&x;
++  if ((q & ((int64_t)0x7ff << EXPO_POS)) == 0) {
++    // Subnormal: scale into the normal range first (2^54)
++    double y = frexp(x * 18014398509481984.0, p);
++    *p -= 54;
++    return y;
++  }
+   *p = GET_EXPO(q);
+   int64_t r = (q & (FRAC_MASK | SIGN_MASK)) | ((int64_t)EXPO_BIAS << EXPO_POS);
+   return *(double*)&r;
+diff --git a/libsrc/stdio/_file.c b/libsrc/stdio/_file.c
+index c2a8779..1c0f0e6 100644
+--- a/libsrc/stdio/_file.c
++++ b/libsrc/stdio/_file.c
+@@ -21,6 +21,7 @@ static void _finit(FILE *fp) {
+     switch (st.st_mode & S_IFMT) {
+     case S_IFIFO:
+     case S_IFSOCK:
++    case S_IFCHR:  // terminal: a short read is not the end of input
+       fp->flag |= FF_FIFO;
+       break;
+     default:
+@@ -50,6 +51,10 @@ ssize_t _fread(void *cookie, char *buf, size_t total) {
+     p += d;
+   }
+ 
++  // Like a terminal: show pending output (e.g. a prompt) before waiting for input
++  if (fp->fd == STDIN_FILENO)
++    fflush(stdout);
++
+   if (total < fp->rcapa * 3 / 4) {
+     // Read more than requested size and store them to the buffer.
+     ssize_t len = read(fp->fd, fp->rbuf, fp->rcapa);
+diff --git a/libsrc/stdio/vfprintf.c b/libsrc/stdio/vfprintf.c
+index 5a69730..83a0e1f 100644
+--- a/libsrc/stdio/vfprintf.c
++++ b/libsrc/stdio/vfprintf.c
+@@ -10,56 +10,53 @@
+ 
+ #include "_file.h"  // _fputc
+ 
+-#define PRINTF_BUFSIZ  (32)
+-#define MIN(a, b)  ((a) < (b) ? (a) : (b))
+-#define SIGN(p)  ((p) ? '+' : '-')
+-#define STATIC_ASSERT(cond)  char __dummy[(cond) ? 0 : -1]; (void)__dummy
++// Each conversion is formatted into a local buffer first (sign/prefix and
++// body kept apart), then padded according to the flags, like glibc does.
++
++#define MAX_PRECISION  (60)
+ 
+ static const char kHexDigits[] = "0123456789abcdef";
+ static const char kUpperHexDigits[] = "0123456789ABCDEF";
+ 
+-static int putnstr(FILE *fp, int n, const char *s) {
+-  int i;
+-  for (i = 0; i < n && s[i] != '\0'; ++i)
+-    ;
+-  return fwrite(s, 1, i, fp);
+-}
++typedef struct {
++  bool left;     // '-'
++  bool plus;     // '+'
++  bool space;    // ' '
++  bool zero;     // '0'
++  bool alt;      // '#'
++  int width;
++  int precision;  // -1 = not given
++} Spec;
+ 
+-static void putpadding(FILE *fp, int m, char padding) {
+-  if (m <= 0)
+-    return;
+-  char buf[16];
+-  int n = MIN(m, (int)sizeof(buf));
+-  memset(buf, padding, n);
+-  do {
+-    int i = MIN(m, n);
+-    fwrite(buf, 1, i, fp);
+-    m -= i;
+-  } while (m > 0);
++static void putrepeat(FILE *fp, int n, char c) {
++  for (; n > 0; --n)
++    _fputc(c, fp);
+ }
+ 
+-static int snprintullong(FILE *fp, unsigned long long x, int base, const char *digits, int order,
+-                         int padding) {
+-  char buf[32];
+-  STATIC_ASSERT(sizeof(buf) >= (sizeof(long long) * CHAR_BIT + 2) / 3);
+-  unsigned int i = 0, o = 0;
+-
+-  do {
+-    buf[sizeof(buf) - (++i)] = digits[x % base];
+-    x /= base;
+-  } while (x != 0);
+-
+-  if (i < (unsigned int)order) {
+-    unsigned int d = (unsigned int)order - i;
+-    putpadding(fp, d, padding);
+-    o += d;
++// Write prefix + body padded to spec width. `numeric_zero` allows '0' padding.
++static int emit(FILE *fp, const Spec *spec, const char *prefix, const char *body, int bodylen,
++                bool numeric_zero) {
++  int plen = (int)strlen(prefix);
++  int total = plen + bodylen;
++  int pad = spec->width > total ? spec->width - total : 0;
++  if (spec->left) {
++    fwrite(prefix, 1, plen, fp);
++    fwrite(body, 1, bodylen, fp);
++    putrepeat(fp, pad, ' ');
++  } else if (spec->zero && numeric_zero) {
++    fwrite(prefix, 1, plen, fp);
++    putrepeat(fp, pad, '0');
++    fwrite(body, 1, bodylen, fp);
++  } else {
++    putrepeat(fp, pad, ' ');
++    fwrite(prefix, 1, plen, fp);
++    fwrite(body, 1, bodylen, fp);
+   }
+-  return o + fwrite(&buf[sizeof(buf) - i], 1, i, fp);
++  return total + pad;
+ }
+ 
+-static char *snprintullong2(char *bufend, unsigned long long x, int base, const char *digits) {
+-  char *p = bufend;
+-  *(--p) = '\0';
++static char *utoa_rev(char *end, unsigned long long x, int base, const char *digits) {
++  char *p = end;
+   do {
+     *(--p) = digits[x % base];
+     x /= base;
+@@ -67,207 +64,388 @@ static char *snprintullong2(char *bufend, unsigned long long x, int base, const
+   return p;
+ }
+ 
+-static int snprintstr(FILE *fp, const char *s, int order, int suborder, bool leftalign,
+-                      char padding) {
+-  size_t len = strlen(s);
+-  if (suborder > 0)
+-    len = MIN(len, (unsigned int)suborder);
+-  if (order <= 0 || len >= (unsigned int)order) {
+-    putnstr(fp, len, s);
+-    return len;
++static int print_integer(FILE *fp, const Spec *spec, unsigned long long ux, bool negative,
++                         int base, const char *digits, const char *alt_prefix) {
++  char buf[80];
++  char *end = buf + sizeof(buf);
++  char *p;
++  if (spec->precision == 0 && ux == 0) {
++    p = end;  // "%.0d" of 0 prints nothing
+   } else {
+-    if (leftalign) {
+-      putnstr(fp, len, s);
+-      putpadding(fp, order - len, padding);
+-    } else {
+-      putpadding(fp, order - len, padding);
+-      putnstr(fp, len, s);
+-    }
+-    return order;
++    p = utoa_rev(end, ux, base, digits);
++  }
++  int len = (int)(end - p);
++  // Precision = minimum number of digits
++  int prec = spec->precision > 70 ? 70 : spec->precision;
++  while (len < prec) {
++    *(--p) = '0';
++    ++len;
++  }
++  if (base == 8 && spec->alt && (len == 0 || *p != '0')) {
++    *(--p) = '0';
++    ++len;
+   }
+-}
+ 
+-static int sprintsign(FILE *fp, bool negative, bool force, int *porder) {
+-  int o = 0;
+-  if (negative) {
+-    _fputc('-', fp);
+-    ++o;
+-  } else if (force) {
+-    _fputc('+', fp);
+-    ++o;
++  char prefix[4];
++  int n = 0;
++  if (negative)
++    prefix[n++] = '-';
++  else if (spec->plus)
++    prefix[n++] = '+';
++  else if (spec->space)
++    prefix[n++] = ' ';
++  if (alt_prefix != NULL && ux != 0) {
++    prefix[n++] = alt_prefix[0];
++    prefix[n++] = alt_prefix[1];
+   }
+-  if (*porder > 1 && o > 0)
+-    *porder -= o;
+-  return o;
++  prefix[n] = '\0';
++  // '0' flag is ignored when a precision is given
++  return emit(fp, spec, prefix, p, len, spec->precision < 0);
+ }
+ 
+ #ifndef __NO_FLONUM
+-#include "math.h"  // isfinite, signbit
+-
+-static long double pow10(int order) {
+-  long double a = 1, x = 10;
+-  for (; order > 0; order >>= 1) {
+-    if ((order & 1) != 0)
+-      a *= x;
+-    x *= x;
++#include "math.h"  // isfinite, signbit, frexp, ldexp
++
++// Exact decimal expansion of a double (like glibc/musl): x = M * 2^E is split
++// into an integer part (decimal string) and a binary fraction f / 2^k whose
++// digits are produced one by one. Rounding is round-half-to-even on the exact
++// value, so output matches glibc digit for digit.
++
++#define FRAC_LIMBS  (40)  // 1280 bits: enough for the 1074 fraction bits of denormals
++#define INT_DIGITS  (320)  // DBL_MAX has 309 integer digits
++
++typedef struct {
++  char ip[INT_DIGITS];  // integer part, most significant first ("0" if zero)
++  int ilen;
++  int pos;  // next digit to read (integer digits first, then fraction)
++  uint32_t f[FRAC_LIMBS];
++  int k;  // fraction = f / 2^k
++} DigitStream;
++
++static void ds_init(DigitStream *ds, double x) {
++  int e2;
++  double m = frexp(x, &e2);  // x = m * 2^e2, 0.5 <= m < 1
++  uint64_t mant = (uint64_t)ldexp(m, 53);
++  int e = e2 - 53;  // x = mant * 2^e exactly
++  uint32_t big[36];  // integer part, little-endian 32-bit limbs
++  int nbig = 0;
++  memset(ds->f, 0, sizeof(ds->f));
++  ds->k = 0;
++  ds->pos = 0;
++  memset(big, 0, sizeof(big));
++  if (e >= 0) {
++    int limb = e / 32, shift = e % 32;
++    uint64_t lo = mant << shift;
++    big[limb] = (uint32_t)lo;
++    big[limb + 1] = (uint32_t)(lo >> 32);
++    if (shift > 0)
++      big[limb + 2] = (uint32_t)(mant >> (64 - shift));
++    nbig = limb + 3;
++  } else {
++    int k = -e;
++    uint64_t ipart = k < 64 ? mant >> k : 0;
++    uint64_t fpart = k < 64 ? mant & ((1ULL << k) - 1) : mant;
++    big[0] = (uint32_t)ipart;
++    big[1] = (uint32_t)(ipart >> 32);
++    nbig = 2;
++    ds->f[0] = (uint32_t)fpart;
++    ds->f[1] = (uint32_t)(fpart >> 32);
++    ds->k = k;
+   }
+-  return a;
++  // Integer part to decimal: repeated division by 10^9
++  char rev[INT_DIGITS];
++  int n = 0;
++  for (;;) {
++    while (nbig > 0 && big[nbig - 1] == 0)
++      --nbig;
++    if (nbig == 0)
++      break;
++    uint64_t rem = 0;
++    for (int i = nbig - 1; i >= 0; --i) {
++      uint64_t cur = (rem << 32) | big[i];
++      big[i] = (uint32_t)(cur / 1000000000U);
++      rem = cur % 1000000000U;
++    }
++    for (int j = 0; j < 9; ++j) {
++      rev[n++] = '0' + (char)(rem % 10);
++      rem /= 10;
++    }
++  }
++  while (n > 1 && rev[n - 1] == '0')
++    --n;
++  if (n == 0)
++    rev[n++] = '0';
++  for (int i = 0; i < n; ++i)
++    ds->ip[i] = rev[n - 1 - i];
++  ds->ilen = n;
+ }
+ 
+-static int printnonfinite(FILE *fp, long double x, int order, int suborder, bool sign,
+-                          bool leftalign) {
+-  int o = sprintsign(fp, signbit(x), sign, &order);
+-  return o + snprintstr(fp, isnan(x) ? "nan" : "inf", order, suborder, leftalign, ' ');
++static bool frac_nonzero(const DigitStream *ds) {
++  for (int i = 0; i < FRAC_LIMBS; ++i)
++    if (ds->f[i] != 0)
++      return true;
++  return false;
+ }
+ 
+-static int printfloat(FILE *fp, long double x, int order, int suborder, bool sign, bool leftalign,
+-                      char padding) {
+-  if (!isfinite(x))
+-    return printnonfinite(fp, x, order, suborder, sign, leftalign);
++static int ds_next(DigitStream *ds) {
++  if (ds->pos < ds->ilen)
++    return ds->ip[ds->pos++] - '0';
++  ++ds->pos;
++  if (ds->k == 0)
++    return 0;
++  uint64_t carry = 0;
++  for (int i = 0; i < FRAC_LIMBS; ++i) {
++    uint64_t cur = (uint64_t)ds->f[i] * 10 + carry;
++    ds->f[i] = (uint32_t)cur;
++    carry = cur >> 32;
++  }
++  int limb = ds->k / 32, shift = ds->k % 32;
++  uint64_t two = ((uint64_t)ds->f[limb + 1] << 32) | ds->f[limb];
++  int digit = (int)(two >> shift);
++  ds->f[limb] &= shift == 0 ? 0 : (uint32_t)((1ULL << shift) - 1);
++  for (int i = limb + 1; i < FRAC_LIMBS; ++i)
++    ds->f[i] = 0;
++  return digit;
++}
+ 
+-  bool neg = signbit(x);
+-  if (neg)
+-    x = -x;
+-  int o = sprintsign(fp, neg, sign, &order);
+-
+-  unsigned long long int_part = x;
+-  suborder = suborder > 0 ? suborder : 6;
+-  long double one = pow10(suborder);
+-  unsigned long long fraction = (x - int_part) * one + 0.5;
+-  if (fraction >= one) {
+-    ++int_part;
+-    fraction -= one;
++// Is anything after the current position nonzero?
++static bool ds_rest_nonzero(const DigitStream *ds) {
++  for (int i = ds->pos; i < ds->ilen; ++i)
++    if (ds->ip[i] != '0')
++      return true;
++  return frac_nonzero(ds);
++}
++
++// Round the collected digits (buf[0..n)) using the stream's remaining digits.
++// Returns true if the carry ran out of the front (buf became 000..., caller adds '1').
++static bool ds_round(DigitStream *ds, char *buf, int n) {
++  int next = ds_next(ds);
++  bool up;
++  if (next > 5) {
++    up = true;
++  } else if (next < 5) {
++    up = false;
++  } else {
++    // Exactly half: round to even unless something follows
++    int last = n - 1;
++    while (last >= 0 && buf[last] == '.')
++      --last;
++    up = ds_rest_nonzero(ds) || (last >= 0 && ((buf[last] - '0') & 1) != 0);
+   }
+-  o += snprintullong(fp, int_part, 10, kHexDigits, order, padding);
+-  _fputc('.', fp); ++o;
+-  o += snprintullong(fp, fraction, 10, kHexDigits, suborder, '0');
+-  return o;
++  if (!up)
++    return false;
++  for (int i = n - 1; i >= 0; --i) {
++    if (buf[i] == '.')
++      continue;
++    if (buf[i] != '9') {
++      ++buf[i];
++      return false;
++    }
++    buf[i] = '0';
++  }
++  return true;
+ }
+ 
+-static int normalize_float(long double *px) {
+-  long double x = *px;
+-  int exp = 0;
+-  if (x >= 1e6) {
+-    do {
+-      x /= 10;
+-      ++exp;
+-    } while (x >= 10);
++// %f body (no sign); returns length.
++static int format_fixed(char *buf, double x, int prec, bool alt) {
++  DigitStream ds;
++  ds_init(&ds, x);
++  int len = 0;
++  for (int i = 0; i < ds.ilen; ++i)
++    buf[len++] = (char)('0' + ds_next(&ds));
++  if (prec > 0 || alt)
++    buf[len++] = '.';
++  for (int i = 0; i < prec; ++i)
++    buf[len++] = (char)('0' + ds_next(&ds));
++  if (ds_round(&ds, buf, len)) {
++    memmove(buf + 1, buf, len);
++    buf[0] = '1';
++    ++len;
+   }
+-  if (x > 0 && x <= 1e-4) {
+-    do {
+-      x *= 10;
+-      --exp;
+-    } while (x < 1.0);
++  return len;
++}
++
++// Significant digits for %e / %g: fills sig[0..nd) and returns the exponent.
++static int sig_digits(double x, int nd, char *sig) {
++  if (x == 0) {
++    for (int i = 0; i < nd; ++i)
++      sig[i] = '0';
++    return 0;
+   }
+-  *px = x;
+-  return exp;
++  DigitStream ds;
++  ds_init(&ds, x);
++  int e;
++  int d;
++  if (ds.ilen > 1 || ds.ip[0] != '0') {
++    e = ds.ilen - 1;
++    d = ds_next(&ds);
++  } else {
++    ds_next(&ds);  // the "0" integer part
++    e = -1;
++    while ((d = ds_next(&ds)) == 0)
++      --e;
++  }
++  sig[0] = (char)('0' + d);
++  for (int i = 1; i < nd; ++i)
++    sig[i] = (char)('0' + ds_next(&ds));
++  if (ds_round(&ds, sig, nd)) {
++    sig[0] = '1';  // 9.99 -> 10.0: digits are all 0 now, shift the exponent
++    ++e;
++  }
++  return e;
+ }
+ 
+-static int printscientific(FILE *fp, long double x, int order, int suborder, bool sign,
+-                           bool leftalign, char padding) {
+-  if (!isfinite(x))
+-    return printnonfinite(fp, x, order, suborder, sign, leftalign);
++// %e body (no sign); returns length.
++static int format_exp(char *buf, double x, int prec, bool alt, bool upper) {
++  char sig[MAX_PRECISION + 2];
++  int e = sig_digits(x, prec + 1, sig);
++  int len = 0;
++  buf[len++] = sig[0];
++  if (prec > 0 || alt)
++    buf[len++] = '.';
++  for (int i = 1; i <= prec; ++i)
++    buf[len++] = sig[i];
++  buf[len++] = upper ? 'E' : 'e';
++  buf[len++] = e < 0 ? '-' : '+';
++  int ae = e < 0 ? -e : e;
++  if (ae >= 100)
++    buf[len++] = (char)('0' + ae / 100);
++  buf[len++] = (char)('0' + (ae / 10) % 10);
++  buf[len++] = (char)('0' + ae % 10);
++  return len;
++}
+ 
++static int strip_zeros(char *buf, int len) {
++  // Remove trailing zeros of the fraction (and the point), keep any exponent
++  int exp_at = -1;
++  for (int i = 0; i < len; ++i)
++    if (buf[i] == 'e' || buf[i] == 'E')
++      exp_at = i;
++  int frac_end = exp_at >= 0 ? exp_at : len;
++  int dot = -1;
++  for (int i = 0; i < frac_end; ++i)
++    if (buf[i] == '.')
++      dot = i;
++  if (dot < 0)
++    return len;
++  int cut = frac_end;
++  while (cut > dot + 1 && buf[cut - 1] == '0')
++    --cut;
++  if (cut == dot + 1)
++    cut = dot;
++  if (exp_at >= 0) {
++    memmove(buf + cut, buf + exp_at, len - exp_at);
++    return cut + (len - exp_at);
++  }
++  return cut;
++}
++
++static int print_float(FILE *fp, const Spec *spec, double x, char conv) {
++  bool upper = isupper((unsigned char)conv);
++  char lower = (char)tolower((unsigned char)conv);
+   bool neg = signbit(x);
+   if (neg)
+     x = -x;
+-  int o = sprintsign(fp, neg, sign, &order);
+-
+-  int e = normalize_float(&x);
+-  unsigned long long int_part = x;
+-  suborder = suborder > 0 ? suborder : 6;
+-  long double one = pow10(suborder);
+-  unsigned long long fraction = (x - int_part) * one + 0.5;
+-  if (fraction >= one) {
+-    ++int_part;
+-    fraction -= one;
+-  }
+-  while (fraction % 10 == 0 && suborder > 0) {
+-    fraction /= 10;
+-    --suborder;
+-  }
+-  o += snprintullong(fp, int_part, 10, kHexDigits, order, padding);
+-  if (fraction != 0) {
+-    _fputc('.', fp); ++o;
+-    o += snprintullong(fp, fraction, 10, kHexDigits, suborder, '0');
++  char prefix[2] = {0, 0};
++  if (neg)
++    prefix[0] = '-';
++  else if (spec->plus)
++    prefix[0] = '+';
++  else if (spec->space)
++    prefix[0] = ' ';
++
++  if (!isfinite(x)) {
++    const char *s = isnan(x) ? (upper ? "NAN" : "nan") : (upper ? "INF" : "inf");
++    return emit(fp, spec, prefix, s, 3, false);
+   }
+ 
+-  if (e != 0) {
+-    _fputc('e', fp); ++o;
+-    o += sprintsign(fp, e < 0, true, &order);
+-    e = e < 0 ? -e : e;
+-    o += snprintullong(fp, e, 10, kHexDigits, 2, '0');
++  int prec = spec->precision < 0 ? 6 : spec->precision;
++  if (prec > MAX_PRECISION)
++    prec = MAX_PRECISION;
++  char buf[INT_DIGITS + MAX_PRECISION + 16];
++  int len;
++  if (lower == 'f') {
++    len = format_fixed(buf, x, prec, spec->alt);
++  } else if (lower == 'e') {
++    len = format_exp(buf, x, prec, spec->alt, upper);
++  } else {  // 'g'
++    int p = prec == 0 ? 1 : prec;
++    char sig[MAX_PRECISION + 2];
++    int e = sig_digits(x, p, sig);
++    if (p > e && e >= -4)
++      len = format_fixed(buf, x, p - 1 - e, spec->alt);
++    else
++      len = format_exp(buf, x, p - 1, spec->alt, upper);
++    if (!spec->alt)
++      len = strip_zeros(buf, len);
+   }
+-  return o;
++  return emit(fp, spec, prefix, buf, len, true);
+ }
+ #endif
+ 
+ int vfprintf(FILE *fp, const char *fmt_, va_list ap) {
+-  char buf[PRINTF_BUFSIZ];
+-#define bufend  (buf + sizeof(buf))
+-  STATIC_ASSERT(sizeof(buf) >= (sizeof(long long) * CHAR_BIT + 2) / 3);
+-
+   const unsigned char *fmt = (const unsigned char*)fmt_;
+-  int c, i;
+-  int o;
++  int o = 0;
+ 
+-  for (i = o = 0; fmt[i] != '\0'; i++) {
+-    c = fmt[i];
++  for (int i = 0; fmt[i] != '\0'; i++) {
++    int c = fmt[i];
+     if (c != '%') {
+       _fputc(c, fp);
+       ++o;
+       continue;
+     }
+ 
+-    // Handle '%'
+-    char padding = ' ';
+-    int order = 0, suborder = 0;
+-    bool sign = false;
+-    bool leftalign = false;
+-    bool sizez = false;
+-    int nlong = 0;
+-    c = fmt[++i];
+-
+-    if (c == '+') {
+-      sign = true;
+-      c = fmt[++i];
+-    } else if (c == '-') {
+-      leftalign = true;
++    Spec spec = {false, false, false, false, false, 0, -1};
++    // Flags, in any order
++    for (;;) {
+       c = fmt[++i];
++      if (c == '-') spec.left = true;
++      else if (c == '+') spec.plus = true;
++      else if (c == ' ') spec.space = true;
++      else if (c == '0') spec.zero = true;
++      else if (c == '#') spec.alt = true;
++      else break;
+     }
+-    if (c == '0') {
+-      padding = '0';
+-      c = fmt[++i];
+-    }
+-    if (c >= '1' && c <= '9') {
+-      order = c - '0';
+-      while (c = fmt[++i], c >= '0' && c <= '9')
+-        order = order * 10 + (c - '0');
+-    } else if (c == '*') {
+-      order = va_arg(ap, int);
+-      c = fmt[++i];
+-    }
+-    if (c == '.') {
++    // Width
++    if (c == '*') {
++      spec.width = va_arg(ap, int);
++      if (spec.width < 0) {
++        spec.left = true;
++        spec.width = -spec.width;
++      }
+       c = fmt[++i];
+-      if (isdigit(c)) {
+-        do {
+-          suborder = suborder * 10 + (c - '0');
+-        } while (isdigit(c = fmt[++i]));
+-      } else if (c == '*') {
+-        suborder = va_arg(ap, int);
++    } else {
++      while (isdigit(c)) {
++        spec.width = spec.width * 10 + (c - '0');
+         c = fmt[++i];
+       }
+     }
+-
+-    if (tolower(c) == 'l') {
+-      nlong = 1;
++    // Precision
++    if (c == '.') {
++      spec.precision = 0;
+       c = fmt[++i];
+-      if (tolower(c) == 'l') {
+-        nlong = 2;
++      if (c == '*') {
++        spec.precision = va_arg(ap, int);
++        if (spec.precision < 0)
++          spec.precision = -1;
+         c = fmt[++i];
++      } else {
++        while (isdigit(c)) {
++          spec.precision = spec.precision * 10 + (c - '0');
++          c = fmt[++i];
++        }
+       }
+-    } else if (c == 'z') {
+-      sizez = true;
++    }
++    // Length modifiers
++    int nlong = 0, nshort = 0;
++    bool sizez = false, longdouble = false;
++    for (;;) {
++      if (c == 'l') ++nlong;
++      else if (c == 'h') ++nshort;
++      else if (c == 'z' || c == 't') sizez = true;
++      else if (c == 'j') nlong = 2;
++      else if (c == 'L') longdouble = true;
++      else break;
+       c = fmt[++i];
+     }
+ 
+@@ -275,70 +453,50 @@ int vfprintf(FILE *fp, const char *fmt_, va_list ap) {
+     case 'd': case 'i':
+       {
+         long long x;
+-        if (sizez) {
+-          x = va_arg(ap, ssize_t);
+-        } else {
+-          switch (nlong) {
+-          case 0:  x = va_arg(ap, int); break;
+-          case 1:  x = va_arg(ap, long); break;
+-          default: x = va_arg(ap, long long); break;  // case 2:
+-          }
+-        }
++        if (sizez) x = va_arg(ap, ssize_t);
++        else if (nlong >= 2) x = va_arg(ap, long long);
++        else if (nlong == 1) x = va_arg(ap, long);
++        else x = va_arg(ap, int);
++        if (nshort == 1) x = (short)x;
++        else if (nshort >= 2) x = (signed char)x;
+         bool negative = x < 0;
+-        unsigned long long ux = negative ? -x : x;
+-        if (negative || order > 0 || sign)
+-          o += sprintsign(fp, negative, sign, &order);
+-        char *p = snprintullong2(bufend, ux, 10, kHexDigits);
+-        if (suborder > order) {
+-          order = suborder;
+-          padding = '0';
+-        }
+-        o += snprintstr(fp, p, order, suborder, leftalign, padding);
++        unsigned long long ux = negative ? 0ULL - (unsigned long long)x : (unsigned long long)x;
++        o += print_integer(fp, &spec, ux, negative, 10, kHexDigits, NULL);
+       }
+       break;
+-    case 'u':
++    case 'u': case 'x': case 'X': case 'o':
+       {
+         unsigned long long x;
+-        if (sizez) {
+-          x = va_arg(ap, size_t);
+-        } else {
+-          switch (nlong) {
+-          case 0:  x = va_arg(ap, unsigned int); break;
+-          case 1:  x = va_arg(ap, unsigned long); break;
+-          default: x = va_arg(ap, unsigned long long); break;  // case 2:
+-          }
+-        }
+-        char *p = snprintullong2(bufend, x, 10, kHexDigits);
+-        if (sign)
+-          *(--p) = '+';
+-        o += snprintstr(fp, p, order, suborder, leftalign, padding);
+-      }
+-      break;
+-    case 'x': case 'X': case 'o':
+-      {
++        if (sizez) x = va_arg(ap, size_t);
++        else if (nlong >= 2) x = va_arg(ap, unsigned long long);
++        else if (nlong == 1) x = va_arg(ap, unsigned long);
++        else x = va_arg(ap, unsigned int);
++        if (nshort == 1) x = (unsigned short)x;
++        else if (nshort >= 2) x = (unsigned char)x;
++        int base = c == 'o' ? 8 : c == 'u' ? 10 : 16;
+         const char *digits = c == 'X' ? kUpperHexDigits : kHexDigits;
+-        int base = c == 'o' ? 8 : 16;
+-        unsigned long long x;
+-        if (sizez) {
+-          x = va_arg(ap, size_t);
+-        } else {
+-          switch (nlong) {
+-          case 0:  x = va_arg(ap, unsigned int); break;
+-          case 1:  x = va_arg(ap, unsigned long); break;
+-          default: x = va_arg(ap, unsigned long long); break;  // case 2:
+-          }
+-        }
+-        o += snprintullong(fp, x, base, digits, order, padding);
++        const char *alt = spec.alt && base == 16 ? (c == 'X' ? "0X" : "0x") : NULL;
++        Spec s = spec;
++        s.plus = s.space = false;
++        o += print_integer(fp, &s, x, false, base, digits, alt);
+       }
+       break;
+     case 'p':
+       {
+         void *ptr = va_arg(ap, void*);
+-        char *p = snprintullong2(bufend, (uintptr_t)ptr, 16, kHexDigits);
+-        p -= 2;
+-        p[0] = '0';
+-        p[1] = 'x';
+-        o += snprintstr(fp, p, order, suborder, leftalign, padding);
++        Spec s = spec;
++        s.plus = s.space = false;
++        s.precision = -1;
++        s.zero = false;
++        // Always "0x..." like glibc ("(nil)" for NULL)
++        if (ptr == NULL) {
++          o += emit(fp, &s, "", "(nil)", 5, false);
++        } else {
++          char buf[24];
++          char *end = buf + sizeof(buf);
++          char *p = utoa_rev(end, (uintptr_t)ptr, 16, kHexDigits);
++          o += emit(fp, &s, "0x", p, (int)(end - p), false);
++        }
+       }
+       break;
+     case 's':
+@@ -346,36 +504,36 @@ int vfprintf(FILE *fp, const char *fmt_, va_list ap) {
+         const char *s = va_arg(ap, const char*);
+         if (s == NULL)
+           s = "(null)";
+-        o += snprintstr(fp, s, order, suborder, leftalign, ' ');
++        int len = 0;
++        while (s[len] != '\0' && (spec.precision < 0 || len < spec.precision))
++          ++len;
++        o += emit(fp, &spec, "", s, len, false);
+       }
+       break;
+     case 'c':
+-      _fputc(va_arg(ap, unsigned int), fp);
+-      ++o;
++      {
++        char ch = (char)va_arg(ap, int);
++        o += emit(fp, &spec, "", &ch, 1, false);
++      }
+       break;
+     case '%':
+-      _fputc(c, fp);
++      _fputc('%', fp);
+       ++o;
+       break;
+-#ifndef __NO_FLONUM
+-    case 'f':
++    case 'n':
+       {
+-        long double x;
+-        switch (nlong) {
+-        case 0:  x = va_arg(ap, double); break;
+-        default: x = va_arg(ap, long double); break;
+-        }
+-        o += printfloat(fp, x, order, suborder, sign, leftalign, padding);
++        int *pn = va_arg(ap, int*);
++        if (pn != NULL)
++          *pn = o;
+       }
+       break;
+-    case 'g':
++#ifndef __NO_FLONUM
++    case 'f': case 'F': case 'e': case 'E': case 'g': case 'G':
+       {
+-        long double x;
+-        switch (nlong) {
+-        case 0:  x = va_arg(ap, double); break;
+-        default: x = va_arg(ap, long double); break;
+-        }
+-        o += printscientific(fp, x, order, suborder, sign, leftalign, padding);
++        double x;
++        if (longdouble) x = (double)va_arg(ap, long double);
++        else x = va_arg(ap, double);  // %lf is also a double
++        o += print_float(fp, &spec, x, (char)c);
+       }
+       break;
+ #endif
+@@ -386,6 +544,8 @@ int vfprintf(FILE *fp, const char *fmt_, va_list ap) {
+       if (c != '\0') {
+         _fputc(c, fp);
+         ++o;
++      } else {
++        --i;  // don't run past the terminator
+       }
+       break;
+     }
+diff --git a/libsrc/stdio/vfscanf.c b/libsrc/stdio/vfscanf.c
+index b3259ba..67f8433 100644
+--- a/libsrc/stdio/vfscanf.c
++++ b/libsrc/stdio/vfscanf.c
+@@ -2,301 +2,364 @@
+ #include "ctype.h"
+ #include "stdarg.h"
+ #include "stdbool.h"
+-#include "stdint.h"  // SIZE_MAX
++#include "stdint.h"
++#include "stdlib.h"  // strtod
+ #include "string.h"
+ 
+-#ifndef __NO_FLONUM
+-#include "math.h"
+-#endif
++// C99 scanf: whitespace / literal directives, %d %i %u %o %x %X %c %s %[...]
++// %f %e %g %E %G %a %p %n %%, assignment suppression (*), field widths and
++// the hh h l ll L j z t length modifiers. Returns EOF on an input failure
++// before the first conversion.
+ 
+ typedef struct {
+-  va_list ap;
+-} VaList;
++  FILE *fp;
++  int nread;  // characters consumed (for %n)
++  bool eof;
++} Input;
+ 
+-// ctypes ones might not use as function pointer, so implement them.
++static int in_get(Input *in) {
++  int c = fgetc(in->fp);
++  if (c == EOF)
++    in->eof = true;
++  else
++    ++in->nread;
++  return c;
++}
+ 
+-static int fn_isdigit(int c) {
+-  return '0' <= c && c <= '9';
++static void in_unget(Input *in, int c) {
++  if (c != EOF) {
++    ungetc(c, in->fp);
++    --in->nread;
++  }
+ }
+-static int fn_isxdigit(int c) {
+-  return ('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f');
++
++static void skip_space(Input *in) {
++  int c;
++  while ((c = in_get(in)) != EOF && isspace(c))
++    ;
++  in_unget(in, c);
+ }
+ 
+-static int fn_isoctal(int c) {
+-  return '0' <= c && c <= '7';
++static int digit_value(int c) {
++  if (c >= '0' && c <= '9')
++    return c - '0';
++  if (c >= 'a' && c <= 'z')
++    return c - 'a' + 10;
++  if (c >= 'A' && c <= 'Z')
++    return c - 'A' + 10;
++  return 99;
+ }
+ 
+-static bool read_llong(FILE *fp, int base, long long *p) {
+-  int c = fgetc(fp);
+-  bool negative = false;
+-  switch (c) {
+-  case '-':
+-    negative = true;
+-    // Fallthrough.
+-  case '+':
+-    c = fgetc(fp);
+-    break;
+-  default:
+-    break;
++// Reads an integer of `base` (0 = auto as %i) within `width` chars (0 = no limit).
++static bool read_integer(Input *in, int base, int width, unsigned long long *out, bool *negative) {
++  int limit = width > 0 ? width : INT32_MAX;
++  int used = 0;
++  int c = in_get(in);
++  *negative = false;
++  if ((c == '-' || c == '+') && used < limit) {
++    *negative = c == '-';
++    ++used;
++    c = used < limit ? in_get(in) : EOF;
+   }
+-
+-  int (*isvalid)(int) = base == 16 ? fn_isxdigit : base == 8 ? fn_isoctal : fn_isdigit;
+-
+-  bool result = false;
+-  if (isvalid(c)) {
+-    long long x = 0;
+-    do {
+-      int v = 0;
+-      c = toupper(c);
+-      if ('0' <= c && c <= '9')
+-        v = c - '0';
+-      else /*if ('A' <= c && c <= 'F')*/
+-        v = c - ('A' - 10);
+-      x = x * base + v;
+-      c = fgetc(fp);
+-    } while (isvalid(c));
+-    *p = negative ? -x : x;
+-    result = true;
++  bool any = false;
++  if (c == '0' && used < limit && (base == 0 || base == 16)) {
++    // "0x" prefix or a leading zero
++    ++used;
++    any = true;
++    int c2 = used < limit ? in_get(in) : EOF;
++    if ((c2 == 'x' || c2 == 'X') && used < limit) {
++      ++used;
++      base = 16;
++      any = false;  // "0x" alone is not a number; digits must follow
++      c = used < limit ? in_get(in) : EOF;
++      if (digit_value(c) >= 16) {
++        // Treat "0x" as just "0" followed by junk: best effort
++        in_unget(in, c);
++        *out = 0;
++        return true;
++      }
++    } else {
++      if (base == 0)
++        base = 8;
++      c = c2;
++    }
+   }
+-  ungetc(c, fp);
+-  return result;
+-}
+-
+-static bool read_store_llong(FILE *fp, int base, int long_count, VaList *va) {
+-  long long x;
+-  if (!read_llong(fp, base, &x))
+-    return false;
+-
+-  switch (long_count) {
+-  case 0:  { int *p = va_arg(va->ap, int*); *p = x; } break;
+-  case 1:  { long *p = va_arg(va->ap, long*); *p = x; } break;
+-  default:  { long long *p = va_arg(va->ap, long long*); *p = x; } break;
++  if (base == 0)
++    base = 10;
++  unsigned long long x = 0;
++  while (used < limit && c != EOF && digit_value(c) < base) {
++    x = x * (unsigned)base + (unsigned)digit_value(c);
++    any = true;
++    ++used;
++    c = used < limit ? in_get(in) : EOF;
+   }
+-  return true;
++  in_unget(in, c);
++  *out = x;
++  return any;
+ }
+ 
+-#ifndef __NO_FLONUM
+-static long double ipow(long double base, long x) {
+-  long double result = 1;
+-  long double a = base;
+-  for (; x > 0; x >>= 1, a *= a) {
+-    if ((x & 1) != 0)
+-      result *= a;
+-  }
+-  return result;
++static int lower_eq(int c, char want) {
++  return c != EOF && tolower(c) == want;
+ }
+ 
+-static bool read_ldouble(FILE *fp, long double *p) {
+-  int c = fgetc(fp);
+-  bool negative = false;
+-  switch (c) {
+-  case '-':
+-    negative = true;
+-    // Fallthrough.
+-  case '+':
+-    c = fgetc(fp);
+-    break;
+-  default:
+-    break;
+-  }
+-
+-  bool result = false;
+-  long double ld;
+-  switch (toupper(c)) {
+-  case 'I':  // inf?
+-    if (toupper(c = fgetc(fp)) == 'N' && toupper(c = fgetc(fp)) == 'F') {
+-      ld = INFINITY;
+-      result = true;
+-      c = EOF;
++// Collects a floating-point token (within width) into buf and converts it.
++static bool read_float(Input *in, int width, double *out) {
++  char buf[512];
++  int n = 0;
++  int limit = width > 0 && width < (int)sizeof(buf) - 1 ? width : (int)sizeof(buf) - 1;
++  int c = in_get(in);
++#define TAKE()  (buf[n++] = (char)c, c = n < limit ? in_get(in) : EOF)
++  if (c == '-' || c == '+')
++    TAKE();
++  if (lower_eq(c, 'i') || lower_eq(c, 'n')) {
++    const char *word = lower_eq(c, 'i') ? "infinity" : "nan";
++    int k = 0;
++    while (word[k] != '\0' && n < limit && lower_eq(c, word[k])) {
++      TAKE();
++      ++k;
+     }
+-    break;
+-  case 'N':  // nan?
+-    if (toupper(c = fgetc(fp)) == 'A' && toupper(c = fgetc(fp)) == 'N') {
+-      ld = NAN;
+-      result = true;
+-      c = EOF;
++    if (!(k == 3 || k == 8)) {
++      in_unget(in, c);
++      return false;
+     }
+-    break;
+-
+-  default:
+-    {
+-      long long x = 0, y = 0;
+-      int suborder = 0;
+-      if (isdigit(c)) {
+-        do {
+-          x = x * 10 + (c - '0');
+-          c = fgetc(fp);
+-        } while (isdigit(c));
+-        result = true;
+-      }
+-      if (c == '.') {
+-        for (;;) {
+-          c = fgetc(fp);
+-          if (!isdigit(c))
+-            break;
+-          y = y * 10 + (c - '0');
+-          ++suborder;
+-        }
+-        result = true;
+-      }
+-      if (result) {
+-        long long order = 0;
+-        if (toupper(c) == 'E') {
+-          if (!read_llong(fp, 10, &order))
+-            break;
+-          c = fgetc(fp);
+-        }
+-
+-        ld = x;
+-        if (suborder > 0)
+-          ld += (long double)y / ipow(10, suborder);
+-        if (order > 0)
+-          ld *= ipow(10, order);
+-        else if (order < 0)
+-          ld /= ipow(10, -order);
++  } else {
++    bool digits = false;
++    while (c != EOF && isdigit(c) && n < limit) {
++      TAKE();
++      digits = true;
++    }
++    if (c == '.' && n < limit) {
++      TAKE();
++      while (c != EOF && isdigit(c) && n < limit) {
++        TAKE();
++        digits = true;
+       }
+     }
+-    break;
+-  }
+-
+-  if (result)
+-    *p = negative ? -ld : ld;
+-  if (c != EOF)
+-    ungetc(c, fp);
+-  return result;
+-}
+-
+-static bool read_store_float(FILE *fp, int long_count, VaList *va) {
+-  long double x;
+-  if (!read_ldouble(fp, &x))
+-    return false;
+-
+-  switch (long_count) {
+-  case 0:  { float *p = va_arg(va->ap, float*); *p = x; } break;
+-  case 1:  { double *p = va_arg(va->ap, double*); *p = x; } break;
+-  default:  { long double *p = va_arg(va->ap, long double*); *p = x; } break;
++    if (!digits) {
++      in_unget(in, c);
++      return false;
++    }
++    if ((c == 'e' || c == 'E') && n < limit) {
++      TAKE();
++      if ((c == '-' || c == '+') && n < limit)
++        TAKE();
++      while (c != EOF && isdigit(c) && n < limit)
++        TAKE();
++    }
+   }
++#undef TAKE
++  in_unget(in, c);
++  buf[n] = '\0';
++  *out = strtod(buf, NULL);
+   return true;
+ }
+-#endif
+ 
+-static bool read_store_string(FILE *fp, int order, VaList *va) {
+-  char *p = va_arg(va->ap, char*);
+-  size_t n = order > 0 ? order : SIZE_MAX;
+-  for (size_t i = 0; i < n; ++i) {
+-    int c = fgetc(fp);
+-    if (c == '\0') {
+-      if (i == 0)
+-        return false;
+-      break;
+-    }
+-    if (isspace(c)) {
+-      ungetc(c, fp);
+-      break;
+-    }
+-    *p++ = c;
++static void store_signed(void *p, int size, long long v) {
++  switch (size) {
++  case 1: *(signed char*)p = (signed char)v; break;
++  case 2: *(short*)p = (short)v; break;
++  case 8: *(long long*)p = v; break;
++  default: *(int*)p = (int)v; break;
+   }
+-  *p = '\0';
+-  return true;
+ }
+ 
+ int vfscanf(FILE *restrict fp, const char *restrict format, va_list ap) {
++  Input in = {fp, 0, false};
+   int count = 0;
+-  int c;
+-  VaList va;
+-  va_copy(va.ap, ap);
+-  for (const unsigned char *p = (unsigned char*)format; (c = *p) != '\0'; ++p) {
+-    if ((c == '%' && (p[1] != '%' && p[1] != 'n')) || isspace(c)) {
+-      int c2;
+-      while (c2 = fgetc(fp), isspace(c2))
+-        ;
+-      ungetc(c2, fp);
+-      if (c != '%')
+-        continue;
++  bool converted_any = false;  // for EOF vs 0
++  const unsigned char *p = (const unsigned char*)format;
++
++#define INPUT_FAILURE()  return (count == 0 && !converted_any && in.eof) ? EOF : count
++
++  for (; *p != '\0'; ++p) {
++    if (isspace(*p)) {
++      skip_space(&in);
++      continue;
++    }
++    if (*p != '%' || p[1] == '%') {
++      if (*p == '%') {
++        ++p;
++        skip_space(&in);
++      }
++      int c = in_get(&in);
++      if (c == EOF)
++        INPUT_FAILURE();
++      if (c != *p) {
++        in_unget(&in, c);
++        return count;
++      }
++      continue;
+     }
+ 
+-    if (c == '%') {
+-      c = *(++p);
+-      if (c != '%') {
+-        int order = 0;
+-        if (isdigit(c)) {
+-          order = c - '0';
+-          while (c = *(++p), isdigit(c))
+-            order = order * 10 + (c - '0');
+-        }
++    // Conversion specification
++    ++p;
++    bool suppress = false;
++    if (*p == '*') {
++      suppress = true;
++      ++p;
++    }
++    int width = 0;
++    while (isdigit(*p))
++      width = width * 10 + (*p++ - '0');
++    // Length modifiers (long is 32-bit on wasm32)
++    int nl = 0, nh = 0;
++    bool is_longdouble = false, is_max = false;
++    for (;; ++p) {
++      if (*p == 'h') ++nh;
++      else if (*p == 'l') ++nl;
++      else if (*p == 'L' || *p == 'q') is_longdouble = true;
++      else if (*p == 'j') is_max = true;
++      else if (*p == 'z' || *p == 't') ;
++      else break;
++    }
++    bool is_long = nl >= 1;
++    int size = nh == 1 ? 2 : nh >= 2 ? 1 : (nl >= 2 || is_max || is_longdouble) ? 8 : 4;
++    int conv = *p;
++    if (conv == '\0')
++      break;
++
++    if (conv != 'c' && conv != '[' && conv != 'n')
++      skip_space(&in);
+ 
+-        int long_count = 0;
+-        for (;; c = *(++p)) {
+-          if (c == 'l')
+-            ++long_count;
+-          else if (c == 'L')
+-            long_count += 2;
++    switch (conv) {
++    case 'd': case 'i': case 'u': case 'o': case 'x': case 'X': case 'p':
++      {
++        int base = conv == 'i' ? 0 : conv == 'o' ? 8 : (conv == 'x' || conv == 'X' || conv == 'p') ? 16 : 10;
++        unsigned long long x;
++        bool neg;
++        if (!read_integer(&in, base, width, &x, &neg)) {
++          if (in.eof)
++            INPUT_FAILURE();
++          return count;
++        }
++        long long v = neg ? -(long long)x : (long long)x;
++        if (!suppress) {
++          if (conv == 'p')
++            *va_arg(ap, void**) = (void*)(uintptr_t)v;
+           else
+-            break;
++            store_signed(va_arg(ap, void*), size, v);
++          ++count;
+         }
+-
+-        switch (c) {
+-        case 'u':
+-          // No special handling for unsigned?
+-          // Fallthrough.
+-        case 'd': case 'i':
+-          if (read_store_llong(fp, 10, long_count, &va)) {
+-            ++count;
+-            continue;
+-          }
+-          break;
+-        case 'x':
+-          if (read_store_llong(fp, 16, long_count, &va)) {
+-            ++count;
+-            continue;
+-          }
+-          break;
+-        case 'o':
+-          if (read_store_llong(fp, 8, long_count, &va)) {
+-            ++count;
+-            continue;
+-          }
+-          break;
+-#ifndef __NO_FLONUM
+-        case 'f':
+-          if (read_store_float(fp, long_count, &va)) {
+-            ++count;
+-            continue;
+-          }
+-          break;
+-#endif
+-        case 's':
+-          if (read_store_string(fp, order, &va)) {
+-            ++count;
+-            continue;
+-          }
+-          break;
+-        case 'n':
+-          {
+-            long pos = ftell(fp);
+-            if (pos == -1) {
+-              // error
+-            } else {
+-              int *p = va_arg(va.ap, int*);
+-              *p = pos;
+-              // No need to increment the `count`.
+-              continue;
+-            }
++        converted_any = true;
++      }
++      break;
++    case 'f': case 'F': case 'e': case 'E': case 'g': case 'G': case 'a': case 'A':
++      {
++        double x;
++        if (!read_float(&in, width, &x)) {
++          if (in.eof)
++            INPUT_FAILURE();
++          return count;
++        }
++        if (!suppress) {
++          if (is_longdouble)
++            *va_arg(ap, long double*) = x;
++          else if (is_long)
++            *va_arg(ap, double*) = x;
++          else
++            *va_arg(ap, float*) = (float)x;
++          ++count;
++        }
++        converted_any = true;
++      }
++      break;
++    case 's':
++      {
++        char *dst = suppress ? NULL : va_arg(ap, char*);
++        int limit = width > 0 ? width : INT32_MAX;
++        int n = 0;
++        int c;
++        while (n < limit && (c = in_get(&in)) != EOF && !isspace(c)) {
++          if (dst != NULL)
++            dst[n] = (char)c;
++          ++n;
++        }
++        if (n < limit)
++          in_unget(&in, c);
++        if (n == 0)
++          INPUT_FAILURE();
++        if (dst != NULL) {
++          dst[n] = '\0';
++          ++count;
++        }
++        converted_any = true;
++      }
++      break;
++    case 'c':
++      {
++        char *dst = suppress ? NULL : va_arg(ap, char*);
++        int want = width > 0 ? width : 1;
++        int n = 0;
++        int c;
++        while (n < want && (c = in_get(&in)) != EOF) {
++          if (dst != NULL)
++            dst[n] = (char)c;
++          ++n;
++        }
++        if (n < want)
++          INPUT_FAILURE();
++        if (dst != NULL)
++          ++count;
++        converted_any = true;
++      }
++      break;
++    case '[':
++      {
++        // Scanset: [abc], [^\n], []abc], ranges like [a-z]
++        bool set[256];
++        bool invert = false;
++        ++p;
++        if (*p == '^') {
++          invert = true;
++          ++p;
++        }
++        memset(set, 0, sizeof(set));
++        if (*p == ']') {
++          set[']'] = true;
++          ++p;
++        }
++        while (*p != '\0' && *p != ']') {
++          if (p[1] == '-' && p[2] != ']' && p[2] != '\0') {
++            for (int ch = p[0]; ch <= p[2]; ++ch)
++              set[ch] = true;
++            p += 3;
++          } else {
++            set[*p++] = true;
+           }
+-          break;
+-        default:  // Unsupported.
+-          break;
+         }
+-        // Error.
+-        return count;
++        if (*p == '\0')
++          --p;  // unterminated: stop at the end of the format
++        char *dst = suppress ? NULL : va_arg(ap, char*);
++        int limit = width > 0 ? width : INT32_MAX;
++        int n = 0;
++        int c = EOF;
++        while (n < limit && (c = in_get(&in)) != EOF && set[(unsigned char)c] != invert) {
++          if (dst != NULL)
++            dst[n] = (char)c;
++          ++n;
++        }
++        if (n < limit)
++          in_unget(&in, c);
++        if (n == 0) {
++          if (in.eof)
++            INPUT_FAILURE();
++          return count;
++        }
++        if (dst != NULL) {
++          dst[n] = '\0';
++          ++count;
++        }
++        converted_any = true;
+       }
+-    }
+-
+-    int in = fgetc(fp);
+-    if (c != in) {
+-      ungetc(in, fp);
+       break;
++    case 'n':
++      if (!suppress)
++        store_signed(va_arg(ap, void*), size, in.nread);
++      break;
++    default:
++      return count;  // unknown conversion
+     }
+   }
++#undef INPUT_FAILURE
+   return count;
+ }
+diff --git a/libsrc/stdlib/strtod.c b/libsrc/stdlib/strtod.c
+index 6ff80ff..d53affa 100644
+--- a/libsrc/stdlib/strtod.c
++++ b/libsrc/stdlib/strtod.c
+@@ -4,6 +4,7 @@
+ #include "string.h"
+ #include "stdint.h"
+ #include "../math/_ieee.h"
++#include "errno.h"
+ 
+ extern bool _parse_sign(const char **pp);
+ 
+@@ -30,26 +31,6 @@ static double strtod_i(const char *p, const char **pp) {
+   return result;
+ }
+ 
+-static double strtod_i2(const char *p, const char **pp) {
+-  const char *q = p, *r = p;
+-  for (;;) {
+-    char c = *q;
+-    if (!(c >= '0' && c <= '9'))
+-      break;
+-    ++q;
+-    if (c != '0')
+-      r = q;
+-  }
+-
+-  double result = 0;
+-  for (size_t order = r - p; r > p; --order) {
+-    char c = *(--r);
+-    result += (c - '0') / ipow(10, order);
+-  }
+-  *pp = q;
+-  return result;
+-}
+-
+ #define strtod_h(p, pp)  strtoull(p, (char**)(pp), 16)
+ 
+ static double strtod_hex(const char *p, const char **pp) {
+@@ -78,6 +59,246 @@ static double strtod_hex(const char *p, const char **pp) {
+   return result;
+ }
+ 
++// Correctly rounded decimal -> double (port of Go's strconv "decimal" algorithm):
++// the decimal digits are scaled by powers of two until they fall in [0.5, 1),
++// then the 53-bit mantissa is taken with round-half-to-even.
++
++#define DEC_MAX_DIGITS  (800)
++
++typedef struct {
++  unsigned char d[DEC_MAX_DIGITS];  // digits, big-endian, values 0..9
++  int nd;    // number of digits used
++  int dp;    // decimal point
++  bool trunc;  // discarded nonzero digits beyond d[:nd]
++} Decimal;
++
++static void dec_trim(Decimal *a) {
++  while (a->nd > 0 && a->d[a->nd - 1] == 0)
++    --a->nd;
++  if (a->nd == 0)
++    a->dp = 0;
++}
++
++static void dec_right_shift(Decimal *a, unsigned k) {
++  int r = 0, w = 0;
++  uint64_t n = 0;
++  for (; (n >> k) == 0; ++r) {
++    if (r >= a->nd) {
++      if (n == 0) {
++        a->nd = 0;
++        return;
++      }
++      while ((n >> k) == 0) {
++        n *= 10;
++        ++r;
++      }
++      break;
++    }
++    n = n * 10 + a->d[r];
++  }
++  a->dp -= r - 1;
++  uint64_t mask = ((uint64_t)1 << k) - 1;
++  for (; r < a->nd; ++r) {
++    unsigned c = a->d[r];
++    unsigned dig = (unsigned)(n >> k);
++    n &= mask;
++    a->d[w++] = (unsigned char)dig;
++    n = n * 10 + c;
++  }
++  while (n > 0) {
++    unsigned dig = (unsigned)(n >> k);
++    n &= mask;
++    if (w < DEC_MAX_DIGITS)
++      a->d[w++] = (unsigned char)dig;
++    else if (dig > 0)
++      a->trunc = true;
++    n *= 10;
++  }
++  a->nd = w;
++  dec_trim(a);
++}
++
++static void dec_left_shift(Decimal *a, unsigned k) {
++  unsigned char tmp[DEC_MAX_DIGITS + 32];
++  int w = (int)sizeof(tmp);
++  uint64_t n = 0;
++  for (int r = a->nd - 1; r >= 0; --r) {
++    n += (uint64_t)a->d[r] << k;
++    tmp[--w] = (unsigned char)(n % 10);
++    n /= 10;
++  }
++  while (n > 0) {
++    tmp[--w] = (unsigned char)(n % 10);
++    n /= 10;
++  }
++  int len = (int)sizeof(tmp) - w;
++  a->dp += len - a->nd;
++  if (len > DEC_MAX_DIGITS) {
++    for (int i = DEC_MAX_DIGITS; i < len; ++i)
++      if (tmp[w + i] != 0)
++        a->trunc = true;
++    len = DEC_MAX_DIGITS;
++  }
++  memcpy(a->d, tmp + w, len);
++  a->nd = len;
++  dec_trim(a);
++}
++
++static void dec_shift(Decimal *a, int k) {
++  const int MAX_SHIFT = 60;
++  if (a->nd == 0)
++    return;
++  if (k > 0) {
++    for (; k > MAX_SHIFT; k -= MAX_SHIFT)
++      dec_left_shift(a, MAX_SHIFT);
++    dec_left_shift(a, (unsigned)k);
++  } else if (k < 0) {
++    for (; k < -MAX_SHIFT; k += MAX_SHIFT)
++      dec_right_shift(a, MAX_SHIFT);
++    dec_right_shift(a, (unsigned)-k);
++  }
++}
++
++static bool dec_should_round_up(const Decimal *a, int nd) {
++  if (nd < 0 || nd >= a->nd)
++    return false;
++  if (a->d[nd] == 5 && nd + 1 == a->nd) {  // exactly halfway: round to even
++    if (a->trunc)
++      return true;
++    return nd > 0 && (a->d[nd - 1] % 2) != 0;
++  }
++  return a->d[nd] >= 5;
++}
++
++static uint64_t dec_rounded_integer(const Decimal *a) {
++  if (a->dp > 20)
++    return ~(uint64_t)0;
++  int i;
++  uint64_t n = 0;
++  for (i = 0; i < a->dp && i < a->nd; ++i)
++    n = n * 10 + a->d[i];
++  for (; i < a->dp; ++i)
++    n *= 10;
++  if (dec_should_round_up(a, a->dp))
++    ++n;
++  return n;
++}
++
++static double dec_to_double(Decimal *a, bool *overflow) {
++  static const int POWTAB[] = {1, 3, 6, 9, 13, 16, 19, 23, 26};
++  const int NPOW = (int)(sizeof(POWTAB) / sizeof(POWTAB[0]));
++  const int BIAS = -1023, MANTBITS = 52;
++  int exp = 0;
++  uint64_t mant;
++  union { double d; uint64_t u; } bits;
++  *overflow = false;
++
++  if (a->nd == 0) {
++    mant = 0;
++    exp = BIAS;
++    goto out;
++  }
++  if (a->dp > 310)
++    goto overflow;
++  if (a->dp < -330) {
++    mant = 0;
++    exp = BIAS;
++    goto out;
++  }
++  while (a->dp > 0) {
++    int n = a->dp >= NPOW ? 27 : POWTAB[a->dp];
++    dec_shift(a, -n);
++    exp += n;
++  }
++  while (a->dp < 0 || (a->dp == 0 && a->d[0] < 5)) {
++    int n = -a->dp >= NPOW ? 27 : POWTAB[-a->dp];
++    dec_shift(a, n);
++    exp -= n;
++  }
++  // [0.5, 1) -> [1, 2)
++  --exp;
++  if (exp < BIAS + 1) {  // denormal
++    int n = BIAS + 1 - exp;
++    dec_shift(a, -n);
++    exp += n;
++  }
++  if (exp - BIAS >= (1 << 11) - 1)
++    goto overflow;
++  dec_shift(a, 1 + MANTBITS);
++  mant = dec_rounded_integer(a);
++  if (mant == ((uint64_t)2 << MANTBITS)) {  // rounding carried
++    mant >>= 1;
++    ++exp;
++    if (exp - BIAS >= (1 << 11) - 1)
++      goto overflow;
++  }
++  if ((mant & ((uint64_t)1 << MANTBITS)) == 0)
++    exp = BIAS;
++  goto out;
++
++overflow:
++  mant = 0;
++  exp = (1 << 11) - 1 + BIAS;
++  *overflow = true;
++
++out:
++  bits.u = (mant & (((uint64_t)1 << MANTBITS) - 1)) | ((uint64_t)((exp - BIAS) & 0x7ff) << MANTBITS);
++  return bits.d;
++}
++
++// Parse "digits[.digits][e[+-]digits]" at p. Returns the end, or p if no digits.
++static const char *strtod_decimal(const char *p, double *result) {
++  static Decimal a;  // large: keep it off the (small) stack
++  a.nd = 0;
++  a.dp = 0;
++  a.trunc = false;
++  bool saw_dot = false, saw_digits = false;
++  const char *s = p;
++  for (;; ++s) {
++    char c = *s;
++    if (c == '.') {
++      if (saw_dot)
++        break;
++      saw_dot = true;
++      a.dp = a.nd;
++      continue;
++    }
++    if (c < '0' || c > '9')
++      break;
++    saw_digits = true;
++    if (c == '0' && a.nd == 0) {  // leading zeros
++      --a.dp;
++      continue;
++    }
++    if (a.nd < DEC_MAX_DIGITS)
++      a.d[a.nd++] = (unsigned char)(c - '0');
++    else if (c != '0')
++      a.trunc = true;
++  }
++  if (!saw_digits)
++    return p;
++  if (!saw_dot)
++    a.dp = a.nd;
++  if (tolower(*s) == 'e') {
++    const char *q = s + 1;
++    bool eneg = _parse_sign(&q);
++    if (*q >= '0' && *q <= '9') {
++      long e = 0;
++      for (; *q >= '0' && *q <= '9'; ++q)
++        if (e < 100000)
++          e = e * 10 + (*q - '0');
++      a.dp += eneg ? -(int)e : (int)e;
++      s = q;
++    }
++  }
++  dec_trim(&a);
++  bool overflow;
++  *result = dec_to_double(&a, &overflow);
++  if (overflow)
++    errno = ERANGE;
++  return s;
++}
++
+ double strtod(const char *restrict p_, char **restrict pp) {
+   const char *p = p_;
+   const char *orig = p;
+@@ -113,26 +334,8 @@ double strtod(const char *restrict p_, char **restrict pp) {
+     result = strtod_hex(p, &p);
+   } else {
+     op = p;
+-    result = strtod_i(p, &p);
+-    if (*p == '.') {
+-      const char *q = p + 1;
+-      double frac = strtod_i2(q, &p);
+-      result += frac;
+-    }
+-    if (tolower(*p) == 'e') {
+-      const char *q = p + 1;
+-      bool neg2 = _parse_sign(&q);
+-      double order = strtod_i(q, &p);
+-      if (q == p) {
+-        // Error.
+-      } else {
+-        double k = ipow(10, order);
+-        if (neg2)
+-          result /= k;
+-        else
+-          result *= k;
+-      }
+-    }
++    result = 0;
++    p = strtod_decimal(p, &result);
+   }
+   if (p == op)
+     p = orig;

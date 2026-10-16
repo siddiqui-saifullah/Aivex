@@ -9,6 +9,27 @@ import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
 type Id = Types.ObjectId | string;
 
+/** Starter for C projects: compiled and run in the browser. */
+const C_STARTER: Record<string, string> = {
+    "main.c": `#include <stdio.h>
+
+int main(void) {
+    char name[50];
+    int n;
+
+    printf("What's your name? ");
+    scanf("%49s", name);
+    printf("Hello, %s! How many squares should I print? ", name);
+    scanf("%d", &n);
+
+    for (int i = 1; i <= n; i++) {
+        printf("%d x %d = %d\\n", i, i, i * i);
+    }
+    return 0;
+}
+`,
+};
+
 /** Starter for HTML/CSS/JS projects: previews instantly, no install. */
 const STATIC_SITE_STARTER: Record<string, string> = {
     "index.html": `<!DOCTYPE html>
@@ -89,6 +110,7 @@ export const createProject = async ({ name, userId, stack }: { name: string; use
             files: toStoredFiles({
                 ".aivex": "//Aivex System File - Do not delete",
                 ...(normalizedStack === "htmlcssjs" ? STATIC_SITE_STARTER : {}),
+                ...(normalizedStack === "c" ? C_STARTER : {}),
             })
         });
         const obj = project.toObject();

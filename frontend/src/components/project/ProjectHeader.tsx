@@ -1,4 +1,5 @@
-import { Users, X } from "lucide-react";
+import { GraduationCap, Users, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import type { ProjectDetails } from "../../types";
 import { plural } from "../../utils/plural";
 
@@ -16,8 +17,21 @@ const ProjectHeader = ({ project, isSidePanelOpen, onToggleSidePanel }: ProjectH
         <span className="text-sm font-medium text-white truncate">
           {project?.name}
         </span>
-        <span className="text-xs text-zinc-500">
-          {plural(project?.users?.length || 0, "member")}
+        <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+          {project?.classroom ? (
+            project.isOwner ? (
+              <span className="flex items-center gap-1 text-teal-300/80">
+                <GraduationCap size={12} /> Class project
+              </span>
+            ) : (
+              // The teacher is viewing a student's work
+              <Link to={`/classes/${project.classroom}`} className="flex items-center gap-1 text-teal-300 hover:underline">
+                <GraduationCap size={12} /> Student work · back to class
+              </Link>
+            )
+          ) : (
+            plural(project?.users?.length || 0, "member")
+          )}
         </span>
       </div>
 

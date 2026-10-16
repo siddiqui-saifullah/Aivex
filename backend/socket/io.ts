@@ -29,3 +29,14 @@ export const disconnectUserFromProject = async (projectId: string, userId: strin
         }
     }
 };
+
+/** Who is connected to each project's room right now (user ids). */
+export const onlineUsersByProject = async (projectIds: string[]) => {
+    const online = new Map<string, Set<string>>();
+    if (!ioInstance) return online;
+    await Promise.all(projectIds.map(async (id) => {
+        const sockets = await ioInstance!.in(id).fetchSockets();
+        online.set(id, new Set(sockets.map((s) => String(s.data.user?.id))));
+    }));
+    return online;
+};

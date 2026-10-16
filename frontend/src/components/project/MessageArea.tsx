@@ -58,7 +58,7 @@ const MessageArea = ({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* -------------------- MESSAGE LIST -------------------- */}
-      <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto no-scrollbar pt-2">
+      <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto no-scrollbar pt-3 pb-2">
         {/* Existing Messages */}
         {groupedMessages.length > 0 ? (
           groupedMessages.map((group) => (

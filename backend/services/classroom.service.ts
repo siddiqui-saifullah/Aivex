@@ -1,0 +1,223 @@
+import mongoose, { type Types } from "mongoose";
+import Classroom from "../models/classroom.model.js";
+import Project from "../models/project.model.js";
+import userModel from "../models/user.model.js";
+import AppError from "../errors/AppError.js";
+import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
+import { normalizeStack, starterFilesFor } from "./project.service.js";
+import { onlineUsersByProject } from "../socket/io.js";
+
+type Id = Types.ObjectId | string;
+
+// No 0/O/1/I/L: codes get read out loud and written on boards
+const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const CODE_LENGTH = 6;
+
+const generateCode = () =>
+    Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
+
+const isDuplicateKey = (err: unknown) => (err as { code?: number }).code === 11000;
+
+const assertId = (id: string, label: string) => {
+    if (!mongoose.Types.ObjectId.isValid(id)) throw new AppError(`Invalid ${label}`, 400);
+};
+
+/* -------------------------------------------------------------------------- */
+/* CREATE                                                                     */
+/* -------------------------------------------------------------------------- */
+export const createClassroom = async ({ teacherId, name, stack, templateProjectId }: {
+    teacherId: Id;
+    name: string;
+    stack?: unknown;
+    /** Copy the starter files from one of the teacher's projects. */
+    templateProjectId?: string;
+}) => {
+    const trimmed = name?.trim();
+    if (!trimmed) throw new AppError("Class name is required", 400);
+    if (trimmed.length > 60) throw new AppError("Class name is too long", 400);
+
+    let normalizedStack = normalizeStack(stack ?? "c");
+    let starter = starterFilesFor(normalizedStack);
+
+    if (templateProjectId) {
+        assertId(templateProjectId, "template project");
+        const template = await Project.findOne({ _id: templateProjectId, users: teacherId })
+            .select("files stack")
+            .lean();
+        if (!template) throw new AppError("Template project not found", 404);
+        starter = fromStoredFiles(template.files);
+        normalizedStack = template.stack;
+    }
+
+    // Retry on the (rare) code collision
+    for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+            const classroom = await Classroom.create({
+                name: trimmed,
+                teacher: teacherId,
+                code: generateCode(),
+                stack: normalizedStack,
+                starterFiles: toStoredFiles(starter),
+                students: [],
+            });
+            return { _id: classroom._id, name: classroom.name, code: classroom.code, stack: classroom.stack };
+        } catch (err) {
+            if (!isDuplicateKey(err)) throw err;
+        }
+    }
+    throw new AppError("Could not create the class, please try again", 500);
+};
+
+/* -------------------------------------------------------------------------- */
+/* LIST                                                                       */
+/* -------------------------------------------------------------------------- */
+export const listClassrooms = async ({ userId }: { userId: Id }) => {
+    const classes = await Classroom.find({ $or: [{ teacher: userId }, { "students.user": userId }] })
+        .select("name code stack teacher students createdAt")
+        .populate("teacher", "name username")
+        .sort({ createdAt: -1 })
+        .lean();
+
+    return classes.map((c) => {
+        const teacher = c.teacher as unknown as { _id: Types.ObjectId; name?: string; username?: string };
+        const isTeacher = String(teacher._id) === String(userId);
+        const mine = c.students.find((s) => String(s.user) === String(userId));
+        return {
+            _id: c._id,
+            name: c.name,
+            stack: c.stack,
+            role: isTeacher ? "teacher" : "student",
+            // Only the teacher hands out the code
+            code: isTeacher ? c.code : undefined,
+            teacher: { name: teacher.name, username: teacher.username },
+            studentCount: c.students.length,
+            projectId: mine?.project,
+            createdAt: c.createdAt,
+        };
+    });
+};
+
+/* -------------------------------------------------------------------------- */
+/* DETAILS (teacher: every student's project and who is online)               */
+/* -------------------------------------------------------------------------- */
+export const getClassroom = async ({ classroomId, userId }: { classroomId: string; userId: Id }) => {
+    assertId(classroomId, "class id");
+    const classroom = await Classroom.findById(classroomId)
+        .select("-starterFiles")
+        .populate("teacher", "name username")
+        .populate("students.user", "name username")
+        .lean();
+    if (!classroom) throw new AppError("Class not found", 404);
+
+    const teacher = classroom.teacher as unknown as { _id: Types.ObjectId; name?: string; username?: string };
+    const isTeacher = String(teacher._id) === String(userId);
+    const mine = classroom.students.find((s) => {
+        const u = s.user as unknown as { _id: Types.ObjectId };
+        return String(u._id) === String(userId);
+    });
+    if (!isTeacher && !mine) throw new AppError("You are not in this class", 403);
+
+    const base = {
+        _id: classroom._id,
+        name: classroom.name,
+        stack: classroom.stack,
+        role: isTeacher ? "teacher" : "student",
+        teacher: { name: teacher.name, username: teacher.username },
+        studentCount: classroom.students.length,
+    };
+
+    if (!isTeacher) {
+        return { ...base, projectId: mine!.project };
+    }
+
+    const projectIds = classroom.students.map((s) => s.project);
+    const [projects, online] = await Promise.all([
+        Project.find({ _id: { $in: projectIds } }).select("updatedAt name").lean(),
+        onlineUsersByProject(projectIds.map(String)),
+    ]);
+    const projectById = new Map(projects.map((p) => [String(p._id), p]));
+
+    return {
+        ...base,
+        code: classroom.code,
+        students: classroom.students.map((s) => {
+            const u = s.user as unknown as { _id: Types.ObjectId; name?: string; username?: string };
+            const project = projectById.get(String(s.project));
+            return {
+                userId: u._id,
+                name: u.name,
+                username: u.username,
+                projectId: s.project,
+                joinedAt: s.joinedAt,
+                lastActive: project?.updatedAt ?? s.joinedAt,
+                online: online.get(String(s.project))?.has(String(u._id)) ?? false,
+            };
+        }),
+    };
+};
+
+/* -------------------------------------------------------------------------- */
+/* JOIN (creates the student's own project from the starter files)            */
+/* -------------------------------------------------------------------------- */
+export const joinClassroom = async ({ code, userId }: { code: string; userId: Id }) => {
+    const normalized = String(code ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (normalized.length !== CODE_LENGTH) throw new AppError("Enter the 6-character class code", 400);
+
+    const classroom = await Classroom.findOne({ code: normalized }).lean();
+    if (!classroom) throw new AppError("No class found with this code", 404);
+    if (String(classroom.teacher) === String(userId)) {
+        throw new AppError("You are the teacher of this class", 400);
+    }
+
+    const existing = classroom.students.find((s) => String(s.user) === String(userId));
+    if (existing) return { classroomId: classroom._id, projectId: existing.project, alreadyJoined: true };
+
+    const student = await userModel.findById(userId).select("username name").lean();
+    if (!student) throw new AppError("User not found", 404);
+
+    // Project names are unique site-wide; usernames are too
+    const baseName = `${classroom.name} · ${student.username}`;
+    let project = null;
+    for (let attempt = 0; attempt < 3 && !project; attempt++) {
+        try {
+            project = await Project.create({
+                name: attempt === 0 ? baseName : `${baseName} ${Math.random().toString(36).slice(2, 6)}`,
+                owner: userId,
+                users: [userId, classroom.teacher],
+                stack: classroom.stack,
+                files: toStoredFiles(fromStoredFiles(classroom.starterFiles)),
+                classroom: classroom._id,
+            });
+        } catch (err) {
+            if (!isDuplicateKey(err)) throw err;
+        }
+    }
+    if (!project) throw new AppError("Could not create your project, please try again", 500);
+
+    // Atomic: a double click must not enrol the student twice
+    const result = await Classroom.updateOne(
+        { _id: classroom._id, "students.user": { $ne: userId } },
+        { $push: { students: { user: userId, project: project._id, joinedAt: new Date() } } },
+    );
+    if (result.modifiedCount === 0) {
+        await project.deleteOne();
+        const fresh = await Classroom.findById(classroom._id).select("students").lean();
+        const mine = fresh?.students.find((s) => String(s.user) === String(userId));
+        if (!mine) throw new AppError("Could not join the class, please try again", 500);
+        return { classroomId: classroom._id, projectId: mine.project, alreadyJoined: true };
+    }
+
+    return { classroomId: classroom._id, projectId: project._id, alreadyJoined: false };
+};
+
+/* -------------------------------------------------------------------------- */
+/* DELETE (students keep their projects)                                      */
+/* -------------------------------------------------------------------------- */
+export const deleteClassroom = async ({ classroomId, userId }: { classroomId: string; userId: Id }) => {
+    assertId(classroomId, "class id");
+    const classroom = await Classroom.findById(classroomId).select("teacher").lean();
+    if (!classroom) throw new AppError("Class not found", 404);
+    if (String(classroom.teacher) !== String(userId)) throw new AppError("Only the teacher can delete the class", 403);
+    await Project.updateMany({ classroom: classroomId }, { $set: { classroom: null } });
+    await Classroom.deleteOne({ _id: classroomId });
+};

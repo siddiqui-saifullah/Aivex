@@ -15,6 +15,7 @@ import {
 } from "y-protocols/awareness";
 import type { Socket } from "socket.io-client";
 import type { FlatFileTree } from "../types";
+import { colorFor } from "../utils/userColor";
 
 const REMOTE = "remote";
 const LOCAL = "local";
@@ -37,13 +38,6 @@ interface CollabHandlers {
   onRemoteSaved: (username: string) => void;
 }
 
-const COLORS = ["#f472b6", "#60a5fa", "#fbbf24", "#a78bfa", "#34d399", "#f87171", "#22d3ee", "#fb923c"];
-
-export const colorFor = (id: string) => {
-  let hash = 0;
-  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return COLORS[hash % COLORS.length];
-};
 
 /** Replace a Y.Text's contents, touching only the changed middle part. */
 const setText = (text: Y.Text, next: string) => {

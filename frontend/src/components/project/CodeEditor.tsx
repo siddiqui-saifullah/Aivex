@@ -233,6 +233,7 @@ const CodeEditor = ({
   }
 
   const fileName = activeFile.split("/").pop();
+  const liveBound = Boolean(collab?.getText(activeFile));
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-black">
@@ -402,7 +403,9 @@ const CodeEditor = ({
           height="100%"
           theme="vs-dark"
           language={language}
-          value={code}
+          // With live editing the shared document drives the model (y-monaco);
+          // a controlled value could lag behind it and overwrite fresh edits
+          {...(liveBound ? { defaultValue: code } : { value: code })}
           path={`file:///${activeFile}`}
           onChange={(value) => onChange(value ?? "")}
           onMount={handleMount}

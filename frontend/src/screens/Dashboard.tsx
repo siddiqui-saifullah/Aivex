@@ -4,6 +4,7 @@ import { Plus, Search } from "lucide-react";
 import Button from "../components/ui/Button";
 import ProjectList from "../components/dashboard/ProjectList";
 import ProjectFilter, { type ProjectFilterId } from "../components/dashboard/ProjectFilter";
+import ClassroomSection from "../components/dashboard/ClassroomSection";
 
 // Lazy load modals - they're only shown on specific user actions
 const CreateProjectModal = lazy(() =>
@@ -78,7 +79,10 @@ export default function Dashboard() {
   /* -------------------------------------------------------------------------- */
   // The list endpoint doesn't return `isOwner`, so compare owner ids
   const query = search.trim().toLowerCase();
+  const isMine = (p: (typeof projects)[number]) => String(p.ownerId) === String(user?._id);
   const filteredProjects = projects
+    // Students' class projects live on the class page, not in the teacher's list
+    .filter((p) => !p.classroom || isMine(p))
     .filter((p) => filter !== "my-projects" || String(p.ownerId) === String(user?._id))
     .filter((p) => !query || p.name.toLowerCase().includes(query))
     // Most recently worked-on first
@@ -192,6 +196,8 @@ export default function Dashboard() {
             </Button>
           )}
         </div>
+
+        <ClassroomSection ownProjects={projects.filter((p) => isMine(p) && !p.classroom)} />
 
         {/* Filter */}
         <div className="flex flex-col-reverse sm:flex-row sm:items-end justify-between gap-4 mb-8 border-b border-white/10">

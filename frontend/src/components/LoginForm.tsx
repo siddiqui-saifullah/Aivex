@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { loginUser } from "../services/user.service";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import InputField from "./ui/InputField";
@@ -15,6 +15,10 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
   const [password, setPassword] = useState("");
 
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // Back to where the user was going (e.g. a class invite link); same-site paths only
+  const next = params.get("next");
+  const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
   const { setUser } = useUser();
   const { success, error } = useToast();
 
@@ -28,7 +32,7 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
       success("Login successful!");
-      navigate("/dashboard");
+      navigate(target, { replace: true });
     } catch (err) {
       error(getErrorMessage(err, "Login failed"));
     } finally {
@@ -104,7 +108,7 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
               : "text-indigo-500 hover:text-indigo-400"
           }`}
         >
-          <Link to="/register">Register</Link>
+          <Link to={next ? `/register?next=${encodeURIComponent(next)}` : "/register"}>Register</Link>
         </span>
       </p>
     </form>

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Eye, EyeOff, Mail, Lock, User, AtSign } from "lucide-react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { registerUser } from "../services/user.service";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import InputField from "./ui/InputField";
@@ -19,6 +19,9 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
 
   const { setUser } = useUser();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const next = params.get("next");
+  const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
   const { success, error } = useToast();
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -31,7 +34,7 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
       success("Account created successfully!");
-      navigate("/");
+      navigate(target, { replace: true });
     } catch (err) {
       error(getErrorMessage(err, "Registration failed"));
     } finally {
@@ -103,7 +106,7 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
       >
         Already have an account?{" "}
         <Link
-          to="/login"
+          to={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
           className={`font-semibold ${
             theme === "dark"
               ? "text-teal-400 hover:text-teal-300"

@@ -36,4 +36,6 @@ export type CWorkerEvent =
   | { type: "warnings"; id: number; text: string }
   | { type: "output"; id: number; stream: "stdout" | "stderr"; text: string }
   | { type: "input-request"; id: number }
+  /** The program is sleeping for `ms` (doesn't count toward the CPU limit). */
+  | { type: "sleep"; id: number; ms: number }
   | { type: "done"; id: number; result: CRunResult };

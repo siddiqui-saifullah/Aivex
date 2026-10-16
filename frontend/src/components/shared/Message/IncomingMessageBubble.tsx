@@ -2,12 +2,21 @@ import { useState } from "react";
 import { Bot, Check, Copy, FileCode2 } from "lucide-react";
 import MarkdownRenderer from "../MarkdownRenderer";
 import MentionText from "../MentionText";
+import { colorFor } from "../../../utils/userColor";
 import type { BubblePosition, BubbleProps } from "./types";
 
 interface IncomingMessageBubbleProps extends BubbleProps {
   username?: string;
   showUsername?: boolean;
 }
+
+const TypingDots = () => (
+  <span className="inline-flex items-center gap-1 py-1" aria-label="typing">
+    <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:-0.3s]" />
+    <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:-0.15s]" />
+    <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" />
+  </span>
+);
 
 const IncomingMessageBubble = ({
   username,
@@ -36,37 +45,54 @@ const IncomingMessageBubble = ({
   };
 
   const formattedTime = timestamp
-    ? new Date(timestamp).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      })
+    ? new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : "";
+  // The last bubble of a group always shows its time (no hover on phones)
+  const isLastInGroup = position === "end" || position === "single";
 
-  // Bubble shape based on group position
+  const name = isAI ? "Vex AI" : username || "Unknown";
+  const accent = isAI ? "#5eead4" : colorFor(name);
+
   const radiusMap: Record<BubblePosition, string> = {
-    single: "rounded-2xl rounded-bl-sm",
-    start: "rounded-2xl rounded-bl-sm",
-    middle: "rounded-2xl rounded-tl-sm rounded-bl-sm",
-    end: "rounded-2xl rounded-tl-sm",
+    single: "rounded-2xl rounded-tl-md",
+    start: "rounded-2xl rounded-tl-md rounded-bl-md",
+    middle: "rounded-2xl rounded-l-md",
+    end: "rounded-2xl rounded-tl-md",
   };
 
   return (
-    <div className="flex w-full justify-start pl-2">
+    <div className="flex w-full items-start gap-2 pl-2 pr-4">
+      {/* Avatar on the first message of a group, a spacer after */}
+      <div className="w-7 shrink-0">
+        {showUsername && (
+          isAI ? (
+            <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30">
+              <Bot size={15} />
+            </div>
+          ) : (
+            <div
+              className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-black"
+              style={{ backgroundColor: accent }}
+              aria-hidden
+            >
+              {name.charAt(0).toUpperCase()}
+            </div>
+          )
+        )}
+      </div>
+
       <div
         className={`
-          group relative px-4 py-2.5
-          text-sm leading-snug
-          min-w-[3.5rem] ${isAI ? "max-w-[92%] bg-zinc-900 border border-teal-500/15" : "max-w-[85%] bg-zinc-800/90"}
-          text-white
+          group relative min-w-0 px-3.5 py-2
+          text-[14px] leading-[1.5] text-zinc-100
+          ${isAI ? "w-full max-w-full bg-zinc-900 ring-1 ring-teal-500/20" : "max-w-[88%] bg-zinc-800"}
           overflow-hidden wrap-break-word
           ${radiusMap[position]}
         `}
       >
-        {/* Username — only at group start */}
         {showUsername && (
-          <div className={`mb-1 flex items-center gap-1.5 text-[11px] font-medium ${isAI ? "text-teal-300" : "text-zinc-400"}`}>
-            {isAI && <Bot size={12} />}
-            {isAI ? "Vex AI" : username || "Unknown"}
+          <div className="mb-0.5 text-[12px] font-semibold" style={{ color: accent }}>
+            {name}
           </div>
         )}
 
@@ -75,67 +101,51 @@ const IncomingMessageBubble = ({
             onClick={copyText}
             title={copied ? "Copied" : "Copy reply"}
             aria-label="Copy reply"
-            className="absolute right-1.5 top-1.5 rounded p-1 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-zinc-200 focus:opacity-100 group-hover:opacity-100"
+            className="absolute right-1.5 top-1.5 rounded-md p-1 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-zinc-200 focus:opacity-100 group-hover:opacity-100"
           >
-            {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+            {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
           </button>
         )}
 
-        {/* Content */}
-        <div>
-          {isAI && text ? (
-            <MarkdownRenderer content={text} />
-          ) : (
-            <span className="whitespace-pre-wrap">
-              <MentionText text={text ?? ""} tone="incoming" />
-            </span>
-          )}
+        {isTyping ? (
+          <TypingDots />
+        ) : isAI && text ? (
+          <MarkdownRenderer content={text} />
+        ) : (
+          <span className="whitespace-pre-wrap">
+            <MentionText text={text ?? ""} tone="incoming" />
+          </span>
+        )}
 
-          {/* Generated files */}
-          {fileCount > 0 && (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs text-zinc-300">
-              <FileCode2 size={14} className="text-teal-400 shrink-0" />
-              <span className="flex-1">
-                {fileCount} file{fileCount === 1 ? "" : "s"} generated
-              </span>
-              {onApplyFiles && (
-                <button
-                  onClick={onApplyFiles}
-                  className="rounded px-2 py-0.5 font-medium text-teal-300 hover:bg-teal-500/10 transition"
-                >
-                  Apply
-                </button>
-              )}
-            </div>
-          )}
+        {isStreaming && <TypingDots />}
 
-          {/* Typing / Streaming */}
-          {(isTyping || isStreaming) && (
-            <span className="inline-flex items-center ml-2">
-              <span className="flex gap-1">
-                <span className="w-1 h-1 rounded-full bg-current animate-pulse" />
-                <span className="w-1 h-1 rounded-full bg-current animate-pulse delay-150" />
-                <span className="w-1 h-1 rounded-full bg-current animate-pulse delay-300" />
-              </span>
+        {/* Generated files */}
+        {fileCount > 0 && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-zinc-200">
+            <FileCode2 size={14} className="shrink-0 text-teal-400" />
+            <span className="flex-1">
+              {fileCount} file{fileCount === 1 ? "" : "s"} updated
             </span>
-          )}
+            {onApplyFiles && (
+              <button
+                onClick={onApplyFiles}
+                className="rounded px-2 py-0.5 font-medium text-teal-300 transition hover:bg-teal-500/10"
+              >
+                Apply
+              </button>
+            )}
+          </div>
+        )}
 
-          {/* Time — WhatsApp style */}
-          {timestamp && (
-            <span
-              className="
-                ml-2 inline-block
-                text-[11px] text-zinc-500
-                opacity-0 group-hover:opacity-100
-                transition-opacity duration-150
-                translate-y-[3px]
-                select-none
-              "
-            >
-              {formattedTime}
-            </span>
-          )}
-        </div>
+        {timestamp && !isTyping && (
+          <span
+            className={`float-right ml-3 mt-1 select-none text-[11px] leading-4 text-zinc-400 ${
+              isLastInGroup ? "" : "opacity-0 transition-opacity group-hover:opacity-100"
+            }`}
+          >
+            {formattedTime}
+          </span>
+        )}
       </div>
     </div>
   );

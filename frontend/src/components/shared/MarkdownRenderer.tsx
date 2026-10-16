@@ -59,7 +59,7 @@ const CodeBlock = ({ className, children }: { className?: string; children?: Rea
 
   if (!match) {
     return (
-      <code className="bg-black/50 text-teal-300 px-1.5 py-0.5 rounded font-mono text-sm break-all ">
+      <code className="bg-black/50 text-teal-200 px-1.5 py-0.5 rounded font-mono text-[12.5px] break-words">
         {children}
       </code>
     );
@@ -80,6 +80,9 @@ const CodeBlock = ({ className, children }: { className?: string; children?: Rea
           overflowX: "auto",
           maxWidth: "100%",
           whiteSpace: "pre",
+          margin: "0.5rem 0",
+          fontSize: "12.5px",
+          lineHeight: 1.55,
         }}
       >
         {code}
@@ -93,7 +96,7 @@ const MarkdownRenderer = ({ content }: { content?: string | null }) => {
 
   return (
     <Markdown
-      className="text-zinc-200 w-full overflow-hidden"
+      className="text-zinc-100 w-full overflow-hidden"
       options={{
         overrides: {
           /* - CODE BLOCKS - */
@@ -130,11 +133,28 @@ const MarkdownRenderer = ({ content }: { content?: string | null }) => {
           },
 
           /* ---------- TEXT ---------- */
-          p: {
+          // Tailwind's reset strips list markers, heading sizes and link colours: restore them
+          p: { props: { className: "my-1.5 first:mt-0 last:mb-0 break-words" } },
+          h1: { props: { className: "mt-3 mb-1.5 first:mt-0 text-[16px] font-semibold text-white" } },
+          h2: { props: { className: "mt-3 mb-1.5 first:mt-0 text-[15px] font-semibold text-white" } },
+          h3: { props: { className: "mt-3 mb-1 first:mt-0 text-[14px] font-semibold text-white" } },
+          h4: { props: { className: "mt-2 mb-1 first:mt-0 text-[14px] font-semibold text-zinc-200" } },
+          ul: { props: { className: "my-1.5 list-disc space-y-1 pl-5 marker:text-teal-400" } },
+          ol: { props: { className: "my-1.5 list-decimal space-y-1 pl-5 marker:text-teal-400 marker:font-medium" } },
+          li: { props: { className: "pl-0.5" } },
+          strong: { props: { className: "font-semibold text-white" } },
+          em: { props: { className: "italic text-zinc-200" } },
+          blockquote: {
+            props: { className: "my-2 border-l-2 border-teal-500/60 bg-teal-500/5 py-1 pl-3 pr-2 text-zinc-200 rounded-r" },
+          },
+          a: {
             props: {
-              className: "text-sm leading-relaxed break-words mb-2",
+              className: "text-teal-300 underline decoration-teal-500/40 underline-offset-2 hover:text-teal-200",
+              target: "_blank",
+              rel: "noopener noreferrer",
             },
           },
+          hr: { props: { className: "my-3 border-white/10" } },
         },
       }}
     >

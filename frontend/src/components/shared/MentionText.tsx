@@ -13,8 +13,8 @@ const TONE_CLASSES: Record<Tone, { ai: string; user: string }> = {
     user: "rounded px-1 font-medium text-sky-300 bg-sky-500/15",
   },
   outgoing: {
-    ai: "rounded px-1 font-semibold bg-black/20",
-    user: "rounded px-1 font-semibold bg-black/10 underline decoration-black/30 underline-offset-2",
+    ai: "rounded px-1 font-semibold bg-white/20 text-white",
+    user: "rounded px-1 font-semibold bg-white/15 text-white",
   },
 };
 

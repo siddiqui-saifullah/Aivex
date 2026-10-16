@@ -4,6 +4,7 @@ import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
 import issueModel from "../models/issue.model.js";
+import Classroom from "../models/classroom.model.js";
 import type { IssueReport } from "../types/index.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
@@ -88,30 +89,37 @@ button.addEventListener("click", () => {
 /* -------------------------------------------------------------------------- */
 /* CREATE PROJECT                                                             */
 /* -------------------------------------------------------------------------- */
+/** "Next.js" -> "nextjs", "Node.js" -> "nodejs", "HTML/CSS/JS" -> "htmlcssjs"; throws if unknown. */
+export const normalizeStack = (stack: unknown): ProjectStack => {
+    const normalized = typeof stack === "string"
+        ? stack.toLowerCase().replace(/[.\-\s/]/g, "")
+        : "nodejs";
+    if (!PROJECT_STACKS.includes(normalized as ProjectStack)) {
+        throw new AppError(`Stack must be one of: ${PROJECT_STACKS.join(", ")}`, 400);
+    }
+    return normalized as ProjectStack;
+};
+
+/** Files a new project of `stack` starts with. */
+export const starterFilesFor = (stack: ProjectStack): Record<string, string> => ({
+    ".aivex": "//Aivex System File - Do not delete",
+    ...(stack === "htmlcssjs" ? STATIC_SITE_STARTER : {}),
+    ...(stack === "c" ? C_STARTER : {}),
+});
+
 export const createProject = async ({ name, userId, stack }: { name: string; userId: Id; stack?: unknown }) => {
     if (!name) throw new AppError("Project name required", 400);
     if (!userId) throw new AppError("UserId required", 400);
 
-    // "Next.js" -> "nextjs", "Node.js" -> "nodejs", "HTML/CSS/JS" -> "htmlcssjs"
-    const normalizedStack = typeof stack === "string"
-        ? stack.toLowerCase().replace(/[.\-\s/]/g, "")
-        : "nodejs";
-
-    if (!PROJECT_STACKS.includes(normalizedStack as ProjectStack)) {
-        throw new AppError(`Stack must be one of: ${PROJECT_STACKS.join(", ")}`, 400);
-    }
+    const normalizedStack = normalizeStack(stack);
 
     try {
         const project = await Project.create({
             name,
             owner: userId,
             users: [userId],
-            stack: normalizedStack as ProjectStack,
-            files: toStoredFiles({
-                ".aivex": "//Aivex System File - Do not delete",
-                ...(normalizedStack === "htmlcssjs" ? STATIC_SITE_STARTER : {}),
-                ...(normalizedStack === "c" ? C_STARTER : {}),
-            })
+            stack: normalizedStack,
+            files: toStoredFiles(starterFilesFor(normalizedStack)),
         });
         const obj = project.toObject();
         return { ...obj, files: fromStoredFiles(obj.files) };
@@ -178,6 +186,11 @@ export const deleteProject = async ({ projectId, userId }: { projectId: string; 
     }
 
     await chatService.deleteChatsByProjectId({ projectId });
+
+    // A deleted class project also leaves its class
+    if (project.classroom) {
+        await Classroom.updateOne({ _id: project.classroom }, { $pull: { students: { project: project._id } } });
+    }
 
     await project.deleteOne();
 };

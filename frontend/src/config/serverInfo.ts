@@ -4,7 +4,7 @@
  * Newer features (prompt enhancer, message delete, code runner, ...) need
  * at least this API version.
  */
-export const REQUIRED_API_VERSION = 2;
+export const REQUIRED_API_VERSION = 3;
 
 type Listener = (outdated: boolean) => void;
 

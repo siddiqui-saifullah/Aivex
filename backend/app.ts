@@ -5,6 +5,7 @@ import userRoutes from './routes/user.routes.js';
 import projectRoutes from './routes/project.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import runnerRoutes from './routes/runner.routes.js';
+import classroomRoutes from './routes/classroom.routes.js';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import corsMiddleware from "./config/cors.js";
@@ -13,7 +14,7 @@ import { errorHandler } from "./middleware/error.middleware.js"
 connect();
 
 /** Bump when the frontend starts depending on new endpoints/socket events. */
-export const API_VERSION = 2;
+export const API_VERSION = 3;
 
 const app: Express = express();
 
@@ -38,6 +39,7 @@ app.use('/users', userRoutes);
 app.use('/projects', projectRoutes);
 app.use('/ai', aiRoutes);
 app.use('/run', runnerRoutes);
+app.use('/classrooms', classroomRoutes);
 
 app.use(errorHandler);
 

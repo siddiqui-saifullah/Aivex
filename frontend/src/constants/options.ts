@@ -2,7 +2,7 @@
  * Application options and choices
  */
 
-export const TECH_STACKS = ['HTML/CSS/JS', 'React', 'Next.js', 'Node.js'] as const;
+export const TECH_STACKS = ['HTML/CSS/JS', 'C', 'React', 'Next.js', 'Node.js'] as const;
 
 export type TechStack = (typeof TECH_STACKS)[number];
 
@@ -20,4 +20,5 @@ export const STACK_FORMATTER: Record<string, string> = {
     'nodejs': 'Node.js',
     'nextjs': 'Next.js',
     'htmlcssjs': 'HTML/CSS/JS',
+    'c': 'C',
 };

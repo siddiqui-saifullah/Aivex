@@ -70,14 +70,36 @@ REDIS_PORT=6379
 REDIS_PASSWORD=...
 PORT=3000
 
-# Optional: cloud code runner for C, C++, Java, Python, Go, Rust, ...
+# Optional: run C and C++ in a local Docker sandbox (packages/aivex-cc)
+CC_RUNNER=docker
+CC_IMAGE=gcc:14                       # optional, image with gcc/g++
+CC_MAX_CONCURRENT=4                   # optional, parallel runs
+CC_DOCKER_RUNTIME=                    # optional, e.g. runsc (gVisor)
+CC_WORK_DIR=                          # optional, see packages/aivex-cc/README.md
+
+# Optional: cloud code runner for Java, Python, Go, Rust, ... (and C/C++ without CC_RUNNER)
 PISTON_URL=http://your-piston-host:2000
 PISTON_TOKEN=                         # only if your Piston instance requires one
 ```
 
 ## Code Runner (C, C++, Java, Python, ...)
 
-Node.js projects run in the browser (WebContainer). Other languages are sent
+Node.js projects run in the browser (WebContainer). Other languages run on the
+server through `POST /run`.
+
+### C and C++: built-in Docker sandbox
+
+With `CC_RUNNER=docker`, C and C++ compile with GCC inside a locked-down
+container on the backend's own host, using the
+[`aivex-cc`](../packages/aivex-cc/README.md) package. The container has no
+network, a read-only filesystem, and limits on memory, CPU, processes and time.
+The backend host needs Docker, and the backend user needs access to the Docker
+daemon. That access is root-equivalent on the host, so use a dedicated
+VM/server. The `gcc:14` image is pulled when the server starts.
+
+### Other languages: Piston
+
+Other languages (and C/C++ when `CC_RUNNER` is not set) are sent
 to a [Piston](https://github.com/engineer-man/piston) sandbox through
 `POST /run`. The public Piston API now requires a token, so self-host it for
 free, e.g. on an Oracle Cloud "Always Free" VM (or any Linux box with Docker):

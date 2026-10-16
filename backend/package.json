@@ -19,6 +19,7 @@
     "@google/genai": "^1.38.0",
     "@openrouter/sdk": "^0.5.1",
     "@types/bcrypt": "^6.0.0",
+    "aivex-cc": "file:../packages/aivex-cc",
     "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",

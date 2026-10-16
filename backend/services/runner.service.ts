@@ -1,10 +1,15 @@
+import { Compiler, CompilerError, type Stage } from "aivex-cc";
 import AppError from "../errors/AppError.js";
 
 /**
- * Runs C, C++, Java, Python, ... by forwarding to a Piston-compatible
- * sandbox (https://github.com/engineer-man/piston). Point PISTON_URL at a
- * self-hosted instance (recommended: free VM + `docker run ghcr.io/engineer-man/piston`)
- * and optionally set PISTON_TOKEN if the instance requires an Authorization header.
+ * Runs C, C++, Java, Python, ... on the server.
+ *
+ * - C and C++ compile in a local Docker sandbox (the aivex-cc package) when
+ *   CC_RUNNER=docker is set.
+ * - Everything else (and C/C++ without CC_RUNNER) is forwarded to a
+ *   Piston-compatible sandbox (https://github.com/engineer-man/piston). Point
+ *   PISTON_URL at a self-hosted instance and optionally set PISTON_TOKEN if the
+ *   instance requires an Authorization header.
  *
  * Node.js projects keep running in the browser (WebContainer); this service is
  * only for languages a browser can't run.
@@ -57,7 +62,67 @@ interface PistonStage {
     signal?: string | null;
 }
 
-export const isRunnerConfigured = () => Boolean(process.env.PISTON_URL);
+const usesDockerCompiler = (language: RunnerLanguage) =>
+    process.env.CC_RUNNER === "docker" && (language === "c" || language === "cpp");
+
+export const isRunnerConfigured = () =>
+    Boolean(process.env.PISTON_URL) || process.env.CC_RUNNER === "docker";
+
+let compiler: Compiler | null = null;
+
+const getCompiler = () => {
+    compiler ??= new Compiler({
+        image: process.env.CC_IMAGE || undefined,
+        runtime: process.env.CC_DOCKER_RUNTIME || undefined,
+        workRoot: process.env.CC_WORK_DIR || undefined,
+        maxConcurrent: Number(process.env.CC_MAX_CONCURRENT) || undefined,
+        limits: { maxFiles: MAX_FILES, maxSourceBytes: MAX_SOURCE_BYTES, maxStdinBytes: MAX_STDIN_BYTES },
+    });
+    return compiler;
+};
+
+/** Pull the compiler image at startup so the first run isn't slow. */
+export const warmUpRunner = async () => {
+    if (process.env.CC_RUNNER !== "docker") return;
+    try {
+        await getCompiler().prepare();
+        console.log(`C/C++ runner ready (gcc ${await getCompiler().getVersion()})`);
+    } catch (err) {
+        console.error("C/C++ runner unavailable:", (err as Error).message);
+    }
+};
+
+const COMPILER_ERROR_STATUS = {
+    INVALID_INPUT: 400,
+    BUSY: 503,
+    DOCKER_UNAVAILABLE: 503,
+    ABORTED: 499,
+} as const;
+
+const toRunStage = ({ stdout, stderr, code, signal }: Stage): RunStage => ({ stdout, stderr, code, signal });
+
+const runWithDocker = async (language: "c" | "cpp", files: RunFile[], stdin: string): Promise<RunResult> => {
+    try {
+        const result = await getCompiler().run({ language, files, stdin });
+        return {
+            language,
+            version: result.version,
+            compile: toRunStage(result.compile),
+            // Compile failed: the client shows the compile errors and ignores this
+            run: result.run ? toRunStage(result.run) : { stdout: "", stderr: "", code: null, signal: null },
+            durationMs: result.durationMs,
+        };
+    } catch (err) {
+        if (err instanceof CompilerError) {
+            if (err.code === "DOCKER_UNAVAILABLE") console.error("C/C++ runner:", err.message);
+            throw new AppError(
+                err.code === "DOCKER_UNAVAILABLE" ? "The C/C++ compiler is unavailable right now" : err.message,
+                COMPILER_ERROR_STATUS[err.code],
+            );
+        }
+        throw err;
+    }
+};
 
 const toStage = (stage: PistonStage): RunStage => ({
     stdout: stage.stdout ?? "",
@@ -71,11 +136,6 @@ export const runCode = async ({ language, files, stdin = "" }: {
     files: unknown;
     stdin?: unknown;
 }): Promise<RunResult> => {
-    const baseUrl = process.env.PISTON_URL;
-    if (!baseUrl) {
-        throw new AppError("Code runner is not configured on this server (PISTON_URL missing)", 503);
-    }
-
     if (typeof language !== "string" || !(language in RUNNER_LANGUAGES)) {
         throw new AppError("Unsupported language", 400);
     }
@@ -99,6 +159,15 @@ export const runCode = async ({ language, files, stdin = "" }: {
 
     if (typeof stdin !== "string" || Buffer.byteLength(stdin) > MAX_STDIN_BYTES) {
         throw new AppError("Input (stdin) is too large", 413);
+    }
+
+    if (usesDockerCompiler(language as RunnerLanguage)) {
+        return runWithDocker(language as "c" | "cpp", cleanFiles, stdin);
+    }
+
+    const baseUrl = process.env.PISTON_URL;
+    if (!baseUrl) {
+        throw new AppError("Code runner is not configured on this server (PISTON_URL missing)", 503);
     }
 
     const controller = new AbortController();

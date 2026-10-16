@@ -1,0 +1,45 @@
+{
+  "name": "aivex-cc",
+  "version": "0.1.0",
+  "description": "Compile and run untrusted C and C++ code inside a locked-down Docker sandbox",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "aivex-cc": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "prepare": "npm install --no-save --ignore-scripts --include=dev --no-audit --no-fund && npm run build",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "c",
+    "c++",
+    "cpp",
+    "compiler",
+    "gcc",
+    "sandbox",
+    "docker",
+    "code-runner"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

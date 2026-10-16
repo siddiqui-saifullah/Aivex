@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { MoreVertical, Code2, Clock, User, Crown, Atom, Server, Triangle, Globe } from "lucide-react";
+import { MoreVertical, Code2, Clock, User, Crown, Atom, Server, Triangle, Globe, Terminal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { plural } from "../../../utils/plural";
 import ProjectMenu from "./ProjectMenu";
@@ -13,6 +13,7 @@ const STACK_STYLE: Record<string, { icon: LucideIcon; className: string }> = {
   react: { icon: Atom, className: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
   nextjs: { icon: Triangle, className: "text-zinc-100 bg-white/5 border-white/15" },
   nodejs: { icon: Server, className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+  c: { icon: Terminal, className: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
 };
 
 type ProjectAction = (projectId: string, projectName: string) => void;

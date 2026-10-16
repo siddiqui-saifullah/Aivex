@@ -20,8 +20,10 @@ interface CodeEditorProps {
   handleRun: () => void;
   handleUpdate: () => void;
   handleStop: () => void;
-  /** Running a C/C++/Java/... file on the server sandbox. */
+  /** Running a C/C++/Java/... file (C in the browser, others on the server sandbox). */
   onRunFile: () => void;
+  /** Stop the running file (in-browser C). */
+  onStopFile?: () => void;
   isRunningFile?: boolean;
   isSaving?: boolean;
   runProgress?: string;
@@ -70,6 +72,7 @@ const CodeEditor = ({
   handleUpdate,
   handleStop,
   onRunFile,
+  onStopFile,
   isRunningFile = false,
   isSaving = false,
   runProgress = "",
@@ -162,7 +165,7 @@ const CodeEditor = ({
         <div className="space-y-1.5">
           <p className="text-zinc-300 font-medium">No file open</p>
           <p className="text-xs text-zinc-600 max-w-sm">
-            HTML/CSS/JS sites preview instantly · Node.js runs in your browser · C, C++, Java, Python and more run on the cloud runner
+            HTML/CSS/JS sites preview instantly · C and Node.js run in your browser · C++, Java, Python and more run on the cloud runner
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
@@ -316,8 +319,17 @@ const CodeEditor = ({
               )}
             </div>
           )}
-          {runnerLanguage ? (
-            /* C / C++ / Java / Python ... -> cloud runner */
+          {runnerLanguage && isRunningFile && runnerLanguage.id === "c" && onStopFile ? (
+            /* In-browser C can be stopped (infinite loop, waiting for input...) */
+            <button
+              onClick={onStopFile}
+              title="Stop the program"
+              className="flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium bg-red-500/90 text-white hover:bg-red-400 transition"
+            >
+              <Square size={14} /> Stop
+            </button>
+          ) : runnerLanguage ? (
+            /* C runs in the browser; C++ / Java / Python ... on the cloud runner */
             <button
               disabled={isRunningFile}
               onClick={onRunFile}

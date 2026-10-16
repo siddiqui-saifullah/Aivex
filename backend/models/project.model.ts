@@ -1,7 +1,7 @@
 import mongoose, { type Types } from "mongoose";
 import type { StoredFile } from "../utils/fileStore.js";
 
-export const PROJECT_STACKS = ["react", "nodejs", "nextjs", "htmlcssjs"] as const;
+export const PROJECT_STACKS = ["react", "nodejs", "nextjs", "htmlcssjs", "c"] as const;
 export type ProjectStack = (typeof PROJECT_STACKS)[number];
 
 export interface IProject {

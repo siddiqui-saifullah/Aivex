@@ -10,6 +10,7 @@ import Project from "../models/project.model.js";
 import ChatMessage from "../models/chat.model.js";
 import * as Y from "yjs";
 import * as collab from "./collab.js";
+import { handleRunner, type RunClientEvents, type RunServerEvents } from "./runner.js";
 
 interface ChatSender {
     id: string;
@@ -29,7 +30,7 @@ interface ProjectMessagePayload {
     timestamp: Date | undefined;
 }
 
-interface ServerToClientEvents {
+interface ServerToClientEvents extends RunServerEvents {
     "user-joined": (data: { userId: string; username: string; timestamp: number }) => void;
     "user-typing": (data: { userId: string; username: string; isTyping: boolean }) => void;
     "project-message": (data: ProjectMessagePayload) => void;
@@ -46,7 +47,7 @@ type SendAck = Ack<{ ok: true; id: string; timestamp?: Date } | { ok: false; err
 type DeleteAck = Ack<{ ok: boolean; error?: string }>;
 type CollabJoinAck = Ack<{ ok: true; update: Uint8Array; stateVector: Uint8Array } | { ok: false; error: string }>;
 
-interface ClientToServerEvents {
+interface ClientToServerEvents extends RunClientEvents {
     "project-message": (data: { message?: unknown; context?: unknown }, ack?: SendAck) => void;
     "user-typing": (data: { isTyping?: boolean }) => void;
     "delete-message": (data: { id?: unknown }, ack?: DeleteAck) => void;
@@ -109,6 +110,7 @@ const handleUserConnection = (socket: AppSocket, io: AppServer) => {
     });
 
     handleCollab(socket, roomId);
+    handleRunner(socket);
 
     // Handle user disconnect
     socket.on("disconnect", () => {

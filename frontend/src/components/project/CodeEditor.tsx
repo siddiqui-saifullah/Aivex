@@ -22,6 +22,8 @@ interface CodeEditorProps {
   handleStop: () => void;
   /** Running a C/C++/Java/... file on the server sandbox. */
   onRunFile: () => void;
+  /** Stop the running program (only available for live runs). */
+  onStopFile?: () => void;
   isRunningFile?: boolean;
   isSaving?: boolean;
   runProgress?: string;
@@ -70,6 +72,7 @@ const CodeEditor = ({
   handleUpdate,
   handleStop,
   onRunFile,
+  onStopFile,
   isRunningFile = false,
   isSaving = false,
   runProgress = "",
@@ -318,15 +321,26 @@ const CodeEditor = ({
           )}
           {runnerLanguage ? (
             /* C / C++ / Java / Python ... -> cloud runner */
-            <button
-              disabled={isRunningFile}
-              onClick={onRunFile}
-              title={`Run ${fileName} (${MOD}+Enter)`}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium bg-teal-500/90 text-black hover:bg-teal-400 transition disabled:opacity-60"
-            >
-              {isRunningFile ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-              {isRunningFile ? "Running…" : `Run ${runnerLanguage.label}`}
-            </button>
+            isRunningFile && onStopFile ? (
+              <button
+                onClick={onStopFile}
+                title="Stop the program"
+                className="flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium bg-red-500/90 text-white hover:bg-red-400 transition"
+              >
+                <Square size={12} fill="currentColor" />
+                Stop
+              </button>
+            ) : (
+              <button
+                disabled={isRunningFile}
+                onClick={onRunFile}
+                title={`Run ${fileName} (${MOD}+Enter)`}
+                className="flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium bg-teal-500/90 text-black hover:bg-teal-400 transition disabled:opacity-60"
+              >
+                {isRunningFile ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                {isRunningFile ? "Running…" : `Run ${runnerLanguage.label}`}
+              </button>
+            )
           ) : (
             <>
               {/* Static sites: the main button already opens the preview */}

@@ -97,6 +97,10 @@ The backend host needs Docker, and the backend user needs access to the Docker
 daemon. That access is root-equivalent on the host, so use a dedicated
 VM/server. The `gcc:14` image is pulled when the server starts.
 
+The editor runs code over the project socket (`run:start` / `run:stop`, see
+`socket/runner.ts`), so program output appears live and runs can be stopped.
+It falls back to `POST /run` when the socket isn't connected.
+
 ### Other languages: Piston
 
 Other languages (and C/C++ when `CC_RUNNER` is not set) are sent

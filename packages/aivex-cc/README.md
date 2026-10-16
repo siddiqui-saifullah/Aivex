@@ -18,7 +18,9 @@ const result = await cc.run({
     ],
     stdin: "5\n",
     flags: ["-std=c++17", "-O0"],        // optional, allowlisted
+    onCompiled: (compile) => {},         // optional, before the program starts
     onStdout: (chunk) => process.stdout.write(chunk),   // optional streaming
+    signal: abortController.signal,      // optional, abort to stop the run
 });
 
 result.compile;   // { stdout, stderr, code, signal, timedOut, truncated, durationMs }

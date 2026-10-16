@@ -195,6 +195,7 @@ export class Compiler {
                 this.compile(language, dir, files.map((f) => f.name), flags, signal),
             ]);
 
+            options.onCompiled?.(compile);
             if (compile.code !== 0) {
                 return { language, version, compile, durationMs: Date.now() - started };
             }

@@ -1,5 +1,6 @@
 import { Compiler, CompilerError, type Stage } from "aivex-cc";
 import AppError from "../errors/AppError.js";
+import { createLimiter } from "../middleware/rateLimit.middleware.js";
 
 /**
  * Runs C, C++, Java, Python, ... on the server.
@@ -30,6 +31,9 @@ export const RUNNER_LANGUAGES = {
 
 export type RunnerLanguage = keyof typeof RUNNER_LANGUAGES;
 
+/** 20 runs per user per minute, shared by POST /run and socket runs. */
+export const runLimiter = createLimiter({ windowMs: 60_000, max: 20 });
+
 const MAX_FILES = 20;
 const MAX_SOURCE_BYTES = 200 * 1024;
 const MAX_STDIN_BYTES = 64 * 1024;
@@ -45,6 +49,19 @@ export interface RunStage {
     stderr: string;
     code: number | null;
     signal: string | null;
+    /** Hit the time limit (only reported by the Docker runner). */
+    timedOut?: boolean;
+}
+
+/** Live progress for socket runs. Piston runs report everything at the end. */
+export interface RunHooks {
+    onCompiled?: (compile: RunStage) => void;
+    onStdout?: (chunk: string) => void;
+    onStderr?: (chunk: string) => void;
+    /** Abort to stop the run. */
+    signal?: AbortSignal;
+    /** True when output was delivered through onStdout/onStderr as it happened. */
+    streamed?: boolean;
 }
 
 export interface RunResult {
@@ -92,18 +109,35 @@ export const warmUpRunner = async () => {
     }
 };
 
+/** AppError status for runs stopped by the user (nginx's "client closed request"). */
+export const RUN_STOPPED_STATUS = 499;
+
 const COMPILER_ERROR_STATUS = {
     INVALID_INPUT: 400,
     BUSY: 503,
     DOCKER_UNAVAILABLE: 503,
-    ABORTED: 499,
+    ABORTED: RUN_STOPPED_STATUS,
 } as const;
 
-const toRunStage = ({ stdout, stderr, code, signal }: Stage): RunStage => ({ stdout, stderr, code, signal });
+const toRunStage = ({ stdout, stderr, code, signal, timedOut }: Stage): RunStage =>
+    ({ stdout, stderr, code, signal, timedOut });
 
-const runWithDocker = async (language: "c" | "cpp", files: RunFile[], stdin: string): Promise<RunResult> => {
+const runWithDocker = async (
+    language: "c" | "cpp",
+    files: RunFile[],
+    stdin: string,
+    hooks: RunHooks,
+): Promise<RunResult> => {
     try {
-        const result = await getCompiler().run({ language, files, stdin });
+        const result = await getCompiler().run({
+            language,
+            files,
+            stdin,
+            signal: hooks.signal,
+            onCompiled: hooks.onCompiled && ((stage) => hooks.onCompiled!(toRunStage(stage))),
+            onStdout: hooks.onStdout,
+            onStderr: hooks.onStderr,
+        });
         return {
             language,
             version: result.version,
@@ -135,7 +169,7 @@ export const runCode = async ({ language, files, stdin = "" }: {
     language: unknown;
     files: unknown;
     stdin?: unknown;
-}): Promise<RunResult> => {
+}, hooks: RunHooks = {}): Promise<RunResult> => {
     if (typeof language !== "string" || !(language in RUNNER_LANGUAGES)) {
         throw new AppError("Unsupported language", 400);
     }
@@ -162,7 +196,8 @@ export const runCode = async ({ language, files, stdin = "" }: {
     }
 
     if (usesDockerCompiler(language as RunnerLanguage)) {
-        return runWithDocker(language as "c" | "cpp", cleanFiles, stdin);
+        hooks.streamed = true;
+        return runWithDocker(language as "c" | "cpp", cleanFiles, stdin, hooks);
     }
 
     const baseUrl = process.env.PISTON_URL;
@@ -172,6 +207,8 @@ export const runCode = async ({ language, files, stdin = "" }: {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const stop = () => controller.abort();
+    hooks.signal?.addEventListener("abort", stop, { once: true });
     const started = Date.now();
 
     try {
@@ -213,11 +250,15 @@ export const runCode = async ({ language, files, stdin = "" }: {
         };
     } catch (err) {
         if (err instanceof AppError) throw err;
+        if (hooks.signal?.aborted) {
+            throw new AppError("Run was stopped", RUN_STOPPED_STATUS);
+        }
         if ((err as Error).name === "AbortError") {
             throw new AppError("Code runner timed out", 504);
         }
         throw new AppError("Code runner is unreachable", 502);
     } finally {
         clearTimeout(timer);
+        hooks.signal?.removeEventListener("abort", stop);
     }
 };

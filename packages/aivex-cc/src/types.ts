@@ -57,6 +57,8 @@ export interface RunOptions {
     stdin?: string;
     /** Extra compiler flags, e.g. ["-O0", "-g"]. Only flags from a safe allowlist are accepted. */
     flags?: string[];
+    /** Called once compilation finishes, before the program starts. */
+    onCompiled?: (compile: Stage) => void;
     /** Called with chunks of program output as they arrive. */
     onStdout?: (chunk: string) => void;
     onStderr?: (chunk: string) => void;

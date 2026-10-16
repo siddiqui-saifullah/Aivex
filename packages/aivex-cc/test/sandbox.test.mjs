@@ -87,10 +87,20 @@ int main(void) { for (;;) { char *p = malloc(16 << 20); if (!p) return 7; memset
 });
 
 test("streams program output", { skip }, async () => {
-    let streamed = "";
+    const events = [];
     const result = await c(`#include <stdio.h>\nint main(void) { puts("a"); puts("b"); }`, {
-        onStdout: (chunk) => { streamed += chunk; },
+        onCompiled: (stage) => events.push(`compiled:${stage.code}`),
+        onStdout: (chunk) => events.push(chunk),
     });
-    assert.equal(streamed, "a\nb\n");
+    assert.deepEqual([events[0], events.slice(1).join("")], ["compiled:0", "a\nb\n"]);
     assert.equal(result.run.stdout, "a\nb\n");
+});
+
+test("stops a run when aborted", { skip }, async () => {
+    const controller = new AbortController();
+    const run = c(`#include <stdio.h>\nint main(void) { for (;;) {} }`, {
+        signal: controller.signal,
+        onCompiled: () => setTimeout(() => controller.abort(), 300),
+    });
+    await assert.rejects(run, (err) => err.code === "ABORTED");
 });

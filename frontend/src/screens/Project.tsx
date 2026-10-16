@@ -28,7 +28,14 @@ import { CollabSession, type Peer } from "../config/collab";
 import OutputPanel, { type OutputKind, type OutputLine } from "../components/project/OutputPanel";
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
-import { getRunnerLanguage, runFile } from "../services/runner.service";
+import {
+  getRunnerLanguage,
+  runFile,
+  streamRunFile,
+  RunStoppedError,
+  type OutputStream,
+  type RunStage,
+} from "../services/runner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
 import { downloadProjectZip } from "../utils/downloadZip";
@@ -40,6 +47,7 @@ import {
   removeMessageListener,
   disconnectSocket,
   sendWithAck,
+  getSocket,
 } from "../config/socket";
 import { useUser } from "../context/user.context";
 import { useToast } from "../context/toast.context";
@@ -226,6 +234,11 @@ const Project = () => {
   const [isRunningFile, setIsRunningFile] = useState(false);
   const [revealOutputKey, setRevealOutputKey] = useState(0);
   const outputIdRef = useRef(0);
+  /** Stops the program currently streaming over the socket. */
+  const stopRunFileRef = useRef<(() => void) | null>(null);
+  const [canStopRunFile, setCanStopRunFile] = useState(false);
+  /** Streamed output can end mid-line: the unfinished line of each stream, shown and updated in place. */
+  const openLinesRef = useRef<Partial<Record<OutputStream, { id: number; raw: string }>>>({});
 
   // Node project run shown as a step loader (raw logs kept behind "Show logs")
   const [nodeRun, setNodeRun] = useState<{
@@ -336,6 +349,42 @@ const Project = () => {
         ...prev,
         ...lines.map((text) => ({ id: outputIdRef.current++, text, kind })),
       ];
+      return next.length > MAX_OUTPUT_LINES ? next.slice(-MAX_OUTPUT_LINES) : next;
+    });
+  }, []);
+
+  /** Append live program output, joining lines that arrive split across chunks. */
+  const appendStream = useCallback((chunk: string, kind: OutputStream) => {
+    const open = openLinesRef.current[kind];
+    // The first piece continues the open line (if any); the last one is
+    // unfinished ("" when the chunk ends with a newline)
+    const pieces = ((open?.raw ?? "") + chunk).split("\n");
+    const rest = pieces.pop() ?? "";
+    const clean = (raw: string) => toTerminalLines(raw).pop() ?? "";
+
+    let replaced: { id: number; text: string } | null = null;
+    let nextOpen: { id: number; raw: string } | undefined;
+    if (open) {
+      if (pieces.length) {
+        replaced = { id: open.id, text: clean(pieces.shift()!) };
+      } else {
+        replaced = { id: open.id, text: clean(rest) };
+        nextOpen = { id: open.id, raw: rest };
+      }
+    }
+    const added: OutputLine[] = pieces.map((raw) => ({ id: outputIdRef.current++, text: clean(raw), kind }));
+    if (rest && !nextOpen) {
+      const id = outputIdRef.current++;
+      added.push({ id, text: clean(rest), kind });
+      nextOpen = { id, raw: rest };
+    }
+    openLinesRef.current[kind] = nextOpen;
+
+    setOutputLines((prev) => {
+      const updated = replaced
+        ? prev.map((line) => (line.id === replaced.id ? { ...line, text: replaced.text } : line))
+        : prev;
+      const next = added.length ? [...updated, ...added] : updated;
       return next.length > MAX_OUTPUT_LINES ? next.slice(-MAX_OUTPUT_LINES) : next;
     });
   }, []);
@@ -951,6 +1000,32 @@ const Project = () => {
     }
   };
 
+  /** Final line of a run: exit status and time. */
+  const appendRunSummary = (run: RunStage, durationMs: number) => {
+    const ok = run.code === 0;
+    const reason = run.timedOut
+      ? " (time limit)"
+      : run.signal
+        ? ` (${run.signal === "SIGKILL" ? "time/memory limit" : run.signal})`
+        : "";
+    appendOutput(
+      `${ok ? "Finished" : `Exited with code ${run.code ?? "?"}${reason}`} in ${(durationMs / 1000).toFixed(2)}s`,
+      ok ? "success" : "error",
+    );
+  };
+
+  /** Show compiler output; returns false when compilation failed. */
+  const appendCompileResult = (compile: RunStage) => {
+    if ((compile.code ?? 0) !== 0) {
+      appendOutput(compile.stderr || compile.stdout, "stderr");
+      appendOutput("Compilation failed", "error");
+      return false;
+    }
+    // Warnings
+    if (compile.stderr) appendOutput(compile.stderr.replace(/\n$/, ""), "stderr");
+    return true;
+  };
+
   /** Run the open C / C++ / Java / Python ... file on the cloud runner. */
   const handleRunFile = async () => {
     if (!activeFile || isRunningFile) return;
@@ -962,31 +1037,41 @@ const Project = () => {
     setRevealOutputKey((k) => k + 1);
     appendOutput(`— Running ${activeFile} (${language.label}) —`, "info");
 
+    const socket = getSocket();
     try {
-      const result = await runFile(activeFile, flatFileTree, stdin);
-
-      if (result.compile && (result.compile.code ?? 0) !== 0) {
-        appendOutput(result.compile.stderr || result.compile.stdout, "stderr");
-        appendOutput("Compilation failed", "error");
+      if (socket?.connected) {
+        // Live: output appears while the program runs
+        openLinesRef.current = {};
+        const { done, stop } = streamRunFile(socket, activeFile, flatFileTree, stdin, {
+          onCompiled: appendCompileResult,
+          onOutput: (stream, text) => appendStream(text, stream),
+        });
+        stopRunFileRef.current = stop;
+        setCanStopRunFile(true);
+        const end = await done;
+        openLinesRef.current = {};
+        if (end.run) appendRunSummary(end.run, end.durationMs);
         return;
       }
-      if (result.compile?.stderr) appendOutput(result.compile.stderr, "stderr");
 
+      // No live connection: run over HTTP and show everything at the end
+      const result = await runFile(activeFile, flatFileTree, stdin);
+      if (result.compile && !appendCompileResult(result.compile)) return;
       if (result.run.stdout) appendOutput(result.run.stdout.replace(/\n$/, ""), "stdout");
       if (result.run.stderr) appendOutput(result.run.stderr.replace(/\n$/, ""), "stderr");
-
-      const ok = result.run.code === 0;
-      const reason = result.run.signal ? ` (${result.run.signal === "SIGKILL" ? "time/memory limit" : result.run.signal})` : "";
-      appendOutput(
-        `${ok ? "Finished" : `Exited with code ${result.run.code ?? "?"}${reason}`} in ${(result.durationMs / 1000).toFixed(2)}s`,
-        ok ? "success" : "error",
-      );
+      appendRunSummary(result.run, result.durationMs);
     } catch (err) {
-      appendOutput(getErrorMessage(err, "Could not reach the code runner"), "error");
+      openLinesRef.current = {};
+      if (err instanceof RunStoppedError) appendOutput("Stopped", "info");
+      else appendOutput(getErrorMessage(err, "Could not reach the code runner"), "error");
     } finally {
+      stopRunFileRef.current = null;
+      setCanStopRunFile(false);
       setIsRunningFile(false);
     }
   };
+
+  const handleStopFile = () => stopRunFileRef.current?.();
 
   /** Ctrl/Cmd+S */
   const handleSave = async () => {
@@ -1359,6 +1444,7 @@ const Project = () => {
             handleUpdate={handleUpdate}
             handleStop={handleStop}
             onRunFile={handleRunFile}
+            onStopFile={canStopRunFile ? handleStopFile : undefined}
             isRunningFile={isRunningFile}
             isSaving={isSaving}
             runProgress={runProgress}

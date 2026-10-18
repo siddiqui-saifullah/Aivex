@@ -23,6 +23,8 @@ export interface IProject {
     };
     /** Set on a student's copy of a classroom assignment. */
     classroom: Types.ObjectId | null;
+    /** People invited but who haven't accepted yet (not members). */
+    invites: { user: Types.ObjectId; invitedBy: Types.ObjectId; createdAt: Date }[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -83,12 +85,22 @@ const projectSchema = new mongoose.Schema<IProject>(
             ref: "Classroom",
             default: null,
         },
+
+        invites: [
+            {
+                _id: false,
+                user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+                invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+                createdAt: { type: Date, default: Date.now },
+            },
+        ],
     },
     { timestamps: true }
 );
 
 
 projectSchema.index({ users: 1 });
+projectSchema.index({ "invites.user": 1 });
 
 const Project = mongoose.model<IProject>("Project", projectSchema);
 export default Project;

@@ -43,6 +43,8 @@ export interface Project {
   classroom?: string | null;
   /** The class teacher turned Vex AI off for this user. */
   aiDisabled?: boolean;
+  /** Invited but not yet accepted (populated on the project page). */
+  invites?: { user: User; createdAt: string }[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -156,6 +158,8 @@ export interface ApiErrorBody {
 
 export type NotificationType =
   | "project-invite"
+  | "invite-accepted"
+  | "invite-declined"
   | "project-removed"
   | "project-owner"
   | "mention"
@@ -170,6 +174,22 @@ export interface AppNotification {
   /** In-app path to open. */
   link: string;
   actor: { id: string | null; username: string } | null;
+  /** Invites: the project, and whether it was answered. */
+  projectId?: string | null;
+  status?: InviteStatus | null;
   read: boolean;
+  createdAt: string;
+}
+
+export type InviteStatus = "pending" | "accepted" | "declined" | "cancelled" | "expired";
+
+/** An invitation waiting for the current user's answer. */
+export interface ProjectInvite {
+  projectId: string;
+  name: string;
+  stack: string;
+  membersCount: number;
+  owner: { name?: string; username?: string };
+  invitedBy: { name?: string; username?: string };
   createdAt: string;
 }

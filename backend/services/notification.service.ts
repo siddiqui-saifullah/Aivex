@@ -1,5 +1,5 @@
 import mongoose, { type Types } from "mongoose";
-import Notification, { type NotificationType } from "../models/notification.model.js";
+import Notification, { type NotificationStatus, type NotificationType } from "../models/notification.model.js";
 import userModel from "../models/user.model.js";
 import { emitToUser } from "../socket/notifications.js";
 
@@ -16,6 +16,9 @@ export interface NotifyInput {
     body?: string;
     link?: string;
     actorId?: Id | null;
+    /** Invite notifications: the project, answered with accept/decline. */
+    projectId?: Id | null;
+    status?: NotificationStatus | null;
 }
 
 const toClient = (n: {
@@ -25,6 +28,8 @@ const toClient = (n: {
     body: string;
     link: string;
     actor: { id: Types.ObjectId | null; username: string } | null;
+    project?: Types.ObjectId | null;
+    status?: string | null;
     read: boolean;
     createdAt: Date;
 }) => ({
@@ -34,6 +39,8 @@ const toClient = (n: {
     body: n.body,
     link: n.link,
     actor: n.actor ? { id: n.actor.id ? String(n.actor.id) : null, username: n.actor.username } : null,
+    projectId: n.project ? String(n.project) : null,
+    status: n.status ?? null,
     read: n.read,
     createdAt: n.createdAt,
 });
@@ -41,7 +48,16 @@ const toClient = (n: {
 export type ClientNotification = ReturnType<typeof toClient>;
 
 /** Store notifications and push them to recipients who are online. Never throws. */
-export const notify = async ({ users, type, title, body = "", link = "", actorId = null }: NotifyInput) => {
+export const notify = async ({
+    users,
+    type,
+    title,
+    body = "",
+    link = "",
+    actorId = null,
+    projectId = null,
+    status = null,
+}: NotifyInput) => {
     try {
         const recipients = [...new Set(users.map(String))].filter(
             (id) => id !== String(actorId ?? "") && mongoose.Types.ObjectId.isValid(id),
@@ -62,12 +78,32 @@ export const notify = async ({ users, type, title, body = "", link = "", actorId
                 body: text(body).slice(0, 500),
                 link,
                 actor,
+                project: projectId,
+                status,
             })),
         );
         for (const doc of docs) emitToUser(String(doc.user), "notification:new", toClient(doc.toObject()));
     } catch (err) {
         // A failed notification must never break the action that caused it
         console.error("notify failed:", err);
+    }
+};
+
+/** An invite was answered (or withdrawn): update the invitee's notifications. */
+export const resolveInviteNotifications = async ({ userId, projectId, status }: {
+    userId: Id;
+    projectId: Id;
+    status: NotificationStatus;
+}) => {
+    try {
+        await Notification.updateMany(
+            { user: userId, type: "project-invite", project: projectId, status: "pending" },
+            { $set: { status, read: true } },
+        );
+        const unread = await Notification.countDocuments({ user: userId, read: false });
+        emitToUser(String(userId), "notification:resolved", { projectId: String(projectId), status, unread });
+    } catch (err) {
+        console.error("resolve invite notifications failed:", err);
     }
 };
 

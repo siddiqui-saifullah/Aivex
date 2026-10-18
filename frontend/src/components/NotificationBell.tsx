@@ -5,27 +5,41 @@ import {
   Bell,
   BellRing,
   Bot,
+  Check,
   CheckCheck,
   Crown,
   GraduationCap,
   Loader2,
   Trash2,
+  UserCheck,
   UserMinus,
   UserPlus,
+  UserX,
   type LucideIcon,
 } from "lucide-react";
 import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../context/toast.context";
 import { timeAgo } from "../utils/timeAgo";
-import type { AppNotification, NotificationType } from "../types";
+import { getErrorMessage } from "../utils/getErrorMessage";
+import { respondToInvite } from "../services/project.service";
+import type { AppNotification, InviteStatus, NotificationType } from "../types";
 
 const ICONS: Record<NotificationType, { icon: LucideIcon; tone: string }> = {
   "project-invite": { icon: UserPlus, tone: "bg-teal-500/15 text-teal-300" },
+  "invite-accepted": { icon: UserCheck, tone: "bg-emerald-500/15 text-emerald-300" },
+  "invite-declined": { icon: UserX, tone: "bg-zinc-500/15 text-zinc-300" },
   "project-removed": { icon: UserMinus, tone: "bg-red-500/15 text-red-300" },
   "project-owner": { icon: Crown, tone: "bg-amber-500/15 text-amber-300" },
   mention: { icon: AtSign, tone: "bg-sky-500/15 text-sky-300" },
   "class-join": { icon: GraduationCap, tone: "bg-violet-500/15 text-violet-300" },
   "class-ai": { icon: Bot, tone: "bg-teal-500/15 text-teal-300" },
+};
+
+const INVITE_STATUS_LABEL: Record<Exclude<InviteStatus, "pending">, string> = {
+  accepted: "You joined",
+  declined: "Declined",
+  cancelled: "Invitation withdrawn",
+  expired: "No longer available",
 };
 
 const desktopAlertsSupported = () => typeof window !== "undefined" && "Notification" in window;
@@ -42,11 +56,13 @@ const NotificationBell = () => {
   const [now, setNow] = useState(() => Date.now());
   const ref = useRef<HTMLDivElement>(null);
 
-  const { items, unread, hasMore, loading, loadMore, markRead, clearAll } = useNotifications({
+  const [answering, setAnswering] = useState<string | null>(null);
+  const { items, unread, hasMore, loading, loadMore, markRead, clearAll, setInviteStatus } = useNotifications({
     enabled: true,
     onIncoming: (n) => {
-      // Already looking at it: no need to interrupt
-      if (n.link && n.link === location.pathname && document.visibilityState === "visible") return;
+      // Already looking at it: no need to interrupt (answers to your invites always show)
+      const isInviteAnswer = n.type === "invite-accepted" || n.type === "invite-declined";
+      if (!isInviteAnswer && n.link && n.link === location.pathname && document.visibilityState === "visible") return;
       if (document.visibilityState === "hidden" && desktopAlertsSupported() && Notification.permission === "granted") {
         const alert = new Notification(n.title, { body: n.body || undefined, icon: "/aivex.svg", tag: n._id });
         alert.onclick = () => {
@@ -89,6 +105,26 @@ const NotificationBell = () => {
     if (!n.read) void markRead([n._id]);
     setOpen(false);
     if (n.link) navigate(n.link);
+  };
+
+  const answerInvite = async (n: AppNotification, accept: boolean) => {
+    if (!n.projectId || answering) return;
+    setAnswering(n._id);
+    try {
+      await respondToInvite(n.projectId, accept);
+      setInviteStatus(n.projectId, accept ? "accepted" : "declined");
+      if (accept) {
+        toast.success("Joined the project");
+        setOpen(false);
+        navigate(`/projects/${n.projectId}`);
+      }
+    } catch (err) {
+      const message = getErrorMessage(err, "Could not answer the invitation");
+      toast.error(message);
+      if (/no longer available/i.test(message)) setInviteStatus(n.projectId, "expired");
+    } finally {
+      setAnswering(null);
+    }
   };
 
   const enableDesktopAlerts = async () => {
@@ -163,6 +199,58 @@ const NotificationBell = () => {
               <ul>
                 {items.map((n) => {
                   const { icon: Icon, tone } = ICONS[n.type] ?? ICONS.mention;
+                  if (n.type === "project-invite" && n.status) {
+                    const isPending = n.status === "pending";
+                    return (
+                      <li key={n._id} className={`flex gap-3 px-4 py-3 ${isPending ? "bg-teal-500/4" : ""}`}>
+                        <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tone}`}>
+                          <Icon size={15} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm leading-snug ${isPending ? "font-medium text-white" : "text-zinc-300"}`}>
+                            {n.title}
+                          </p>
+                          <p className="mt-1 text-[11px] text-zinc-600">{timeAgo(n.createdAt, now)}</p>
+                          {isPending ? (
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                onClick={() => answerInvite(n, true)}
+                                disabled={answering === n._id}
+                                className="flex items-center gap-1 rounded-lg bg-teal-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-teal-400 disabled:opacity-60"
+                              >
+                                {answering === n._id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                                Accept
+                              </button>
+                              <button
+                                onClick={() => answerInvite(n, false)}
+                                disabled={answering === n._id}
+                                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-white/5 hover:text-white disabled:opacity-60"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="mt-1.5 text-xs text-zinc-500">
+                              {n.status === "accepted" && n.projectId ? (
+                                <button
+                                  onClick={() => {
+                                    setOpen(false);
+                                    navigate(`/projects/${n.projectId}`);
+                                  }}
+                                  className="text-teal-300 hover:underline"
+                                >
+                                  {INVITE_STATUS_LABEL.accepted} · open project
+                                </button>
+                              ) : (
+                                INVITE_STATUS_LABEL[n.status as Exclude<InviteStatus, "pending">]
+                              )}
+                            </p>
+                          )}
+                        </div>
+                        {isPending && <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-teal-400" aria-label="Unread" />}
+                      </li>
+                    );
+                  }
                   return (
                     <li key={n._id}>
                       <button

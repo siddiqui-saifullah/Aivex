@@ -5,6 +5,7 @@ import Button from "../components/ui/Button";
 import ProjectList from "../components/dashboard/ProjectList";
 import ProjectFilter, { type ProjectFilterId } from "../components/dashboard/ProjectFilter";
 import ClassroomSection from "../components/dashboard/ClassroomSection";
+import InvitationsSection from "../components/dashboard/InvitationsSection";
 
 // Lazy load modals - they're only shown on specific user actions
 const CreateProjectModal = lazy(() =>
@@ -196,6 +197,8 @@ export default function Dashboard() {
             </Button>
           )}
         </div>
+
+        <InvitationsSection onAccepted={fetchProjects} />
 
         <ClassroomSection ownProjects={projects.filter((p) => isMine(p) && !p.classroom)} />
 

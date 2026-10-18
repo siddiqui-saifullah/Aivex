@@ -5,7 +5,8 @@ import {
   getNotifications,
   markNotificationsRead,
 } from "../services/notification.service";
-import type { AppNotification } from "../types";
+import type { AppNotification, InviteStatus } from "../types";
+import { announceInvitesChanged } from "../utils/inviteEvents";
 
 interface Options {
   enabled: boolean;
@@ -48,9 +49,25 @@ export const useNotifications = ({ enabled, onIncoming }: Options) => {
     socket.on("notification:new", (n: AppNotification) => {
       setItems((prev) => (prev.some((p) => p._id === n._id) ? prev : [n, ...prev]));
       setUnread((u) => u + 1);
+      if (n.type === "project-invite") announceInvitesChanged();
       onIncomingRef.current?.(n);
     });
     socket.on("notification:unread", ({ unread: count }: { unread: number }) => setUnread(count));
+    // An invite was answered here or elsewhere, or withdrawn by its owner
+    socket.on(
+      "notification:resolved",
+      ({ projectId, status, unread: count }: { projectId: string; status: InviteStatus; unread: number }) => {
+        setItems((prev) =>
+          prev.map((n) =>
+            n.type === "project-invite" && n.projectId === projectId && n.status === "pending"
+              ? { ...n, status, read: true }
+              : n,
+          ),
+        );
+        setUnread(count);
+        announceInvitesChanged();
+      },
+    );
 
     return () => {
       alive = false;
@@ -82,6 +99,17 @@ export const useNotifications = ({ enabled, onIncoming }: Options) => {
     }
   }, []);
 
+  /** Show an invite's answer right away (the server confirms over the socket). */
+  const setInviteStatus = useCallback((projectId: string, status: InviteStatus) => {
+    setItems((prev) =>
+      prev.map((n) =>
+        n.type === "project-invite" && n.projectId === projectId && n.status === "pending"
+          ? { ...n, status, read: true }
+          : n,
+      ),
+    );
+  }, []);
+
   const clearAll = useCallback(async () => {
     setItems([]);
     setUnread(0);
@@ -89,5 +117,5 @@ export const useNotifications = ({ enabled, onIncoming }: Options) => {
     await clearNotifications().catch(() => undefined);
   }, []);
 
-  return { items, unread, hasMore, loading, loadMore, markRead, clearAll };
+  return { items, unread, hasMore, loading, loadMore, markRead, clearAll, setInviteStatus };
 };

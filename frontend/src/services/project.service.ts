@@ -1,5 +1,5 @@
 import axios from "../config/axios";
-import type { FlatFileTree, Project, ProjectDetails } from "../types";
+import type { FlatFileTree, Project, ProjectDetails, ProjectInvite } from "../types";
 
 type RawProject = Omit<Project, "id" | "flatFileTree"> & Partial<Pick<Project, "id" | "flatFileTree">>;
 
@@ -73,12 +73,30 @@ export const addUserToProject = async (projectId: string, users: string[]) => {
         throw new Error("Users array is required");
     }
 
-    const { data } = await axios.patch<{ message: string; addedCount: number; usersCount: number }>(
+    const { data } = await axios.patch<{ message: string; invitedCount: number; usersCount: number }>(
         `/projects/${projectId}/invite`,
         { users }
     );
 
     return data;
+};
+
+/** Invitations waiting for the current user's answer. */
+export const getMyInvites = async (): Promise<ProjectInvite[]> => {
+    const { data } = await axios.get<ProjectInvite[]>("/projects/invites");
+    return Array.isArray(data) ? data : [];
+};
+
+export const respondToInvite = async (projectId: string, accept: boolean) => {
+    const { data } = await axios.post<{ accepted: boolean; projectId: string }>(
+        `/projects/${projectId}/invites/${accept ? "accept" : "decline"}`,
+    );
+    return data;
+};
+
+/** Owner withdraws a pending invitation. */
+export const cancelInvite = async (projectId: string, userId: string) => {
+    await axios.delete(`/projects/${projectId}/invites/${userId}`);
 };
 
 

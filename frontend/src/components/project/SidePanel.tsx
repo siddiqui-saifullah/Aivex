@@ -15,6 +15,7 @@ interface SidePanelProps {
   onLeave: () => void;
   onTransferOwnership?: (member: User) => Promise<void>;
   onRemoveMember?: (member: User) => Promise<void>;
+  onCancelInvite?: (user: User) => Promise<void>;
   onSaveMemory?: (memory: string) => Promise<boolean>;
   currentUserId?: string;
   invitePermissionError?: boolean;
@@ -31,6 +32,7 @@ const SidePanel = ({
   onLeave,
   onTransferOwnership,
   onRemoveMember,
+  onCancelInvite,
   onSaveMemory,
   currentUserId,
   invitePermissionError,
@@ -97,6 +99,7 @@ const SidePanel = ({
           onAddMember={onAddMember}
           onTransferOwnership={onTransferOwnership}
           onRemoveMember={onRemoveMember}
+          onCancelInvite={onCancelInvite}
           currentUserId={currentUserId}
           invitePermissionError={invitePermissionError}
         />

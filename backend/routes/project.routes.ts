@@ -31,6 +31,9 @@ router.post(
 // Get all user projects
 router.get("/", projectController.getUserProjects);
 
+// Invitations waiting for the current user's answer
+router.get("/invites", projectController.listMyInvitesController);
+
 /* -------------------------------------------------------------------------- */
 /* SINGLE PROJECT ROUTES                                                      */
 /* -------------------------------------------------------------------------- */
@@ -70,6 +73,13 @@ router.patch(
         .withMessage("Each user must be a string"),
     projectController.inviteUsersToProject
 );
+
+// Answer an invitation (the invitee)
+router.post("/:projectId/invites/accept", projectController.acceptInviteController);
+router.post("/:projectId/invites/decline", projectController.declineInviteController);
+
+// Withdraw a pending invitation (owner only)
+router.delete("/:projectId/invites/:userId", projectController.cancelInviteController);
 
 // Edit / clear the AI's long-term project memory (any member)
 router.put(

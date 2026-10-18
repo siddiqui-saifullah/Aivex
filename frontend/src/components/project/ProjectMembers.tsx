@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Crown, UserMinus } from "lucide-react";
+import { Clock, Crown, UserMinus, X } from "lucide-react";
 import UserTile from "../shared/UserTile";
 import type { ProjectDetails, User } from "../../types";
 
@@ -12,6 +12,8 @@ interface ProjectMembersProps {
   onAddMember: () => void;
   onTransferOwnership?: (member: User) => Promise<void>;
   onRemoveMember?: (member: User) => Promise<void>;
+  /** Owner withdraws a pending invitation. */
+  onCancelInvite?: (user: User) => Promise<void>;
   invitePermissionError?: boolean;
 }
 
@@ -27,8 +29,11 @@ const ProjectMembers = ({
   onAddMember,
   onTransferOwnership,
   onRemoveMember,
+  onCancelInvite,
   invitePermissionError,
 }: ProjectMembersProps) => {
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const invites = project?.invites ?? [];
   const ownerId = typeof project?.owner === "string" ? project.owner : project?.owner?._id;
 
   // Destructive actions need a second click to confirm
@@ -119,11 +124,49 @@ const ProjectMembers = ({
         })}
       </div>
 
+      {invites.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-xs uppercase text-zinc-500 mb-2">Invited · waiting ({invites.length})</h4>
+          <ul className="space-y-1.5">
+            {invites.map(({ user }) => (
+              <li
+                key={user._id}
+                className="flex items-center gap-2 rounded-lg border border-dashed border-white/10 px-3 py-2 text-sm"
+              >
+                <Clock size={14} className="shrink-0 text-amber-300/80" />
+                <span className="min-w-0 flex-1 truncate text-zinc-300">
+                  {user.name || user.username}
+                  <span className="ml-1 text-xs text-zinc-500">@{user.username}</span>
+                </span>
+                {isOwner && onCancelInvite && (
+                  <button
+                    onClick={async () => {
+                      setCancelling(user._id);
+                      try {
+                        await onCancelInvite(user);
+                      } finally {
+                        setCancelling(null);
+                      }
+                    }}
+                    disabled={cancelling === user._id}
+                    title="Cancel invitation"
+                    aria-label={`Cancel invitation for ${user.username}`}
+                    className="rounded p-1 text-zinc-500 hover:bg-white/5 hover:text-red-300 disabled:opacity-50"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <button
         onClick={onAddMember}
         className="mt-3 w-full text-sm font-medium text-teal-400 hover:text-teal-300 transition-colors"
       >
-        + Add Member
+        + Invite people
       </button>
 
       {!isOwner && invitePermissionError && (

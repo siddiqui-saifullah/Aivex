@@ -4,6 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import type { WebContainer } from "@webcontainer/api";
 import {
   getProjectById,
+  cancelInvite,
   getProjectChats,
   updateProjectFiles,
   deleteProject,
@@ -828,18 +829,26 @@ const Project = () => {
   };
 
   const handleSelectUser = async (users: User[]) => {
-    const addedUserMessages: ChatMessage[] = users.map((user) => ({
-      text: `${user.username} was added to the project`,
-      type: "system",
-      timestamp: Date.now(),
-    }));
-
-    setMessages((prev) => [...prev, ...addedUserMessages]);
+    toast.success(
+      users.length === 1
+        ? `Invitation sent to @${users[0].username}`
+        : `Invitations sent to ${users.length} people`,
+    );
 
     try {
       applyProject(await getProjectById(projectId));
     } catch (err) {
       console.error("Failed to refresh project:", err);
+    }
+  };
+
+  const handleCancelInvite = async (invitee: User) => {
+    try {
+      await cancelInvite(projectId, invitee._id);
+      toast.info(`Invitation for @${invitee.username} withdrawn`);
+      applyProject(await getProjectById(projectId));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not cancel the invitation"));
     }
   };
 
@@ -1445,6 +1454,7 @@ const Project = () => {
           onLeave={handleLeaveProject}
           onTransferOwnership={handleTransferOwnership}
           onRemoveMember={handleRemoveMember}
+          onCancelInvite={handleCancelInvite}
           onSaveMemory={handleSaveMemory}
           currentUserId={user?._id}
           invitePermissionError={invitePermissionError}
@@ -1462,6 +1472,7 @@ const Project = () => {
             onSelectUser={handleSelectUser}
             projectId={projectId}
             existingMembers={project.users || []}
+            pendingInvites={(project.invites ?? []).map((i) => i.user)}
           />
         </Suspense>
 

@@ -6,6 +6,7 @@ import projectRoutes from './routes/project.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import runnerRoutes from './routes/runner.routes.js';
 import classroomRoutes from './routes/classroom.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import corsMiddleware from "./config/cors.js";
@@ -40,6 +41,7 @@ app.use('/projects', projectRoutes);
 app.use('/ai', aiRoutes);
 app.use('/run', runnerRoutes);
 app.use('/classrooms', classroomRoutes);
+app.use('/notifications', notificationRoutes);
 
 app.use(errorHandler);
 

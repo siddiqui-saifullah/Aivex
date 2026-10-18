@@ -21,19 +21,10 @@ import { getErrorMessage } from "../utils/getErrorMessage";
 import { plural } from "../utils/plural";
 import { STACK_FORMATTER } from "../constants/options";
 import { colorFor } from "../utils/userColor";
+import { timeAgo } from "../utils/timeAgo";
 import type { ClassroomDetails, ClassroomStudent } from "../types";
 
 const REFRESH_MS = 5000;
-
-const timeAgo = (iso: string, now: number) => {
-  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 60) return "just now";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return `${Math.round(h / 24)} d ago`;
-};
 
 const initials = (name: string) =>
   name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense, type CSSProperties } from "react";
 import { Code2, FolderTree, Loader2, MessageSquare } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { WebContainer } from "@webcontainer/api";
@@ -19,6 +19,8 @@ import {
 } from "../services/message.service";
 import { useTypingIndicator } from "../hooks/useTypingIndicator";
 import ProjectHeader from "../components/project/ProjectHeader";
+import ChatRail from "../components/project/ChatRail";
+import { useChatPanel } from "../hooks/useChatPanel";
 import MessageArea from "../components/project/MessageArea";
 import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
@@ -329,6 +331,10 @@ const Project = () => {
 
   // Small screens show one pane at a time
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  // Desktop: the chat column can be collapsed to a rail and resized
+  const chatPanel = useChatPanel();
+  // Messages already seen when the chat was collapsed (the rest count as unread)
+  const [seenMessageCount, setSeenMessageCount] = useState(0);
 
   const appendOutput = useCallback((chunk: string, kind: OutputKind = "stdout") => {
     const lines = kind === "stdout" || kind === "stderr" ? toTerminalLines(chunk) : chunk.split("\n");
@@ -1320,6 +1326,19 @@ const Project = () => {
     return <ProjectSkeleton />;
   }
 
+  const unreadMessages = chatPanel.collapsed
+    ? messages.slice(seenMessageCount).filter((m) => m.type === "incoming").length
+    : 0;
+  const collapseChat = () => {
+    setSeenMessageCount(messages.length);
+    chatPanel.setCollapsed(true);
+  };
+  const chatWidthClass = chatPanel.collapsed
+    ? "md:w-12"
+    : chatPanel.width
+      ? "md:w-(--chat-w)"
+      : "md:w-[30%] lg:w-[28%] md:min-w-72 md:max-w-[460px]";
+
   // The class teacher can turn the AI off for students
   const aiDisabled = Boolean(project.aiDisabled);
   const mentionables: Mentionable[] = [
@@ -1342,13 +1361,30 @@ const Project = () => {
   return (
     <main className="h-[calc(100dvh-4rem)] flex flex-col md:flex-row overflow-hidden">
       <section
-        className={`${mobileTab === "chat" ? "flex" : "hidden"} md:flex relative flex-col flex-1 min-h-0 md:flex-none md:w-[30%] lg:w-[28%] md:min-w-72 md:max-w-[460px] border-r border-white/10 bg-zinc-950 overflow-hidden`}
+        ref={chatPanel.panelRef}
+        aria-label="Chat"
+        style={chatPanel.width ? ({ "--chat-w": `${chatPanel.width}px` } as CSSProperties) : undefined}
+        className={`${mobileTab === "chat" ? "flex" : "hidden"} md:flex relative flex-col flex-1 min-h-0 md:flex-none ${chatWidthClass} ${chatPanel.isResizing ? "" : "md:transition-[width] md:duration-200"} border-r border-white/10 bg-zinc-950 overflow-hidden`}
       >
+        {chatPanel.collapsed && (
+          <ChatRail
+            unread={unreadMessages}
+            isAiThinking={isAiThinking}
+            isTyping={Object.keys(typingUsers).length > 0}
+            members={project.users}
+            currentUserId={user?._id}
+            onExpand={() => chatPanel.setCollapsed(false)}
+          />
+        )}
+
+        {/* Stays mounted while collapsed, so the draft and scroll position survive */}
+        <div className={`flex flex-col flex-1 min-h-0 ${chatPanel.collapsed ? "md:hidden" : ""}`}>
         {/* Header */}
         <ProjectHeader
           project={project}
           isSidePanelOpen={isSidePanelOpen}
           onToggleSidePanel={() => setIsSidePanelOpen((prev) => !prev)}
+          onCollapse={collapseChat}
         />
 
         {/* Message Area */}
@@ -1396,6 +1432,30 @@ const Project = () => {
           invitePermissionError={invitePermissionError}
           deletePermissionError={deletePermissionError}
         />
+        </div>
+
+        {/* Drag the edge to resize (double-click resets) */}
+        {!chatPanel.collapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize chat"
+            aria-valuemin={chatPanel.minWidth}
+            aria-valuemax={chatPanel.maxWidth}
+            aria-valuenow={chatPanel.width ?? undefined}
+            tabIndex={0}
+            title="Drag to resize · double-click to reset"
+            onPointerDown={chatPanel.startResize}
+            onDoubleClick={chatPanel.resetWidth}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") chatPanel.resizeBy(-24);
+              else if (e.key === "ArrowRight") chatPanel.resizeBy(24);
+            }}
+            className={`absolute inset-y-0 right-0 z-20 hidden w-1.5 cursor-col-resize md:block focus:outline-none ${
+              chatPanel.isResizing ? "bg-teal-500/50" : "hover:bg-teal-500/30 focus-visible:bg-teal-500/40"
+            }`}
+          />
+        )}
 
         {/* Invite User Modal */}
         <Suspense fallback={null}>

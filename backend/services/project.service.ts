@@ -5,6 +5,7 @@ import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
 import issueModel from "../models/issue.model.js";
 import Classroom from "../models/classroom.model.js";
+import { isAiDisabledFor } from "./aiPolicy.service.js";
 import type { IssueReport } from "../types/index.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
@@ -168,6 +169,7 @@ export const getProjectById = async ({ projectId, userId }: { projectId: string;
         ...project,
         files: fromStoredFiles(project.files),
         isOwner: project.owner.toString() === userId.toString(),
+        aiDisabled: await isAiDisabledFor(project.classroom, userId),
     };
 };
 

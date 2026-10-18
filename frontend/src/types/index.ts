@@ -41,6 +41,8 @@ export interface Project {
   usersCount?: number;
   /** Class this project belongs to (a student's copy of an assignment). */
   classroom?: string | null;
+  /** The class teacher turned Vex AI off for this user. */
+  aiDisabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -52,6 +54,8 @@ export interface ClassroomSummary {
   _id: string;
   name: string;
   stack: string;
+  /** Whether students may use Vex AI. */
+  aiEnabled?: boolean;
   role: ClassroomRole;
   /** Join code (teacher only). */
   code?: string;

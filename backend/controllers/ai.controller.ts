@@ -1,8 +1,10 @@
 import type { Request, Response } from "express";
+import mongoose from "mongoose";
 import * as ai from "../services/ai.service.js";
 import catchAsync from "../utils/catchAsync.js";
 import AppError from "../errors/AppError.js";
 import type { AiResponse } from "../types/index.js";
+import { AI_DISABLED_MESSAGE, isAiDisabledInProject } from "../services/aiPolicy.service.js";
 
 export const getResultPoint = async (req: Request, res: Response) => {
     try {
@@ -32,10 +34,14 @@ export const getResult = async (params: Parameters<typeof ai.generate>[0]): Prom
 /* ENHANCE PROMPT                                                             */
 /* -------------------------------------------------------------------------- */
 export const enhancePromptController = catchAsync(async (req, res) => {
-    const { prompt } = req.body;
+    const { prompt, projectId } = req.body;
 
     if (typeof prompt !== "string" || !prompt.trim()) {
         throw new AppError("prompt is required", 400);
+    }
+    if (typeof projectId === "string" && mongoose.Types.ObjectId.isValid(projectId)
+        && await isAiDisabledInProject(projectId, req.user!._id)) {
+        throw new AppError(AI_DISABLED_MESSAGE, 403);
     }
     if (prompt.length > 4000) {
         throw new AppError("prompt is too long to enhance", 413);

@@ -110,7 +110,7 @@ interface UserJoinedEvent {
 
 interface ProjectUpdatedEvent {
   projectId: string;
-  reason: "members" | "owner" | "renamed" | "deleted";
+  reason: "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy";
 }
 
 type SendAck =
@@ -579,7 +579,12 @@ const Project = () => {
 
       try {
         const updated = await getProjectById(projectId);
-        if (isMounted) applyProject(updated);
+        if (!isMounted) return;
+        applyProject(updated);
+        if (reason === "ai-policy") {
+          if (updated.aiDisabled) toast.info("Your teacher turned off Vex AI for this class");
+          else toast.success("Your teacher turned Vex AI back on");
+        }
       } catch {
         // No longer a member (removed by the owner)
         if (!isMounted) return;
@@ -621,7 +626,11 @@ const Project = () => {
 
     // AI mode auto-mentions Vex so the server routes the message to the AI
     const text =
-      aiMode && !/^\s*@vex\b/i.test(message) ? `@Vex ${message.trim()}` : message;
+      aiMode && !project?.aiDisabled && !/^\s*@vex\b/i.test(message) ? `@Vex ${message.trim()}` : message;
+    if (project?.aiDisabled && /^\s*@vex\b/i.test(text)) {
+      toast.info("Your teacher has turned off Vex AI for this class");
+      return;
+    }
     const userMessage = formatUserMessage(text, user);
     setMessages((prev) => [...prev, userMessage]);
     setMessage("");
@@ -671,7 +680,7 @@ const Project = () => {
     try {
       // Don't send the mention itself to the enhancer; put it back afterwards
       const mention = /^\s*@vex\s*/i.exec(text)?.[0] ?? "";
-      const improved = await enhancePrompt(text.slice(mention.length));
+      const improved = await enhancePrompt(text.slice(mention.length), projectId);
       return mention ? `@Vex ${improved}` : improved;
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not enhance the prompt"));
@@ -1311,8 +1320,10 @@ const Project = () => {
     return <ProjectSkeleton />;
   }
 
+  // The class teacher can turn the AI off for students
+  const aiDisabled = Boolean(project.aiDisabled);
   const mentionables: Mentionable[] = [
-    { id: "vex", handle: "Vex", label: "Vex AI", isAI: true },
+    ...(aiDisabled ? [] : [{ id: "vex", handle: "Vex", label: "Vex AI", isAI: true }]),
     ...project.users
       .filter((member) => member._id !== user?._id)
       .map((member) => ({
@@ -1351,13 +1362,14 @@ const Project = () => {
           isAiThinking={isAiThinking}
           onDeleteMessage={handleDeleteMessage}
           onApplyFiles={handleApplyFiles}
+          aiDisabled={aiDisabled}
           inputProps={{
             mentionables,
-            aiMode,
-            onToggleAiMode: toggleAiMode,
-            onEnhance: handleEnhancePrompt,
+            aiMode: aiMode && !aiDisabled,
+            onToggleAiMode: aiDisabled ? undefined : toggleAiMode,
+            onEnhance: aiDisabled ? undefined : handleEnhancePrompt,
             aiContext:
-              activeFile && activeFile !== ".aivex" && !aiContextDismissed
+              !aiDisabled && activeFile && activeFile !== ".aivex" && !aiContextDismissed
                 ? {
                     label: editorSelection
                       ? `${activeFile.split("/").pop()} · lines ${editorSelection.startLine}–${editorSelection.endLine}`

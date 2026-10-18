@@ -5,7 +5,7 @@ import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 import { normalizeStack, starterFilesFor } from "./project.service.js";
-import { onlineUsersByProject } from "../socket/io.js";
+import { notifyProjectUpdated, onlineUsersByProject } from "../socket/io.js";
 
 type Id = Types.ObjectId | string;
 
@@ -25,10 +25,11 @@ const assertId = (id: string, label: string) => {
 /* -------------------------------------------------------------------------- */
 /* CREATE                                                                     */
 /* -------------------------------------------------------------------------- */
-export const createClassroom = async ({ teacherId, name, stack, templateProjectId }: {
+export const createClassroom = async ({ teacherId, name, stack, templateProjectId, aiEnabled = true }: {
     teacherId: Id;
     name: string;
     stack?: unknown;
+    aiEnabled?: boolean;
     /** Copy the starter files from one of the teacher's projects. */
     templateProjectId?: string;
 }) => {
@@ -57,10 +58,17 @@ export const createClassroom = async ({ teacherId, name, stack, templateProjectI
                 teacher: teacherId,
                 code: generateCode(),
                 stack: normalizedStack,
+                aiEnabled,
                 starterFiles: toStoredFiles(starter),
                 students: [],
             });
-            return { _id: classroom._id, name: classroom.name, code: classroom.code, stack: classroom.stack };
+            return {
+                _id: classroom._id,
+                name: classroom.name,
+                code: classroom.code,
+                stack: classroom.stack,
+                aiEnabled: classroom.aiEnabled,
+            };
         } catch (err) {
             if (!isDuplicateKey(err)) throw err;
         }
@@ -73,7 +81,7 @@ export const createClassroom = async ({ teacherId, name, stack, templateProjectI
 /* -------------------------------------------------------------------------- */
 export const listClassrooms = async ({ userId }: { userId: Id }) => {
     const classes = await Classroom.find({ $or: [{ teacher: userId }, { "students.user": userId }] })
-        .select("name code stack teacher students createdAt")
+        .select("name code stack aiEnabled teacher students createdAt")
         .populate("teacher", "name username")
         .sort({ createdAt: -1 })
         .lean();
@@ -86,6 +94,7 @@ export const listClassrooms = async ({ userId }: { userId: Id }) => {
             _id: c._id,
             name: c.name,
             stack: c.stack,
+            aiEnabled: c.aiEnabled !== false,
             role: isTeacher ? "teacher" : "student",
             // Only the teacher hands out the code
             code: isTeacher ? c.code : undefined,
@@ -121,6 +130,7 @@ export const getClassroom = async ({ classroomId, userId }: { classroomId: strin
         _id: classroom._id,
         name: classroom.name,
         stack: classroom.stack,
+        aiEnabled: classroom.aiEnabled !== false,
         role: isTeacher ? "teacher" : "student",
         teacher: { name: teacher.name, username: teacher.username },
         studentCount: classroom.students.length,
@@ -208,6 +218,29 @@ export const joinClassroom = async ({ code, userId }: { code: string; userId: Id
     }
 
     return { classroomId: classroom._id, projectId: project._id, alreadyJoined: false };
+};
+
+/* -------------------------------------------------------------------------- */
+/* SETTINGS (teacher: allow or block Vex AI for students)                     */
+/* -------------------------------------------------------------------------- */
+export const updateClassroomSettings = async ({ classroomId, userId, aiEnabled }: {
+    classroomId: string;
+    userId: Id;
+    aiEnabled: unknown;
+}) => {
+    assertId(classroomId, "class id");
+    if (typeof aiEnabled !== "boolean") throw new AppError("aiEnabled must be true or false", 400);
+
+    const classroom = await Classroom.findById(classroomId).select("teacher students.project").lean();
+    if (!classroom) throw new AppError("Class not found", 404);
+    if (String(classroom.teacher) !== String(userId)) {
+        throw new AppError("Only the teacher can change class settings", 403);
+    }
+
+    await Classroom.updateOne({ _id: classroomId }, { $set: { aiEnabled } });
+    // Open student projects pick up the change right away
+    for (const s of classroom.students) notifyProjectUpdated(String(s.project), "ai-policy");
+    return { aiEnabled };
 };
 
 /* -------------------------------------------------------------------------- */

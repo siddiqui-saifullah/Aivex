@@ -7,6 +7,7 @@ import aiRoutes from './routes/ai.routes.js';
 import runnerRoutes from './routes/runner.routes.js';
 import classroomRoutes from './routes/classroom.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import corsMiddleware from "./config/cors.js";
@@ -42,6 +43,7 @@ app.use('/ai', aiRoutes);
 app.use('/run', runnerRoutes);
 app.use('/classrooms', classroomRoutes);
 app.use('/notifications', notificationRoutes);
+app.use('/admin', adminRoutes);
 
 app.use(errorHandler);
 

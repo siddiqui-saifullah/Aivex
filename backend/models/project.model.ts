@@ -25,6 +25,10 @@ export interface IProject {
     classroom: Types.ObjectId | null;
     /** People invited but who haven't accepted yet (not members). */
     invites: { user: Types.ObjectId; invitedBy: Types.ObjectId; createdAt: Date }[];
+    /** Usage tracking (admin dashboard). */
+    lastOpenedAt: Date | null;
+    lastOpenedBy: Types.ObjectId | null;
+    openCount: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -85,6 +89,10 @@ const projectSchema = new mongoose.Schema<IProject>(
             ref: "Classroom",
             default: null,
         },
+
+        lastOpenedAt: { type: Date, default: null },
+        lastOpenedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        openCount: { type: Number, default: 0 },
 
         invites: [
             {

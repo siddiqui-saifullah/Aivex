@@ -3,6 +3,7 @@ import catchAsync from "../utils/catchAsync.js";
 import * as projectService from "../services/project.service.js";
 import AppError from "../errors/AppError.js";
 import { disconnectUserFromProject, notifyProjectUpdated } from "../socket/io.js";
+import { recordProjectOpen } from "../services/activity.service.js";
 
 /* -------------------------------------------------------------------------- */
 /* CREATE PROJECT                                                             */
@@ -47,6 +48,7 @@ export const getProjectById = catchAsync(async (req, res) => {
         projectId,
         userId,
     });
+    recordProjectOpen(project._id, userId, project.name);
 
     res.status(200).json({
         success: true,

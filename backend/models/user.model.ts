@@ -1,4 +1,4 @@
-import mongoose, { type HydratedDocument, type Model } from "mongoose";
+import mongoose, { type HydratedDocument, type Model, type Types } from "mongoose";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
@@ -8,6 +8,11 @@ export interface IUser {
     email: string;
     password: string;
     bio: string;
+    /** Usage tracking (admin dashboard). */
+    lastActiveAt: Date | null;
+    lastLoginAt: Date | null;
+    loginCount: number;
+    lastProject: { project: Types.ObjectId; name: string; at: Date } | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -64,7 +69,20 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
             select: false,
             required: true,
             minlength: [8, "Password must be at least 8 characters"],
-        }
+        },
+
+        lastActiveAt: { type: Date, default: null },
+        lastLoginAt: { type: Date, default: null },
+        loginCount: { type: Number, default: 0 },
+        lastProject: {
+            type: {
+                project: { type: mongoose.Schema.Types.ObjectId, ref: "Project" },
+                name: String,
+                at: Date,
+            },
+            default: null,
+            _id: false,
+        },
 
     },
     { timestamps: true }
@@ -86,6 +104,8 @@ userSchema.method("generateJWT", function () {
         { expiresIn: "7d" }
     );
 });
+
+userSchema.index({ lastActiveAt: -1 });
 
 const User = mongoose.model<IUser, UserModel>('User', userSchema);
 

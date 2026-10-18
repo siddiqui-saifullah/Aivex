@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Project from "../models/project.model.js";
 import userModal from "../models/user.model.js";
 import redisClient from "../services/redis.service.js";
+import { touchUser } from "../services/activity.service.js";
 import type { Socket } from "socket.io";
 import type { AppSocket } from "../socket/socketHandler.js";
 
@@ -24,6 +25,7 @@ export const authenticateSocketUser = async (handshake: Handshake) => {
         const user = await userModal.findById(decoded.userId).select("_id username").lean();
         if (!user) return null;
 
+        touchUser(user._id);
         return { id: String(decoded.userId), username: user.username };
     } catch {
         return null;

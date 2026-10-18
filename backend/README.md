@@ -70,6 +70,9 @@ REDIS_PORT=6379
 REDIS_PASSWORD=...
 PORT=3000
 
+# Admin dashboard (/admin): emails allowed to see site-wide usage, comma separated
+ADMIN_EMAILS=you@example.com
+
 # Optional: cloud code runner for C, C++, Java, Python, Go, Rust, ...
 PISTON_URL=http://your-piston-host:2000
 PISTON_TOKEN=                         # only if your Piston instance requires one

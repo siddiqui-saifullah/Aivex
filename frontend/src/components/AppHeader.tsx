@@ -11,6 +11,7 @@ import {
 import { useUser } from "../context/user.context";
 import { logOut } from "../services/user.service";
 import ReportIssueModal from "./dashboard/modals/ReportIssueModal";
+import NotificationBell from "./NotificationBell";
 
 const AppHeader = () => {
   const { user, setUser } = useUser();
@@ -69,6 +70,8 @@ const AppHeader = () => {
 
             {/* Actions Group */}
             <div className="flex items-center gap-3">
+              {user && <NotificationBell />}
+
               {/* Report Issue Button - Always visible or conditionally based on projectId */}
               <button
                 onClick={() => setIsReportModalOpen(true)}

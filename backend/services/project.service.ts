@@ -6,6 +6,7 @@ import * as chatService from "../services/chats.service.js";
 import issueModel from "../models/issue.model.js";
 import Classroom from "../models/classroom.model.js";
 import { isAiDisabledFor } from "./aiPolicy.service.js";
+import { notify } from "./notification.service.js";
 import type { IssueReport } from "../types/index.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
@@ -336,6 +337,15 @@ export const inviteUsersToProject = async ({ ownerId, projectId, users }: {
     project.users.push(...usersToAdd.map(id => new mongoose.Types.ObjectId(id)));
     await project.save();
 
+    void notify({
+        users: usersToAdd,
+        type: "project-invite",
+        title: `{actor} added you to “${project.name}”`,
+        body: "Open the project to start coding together.",
+        link: `/projects/${project._id}`,
+        actorId: ownerId,
+    });
+
     return {
         addedCount: usersToAdd.length,
         usersCount: project.users.length,
@@ -459,6 +469,14 @@ export const transferOwnership = async ({ projectId, ownerId, newOwnerId }: {
     project.owner = new mongoose.Types.ObjectId(newOwnerId);
     await project.save();
 
+    void notify({
+        users: [newOwnerId],
+        type: "project-owner",
+        title: `{actor} made you the owner of “${project.name}”`,
+        link: `/projects/${project._id}`,
+        actorId: ownerId,
+    });
+
     return { success: true, owner: newOwnerId };
 };
 
@@ -491,6 +509,14 @@ export const removeMember = async ({ projectId, ownerId, memberId }: {
 
     project.users = project.users.filter(id => !id.equals(memberId));
     await project.save();
+
+    void notify({
+        users: [memberId],
+        type: "project-removed",
+        title: `{actor} removed you from “${project.name}”`,
+        link: "/dashboard",
+        actorId: ownerId,
+    });
 
     return { success: true, usersCount: project.users.length };
 };

@@ -153,3 +153,23 @@ export interface EditorSelection {
 export interface ApiErrorBody {
   message?: string;
 }
+
+export type NotificationType =
+  | "project-invite"
+  | "project-removed"
+  | "project-owner"
+  | "mention"
+  | "class-join"
+  | "class-ai";
+
+export interface AppNotification {
+  _id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  /** In-app path to open. */
+  link: string;
+  actor: { id: string | null; username: string } | null;
+  read: boolean;
+  createdAt: string;
+}

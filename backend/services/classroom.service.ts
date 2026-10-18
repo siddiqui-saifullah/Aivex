@@ -6,6 +6,7 @@ import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 import { normalizeStack, starterFilesFor } from "./project.service.js";
 import { notifyProjectUpdated, onlineUsersByProject } from "../socket/io.js";
+import { notify } from "./notification.service.js";
 
 type Id = Types.ObjectId | string;
 
@@ -217,6 +218,14 @@ export const joinClassroom = async ({ code, userId }: { code: string; userId: Id
         return { classroomId: classroom._id, projectId: mine.project, alreadyJoined: true };
     }
 
+    void notify({
+        users: [classroom.teacher],
+        type: "class-join",
+        title: `{actor} joined your class “${classroom.name}”`,
+        link: `/classes/${classroom._id}`,
+        actorId: userId,
+    });
+
     return { classroomId: classroom._id, projectId: project._id, alreadyJoined: false };
 };
 
@@ -231,7 +240,7 @@ export const updateClassroomSettings = async ({ classroomId, userId, aiEnabled }
     assertId(classroomId, "class id");
     if (typeof aiEnabled !== "boolean") throw new AppError("aiEnabled must be true or false", 400);
 
-    const classroom = await Classroom.findById(classroomId).select("teacher students.project").lean();
+    const classroom = await Classroom.findById(classroomId).select("name teacher aiEnabled students").lean();
     if (!classroom) throw new AppError("Class not found", 404);
     if (String(classroom.teacher) !== String(userId)) {
         throw new AppError("Only the teacher can change class settings", 403);
@@ -240,6 +249,20 @@ export const updateClassroomSettings = async ({ classroomId, userId, aiEnabled }
     await Classroom.updateOne({ _id: classroomId }, { $set: { aiEnabled } });
     // Open student projects pick up the change right away
     for (const s of classroom.students) notifyProjectUpdated(String(s.project), "ai-policy");
+    if ((classroom.aiEnabled !== false) !== aiEnabled) {
+        for (const s of classroom.students) {
+            void notify({
+                users: [s.user],
+                type: "class-ai",
+                title: aiEnabled
+                    ? `Vex AI is now on in “${classroom.name}”`
+                    : `Vex AI was turned off in “${classroom.name}”`,
+                body: aiEnabled ? "You can ask @Vex for help again." : "Your teacher turned off the AI for this class.",
+                link: `/projects/${s.project}`,
+                actorId: userId,
+            });
+        }
+    }
     return { aiEnabled };
 };
 

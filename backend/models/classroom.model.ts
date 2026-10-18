@@ -13,6 +13,8 @@ export interface IClassroom {
     /** Short join code, e.g. "K7Q2MX". */
     code: string;
     stack: ProjectStack;
+    /** Whether students may use Vex AI in their class projects. */
+    aiEnabled: boolean;
     starterFiles: StoredFile[];
     students: { user: Types.ObjectId; project: Types.ObjectId; joinedAt: Date }[];
     createdAt: Date;
@@ -25,6 +27,7 @@ const classroomSchema = new mongoose.Schema<IClassroom>(
         teacher: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
         code: { type: String, required: true, unique: true, uppercase: true },
         stack: { type: String, enum: PROJECT_STACKS, default: "c" },
+        aiEnabled: { type: Boolean, default: true },
         starterFiles: { type: mongoose.Schema.Types.Mixed, default: () => [] },
         students: [
             {

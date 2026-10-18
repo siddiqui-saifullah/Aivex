@@ -10,6 +10,7 @@ import Project from "../models/project.model.js";
 import ChatMessage from "../models/chat.model.js";
 import * as Y from "yjs";
 import * as collab from "./collab.js";
+import { AI_DISABLED_MESSAGE, isAiDisabledInProject } from "../services/aiPolicy.service.js";
 
 interface ChatSender {
     id: string;
@@ -222,10 +223,17 @@ const handleProjectMessage = async (
     }
 
     const text = message.trim();
+    const asksAi = text.toLowerCase().startsWith("@vex");
+
+    // Checked on every request, so turning AI off applies immediately
+    if (asksAi && await isAiDisabledInProject(socket.data.project._id, socket.data.user.id)) {
+        ack?.({ ok: false, error: AI_DISABLED_MESSAGE });
+        return;
+    }
 
     await handleUserMessage(socket, text, io, roomId, ack);
 
-    if (text.toLowerCase().startsWith("@vex")) {
+    if (asksAi) {
         await handleAiMessage(socket, text, io, roomId, parseAiContext(data?.context));
     }
 };

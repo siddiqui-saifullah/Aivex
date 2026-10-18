@@ -20,7 +20,9 @@ import {
 import { useTypingIndicator } from "../hooks/useTypingIndicator";
 import ProjectHeader from "../components/project/ProjectHeader";
 import ChatRail from "../components/project/ChatRail";
-import { useChatPanel } from "../hooks/useChatPanel";
+import ExplorerRail from "../components/project/ExplorerRail";
+import PaneResizer from "../components/project/PaneResizer";
+import { useSidePane } from "../hooks/useSidePane";
 import MessageArea from "../components/project/MessageArea";
 import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
@@ -331,8 +333,19 @@ const Project = () => {
 
   // Small screens show one pane at a time
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
-  // Desktop: the chat column can be collapsed to a rail and resized
-  const chatPanel = useChatPanel();
+  // Desktop: the chat and explorer columns can be collapsed to rails and resized
+  const chatPanel = useSidePane({
+    storageKey: "aivex-chat",
+    minWidth: 288,
+    maxWidth: 640,
+    isShortcut: (e) => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b",
+  });
+  const explorerPane = useSidePane<HTMLDivElement>({
+    storageKey: "aivex-explorer",
+    minWidth: 180,
+    maxWidth: 480,
+    isShortcut: (e) => (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "e",
+  });
   // Messages already seen when the chat was collapsed (the rest count as unread)
   const [seenMessageCount, setSeenMessageCount] = useState(0);
 
@@ -1333,6 +1346,11 @@ const Project = () => {
     setSeenMessageCount(messages.length);
     chatPanel.setCollapsed(true);
   };
+  const explorerWidthClass = explorerPane.collapsed
+    ? "md:w-12"
+    : explorerPane.width
+      ? "md:w-(--explorer-w)"
+      : "md:w-64";
   const chatWidthClass = chatPanel.collapsed
     ? "md:w-12"
     : chatPanel.width
@@ -1434,28 +1452,7 @@ const Project = () => {
         />
         </div>
 
-        {/* Drag the edge to resize (double-click resets) */}
-        {!chatPanel.collapsed && (
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize chat"
-            aria-valuemin={chatPanel.minWidth}
-            aria-valuemax={chatPanel.maxWidth}
-            aria-valuenow={chatPanel.width ?? undefined}
-            tabIndex={0}
-            title="Drag to resize · double-click to reset"
-            onPointerDown={chatPanel.startResize}
-            onDoubleClick={chatPanel.resetWidth}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowLeft") chatPanel.resizeBy(-24);
-              else if (e.key === "ArrowRight") chatPanel.resizeBy(24);
-            }}
-            className={`absolute inset-y-0 right-0 z-20 hidden w-1.5 cursor-col-resize md:block focus:outline-none ${
-              chatPanel.isResizing ? "bg-teal-500/50" : "hover:bg-teal-500/30 focus-visible:bg-teal-500/40"
-            }`}
-          />
-        )}
+        {!chatPanel.collapsed && <PaneResizer pane={chatPanel} label="Resize chat" />}
 
         {/* Invite User Modal */}
         <Suspense fallback={null}>
@@ -1507,8 +1504,20 @@ const Project = () => {
         </Suspense>
       </section>
 
+      <div
+        ref={explorerPane.panelRef}
+        style={explorerPane.width ? ({ "--explorer-w": `${explorerPane.width}px` } as CSSProperties) : undefined}
+        className={`${mobileTab === "files" ? "flex" : "hidden"} md:flex relative flex-1 min-h-0 md:flex-none ${explorerWidthClass} ${explorerPane.isResizing ? "" : "md:transition-[width] md:duration-200"}`}
+      >
+      {explorerPane.collapsed && (
+        <ExplorerRail
+          onExpand={() => explorerPane.setCollapsed(false)}
+          onQuickOpen={() => setIsQuickOpen(true)}
+        />
+      )}
       <FileExplorer
-        className={`${mobileTab === "files" ? "flex" : "hidden"} md:flex flex-1 min-h-0 md:flex-none md:w-64`}
+        className={`flex flex-1 min-h-0 min-w-0 ${explorerPane.collapsed ? "md:hidden" : ""}`}
+        onCollapse={() => explorerPane.setCollapsed(true)}
         fileTree={flatFileTree}
         activeFile={activeFile}
         onSelectFile={(path) => {
@@ -1520,6 +1529,8 @@ const Project = () => {
         onRenameItem={handleRenameItem}
         onDownload={handleDownload}
       />
+      {!explorerPane.collapsed && <PaneResizer pane={explorerPane} label="Resize files" />}
+      </div>
 
       <section
         className={`${mobileTab === "code" ? "flex" : "hidden"} md:flex flex-col flex-1 min-w-0 min-h-0 bg-black`}

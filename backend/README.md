@@ -72,6 +72,8 @@ PORT=3000
 
 # Admin dashboard (/admin): emails allowed to see site-wide usage, comma separated
 ADMIN_EMAILS=you@example.com
+# Locked out? Set this once (8+ chars), deploy, sign in, then delete it
+# ADMIN_RESET_PASSWORD=a-new-password
 
 # Optional: cloud code runner for C, C++, Java, Python, Go, Rust, ...
 PISTON_URL=http://your-piston-host:2000

@@ -10,6 +10,9 @@ import Project from "../models/project.model.js";
 import ChatMessage from "../models/chat.model.js";
 import * as Y from "yjs";
 import * as collab from "./collab.js";
+import { AI_DISABLED_MESSAGE, isAiDisabledInProject } from "../services/aiPolicy.service.js";
+import { notify } from "../services/notification.service.js";
+import userModel from "../models/user.model.js";
 
 interface ChatSender {
     id: string;
@@ -222,10 +225,17 @@ const handleProjectMessage = async (
     }
 
     const text = message.trim();
+    const asksAi = text.toLowerCase().startsWith("@vex");
+
+    // Checked on every request, so turning AI off applies immediately
+    if (asksAi && await isAiDisabledInProject(socket.data.project._id, socket.data.user.id)) {
+        ack?.({ ok: false, error: AI_DISABLED_MESSAGE });
+        return;
+    }
 
     await handleUserMessage(socket, text, io, roomId, ack);
 
-    if (text.toLowerCase().startsWith("@vex")) {
+    if (asksAi) {
         await handleAiMessage(socket, text, io, roomId, parseAiContext(data?.context));
     }
 };
@@ -380,6 +390,36 @@ const handleUserMessage = async (
     };
 
     socket.broadcast.to(roomId).emit("project-message", safeMessage);
+
+    notifyMentions(socket, message, io, roomId).catch((err) => console.error("mention notify failed:", err));
+};
+
+/** "@username" in a message notifies that member, unless they're in the project right now. */
+const notifyMentions = async (socket: AppSocket, message: string, io: AppServer, roomId: string) => {
+    const handles = new Set(
+        [...message.matchAll(/(?:^|\s)@([\w-]{2,30})/g)].map((m) => m[1].toLowerCase()).filter((h) => h !== "vex"),
+    );
+    if (handles.size === 0) return;
+
+    const project = await Project.findById(socket.data.project._id).select("name users").lean();
+    if (!project) return;
+    const members = await userModel.find({ _id: { $in: project.users } }).select("_id username").lean();
+    const mentioned = members.filter(
+        (m) => handles.has(String(m.username).toLowerCase()) && String(m._id) !== socket.data.user.id,
+    );
+    if (mentioned.length === 0) return;
+
+    const online = new Set((await io.in(roomId).fetchSockets()).map((s) => s.data.user?.id));
+    const recipients = mentioned.filter((m) => !online.has(String(m._id))).map((m) => m._id);
+
+    await notify({
+        users: recipients,
+        type: "mention",
+        title: `{actor} mentioned you in “${project.name}”`,
+        body: message.length > 140 ? `${message.slice(0, 140)}…` : message,
+        link: `/projects/${project._id}`,
+        actorId: socket.data.user.id,
+    });
 };
 
 

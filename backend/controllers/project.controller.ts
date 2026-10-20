@@ -3,6 +3,7 @@ import catchAsync from "../utils/catchAsync.js";
 import * as projectService from "../services/project.service.js";
 import AppError from "../errors/AppError.js";
 import { disconnectUserFromProject, notifyProjectUpdated } from "../socket/io.js";
+import { recordProjectOpen } from "../services/activity.service.js";
 
 /* -------------------------------------------------------------------------- */
 /* CREATE PROJECT                                                             */
@@ -47,6 +48,7 @@ export const getProjectById = catchAsync(async (req, res) => {
         projectId,
         userId,
     });
+    recordProjectOpen(project._id, userId, project.name);
 
     res.status(200).json({
         success: true,
@@ -124,9 +126,40 @@ export const inviteUsersToProject = catchAsync(async (req, res) => {
     notifyProjectUpdated(projectId, "members");
 
     res.status(200).json({
-        message: "Users added successfully",
+        message: "Invitations sent",
         ...result,
     });
+});
+
+/* -------------------------------------------------------------------------- */
+/* INVITATIONS                                                                */
+/* -------------------------------------------------------------------------- */
+export const listMyInvitesController = catchAsync(async (req, res) => {
+    res.status(200).json(await projectService.listMyInvites({ userId: req.user!._id }));
+});
+
+export const acceptInviteController = catchAsync(async (req, res) => {
+    res.status(200).json(await projectService.respondToInvite({
+        projectId: req.params.projectId as string,
+        userId: req.user!._id,
+        accept: true,
+    }));
+});
+
+export const declineInviteController = catchAsync(async (req, res) => {
+    res.status(200).json(await projectService.respondToInvite({
+        projectId: req.params.projectId as string,
+        userId: req.user!._id,
+        accept: false,
+    }));
+});
+
+export const cancelInviteController = catchAsync(async (req, res) => {
+    res.status(200).json(await projectService.cancelInvite({
+        projectId: req.params.projectId as string,
+        ownerId: req.user!._id,
+        userId: req.params.userId as string,
+    }));
 });
 
 /* -------------------------------------------------------------------------- */

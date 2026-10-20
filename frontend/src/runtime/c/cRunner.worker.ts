@@ -108,12 +108,26 @@ const run = async (req: Extract<CWorkerRequest, { type: "run" }>) => {
     return chunk;
   };
 
+  // sleep(): show what was printed, then block without burning CPU
+  const sleepCell = typeof SharedArrayBuffer !== "undefined" ? new Int32Array(new SharedArrayBuffer(4)) : null;
+  const sleep = (ms: number) => {
+    flush();
+    post({ type: "sleep", id, ms });
+    const start = performance.now();
+    if (sleepCell) Atomics.wait(sleepCell, 0, 0, ms);
+    while (performance.now() - start < ms) {
+      /* fallback spin */
+    }
+    waitedMs += performance.now() - start;
+  };
+
   const r0 = performance.now();
   const result = runProgram(compiled.wasm, {
     stdout: write("stdout"),
     stderr: write("stderr"),
     readStdin,
     files: req.files,
+    sleep,
   });
   const runMs = performance.now() - r0 - waitedMs;
   flush();

@@ -9,8 +9,10 @@ WORK="${1:-$(mktemp -d)}"
 git clone https://github.com/tyfkda/xcc.git "$WORK/xcc"
 cd "$WORK/xcc"
 git checkout "$XCC_COMMIT"
-# Aivex fixes to the wasm libc: glibc-compatible printf/scanf/strtod,
-# prompt flushing before reading stdin, subnormal frexp
+# Aivex changes: backward goto support in the wasm backend; glibc-compatible
+# printf/scanf/strtod; prompt flushing before reading stdin; subnormal frexp;
+# missing libc (C99 math + float variants, <time.h> tm/strftime/clock,
+# <signal.h>, sleep, div, gets/rewind/setvbuf, <conio.h> basics)
 git apply "$HERE/xcc-libc.patch"
 make wcc          # native cross compiler + wasm libc
 make wcc-gen2     # the compiler compiled to WebAssembly (cc.wasm)

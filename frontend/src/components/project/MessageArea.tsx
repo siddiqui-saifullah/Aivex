@@ -1,4 +1,4 @@
-import { Bot } from "lucide-react";
+import { Bot, BotOff, MessageSquare } from "lucide-react";
 import MessageGroup from "../shared/MessageGroup";
 import ChatInput from "../shared/ChatTextarea";
 import { useEffect, useRef, useMemo, type ComponentProps } from "react";
@@ -16,6 +16,8 @@ interface MessageAreaProps {
   isAiThinking?: boolean;
   onDeleteMessage?: (id: string) => void;
   onApplyFiles?: (files: FlatFileTree) => void;
+  /** The class teacher turned the AI off: plain team chat only. */
+  aiDisabled?: boolean;
   /** Mentions, AI mode and prompt enhancer for the input. */
   inputProps?: Pick<
     ComponentProps<typeof ChatInput>,
@@ -43,6 +45,7 @@ const MessageArea = ({
   isAiThinking = false,
   onDeleteMessage,
   onApplyFiles,
+  aiDisabled = false,
   inputProps,
 }: MessageAreaProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -73,6 +76,16 @@ const MessageArea = ({
               onApplyFiles={onApplyFiles}
             />
           ))
+        ) : aiDisabled ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-zinc-800 text-zinc-400">
+              <MessageSquare size={22} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-zinc-200">Chat with your class</p>
+              <p className="text-xs text-zinc-500">Vex AI is turned off for this class by your teacher.</p>
+            </div>
+          </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-center">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-300">
@@ -115,13 +128,18 @@ const MessageArea = ({
       </div>
 
       {/* -------------------- INPUT AREA -------------------- */}
+      {aiDisabled && groupedMessages.length > 0 && (
+        <div className="mx-3 flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400">
+          <BotOff size={13} className="shrink-0" /> Vex AI is turned off for this class by your teacher
+        </div>
+      )}
       <div className="shrink-0 flex items-end gap-2 p-3">
         <ChatInput
           value={message}
           onChange={onMessageChange}
           onSend={onSend}
           onTyping={onTyping}
-          placeholder="Message, or type @ to mention Vex AI"
+          placeholder={aiDisabled ? "Message your class…" : "Message, or type @ to mention Vex AI"}
           {...inputProps}
         />
       </div>

@@ -4,6 +4,7 @@ import Button from "../ui/Button";
 import { TECH_STACKS, type TechStack } from "../../constants/options";
 import { getErrorMessage } from "../../utils/getErrorMessage";
 import type { Project } from "../../types";
+import AiToggle from "./AiToggle";
 
 const ModalShell = ({ title, subtitle, icon, onClose, children }: {
   title: string;
@@ -37,13 +38,14 @@ const labelClass = "block text-xs font-medium text-zinc-400 mb-1.5 uppercase tra
 /* -------------------------------------------------------------------------- */
 export const CreateClassModal = ({ onClose, onCreate, templates }: {
   onClose: () => void;
-  onCreate: (data: { name: string; stack: string; templateProjectId?: string }) => Promise<void>;
+  onCreate: (data: { name: string; stack: string; templateProjectId?: string; aiEnabled: boolean }) => Promise<void>;
   /** The teacher's own projects that can be copied to every student. */
   templates: Project[];
 }) => {
   const [name, setName] = useState("");
   const [stack, setStack] = useState<TechStack>("C");
   const [templateId, setTemplateId] = useState("");
+  const [aiEnabled, setAiEnabled] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -57,7 +59,7 @@ export const CreateClassModal = ({ onClose, onCreate, templates }: {
     setLoading(true);
     setError("");
     try {
-      await onCreate({ name: trimmed, stack, templateProjectId: templateId || undefined });
+      await onCreate({ name: trimmed, stack, templateProjectId: templateId || undefined, aiEnabled });
       onClose();
     } catch (err) {
       setError(getErrorMessage(err, "Could not create the class"));
@@ -125,6 +127,8 @@ export const CreateClassModal = ({ onClose, onCreate, templates }: {
             </select>
           )}
         </div>
+
+        <AiToggle enabled={aiEnabled} onChange={setAiEnabled} compact />
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 

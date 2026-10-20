@@ -12,6 +12,7 @@ router.get("/", classroomController.listClassrooms);
 // Join codes are short: limit guessing
 router.post("/join", rateLimit({ windowMs: 60_000, max: 15 }), classroomController.joinClassroom);
 router.get("/:classroomId", classroomController.getClassroom);
+router.patch("/:classroomId", rateLimit({ windowMs: 60_000, max: 30 }), classroomController.updateClassroom);
 router.delete("/:classroomId", classroomController.deleteClassroom);
 
 export default router;

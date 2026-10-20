@@ -7,10 +7,13 @@ import {
   User,
   ChevronDown,
   Flag,
+  ShieldCheck,
 } from "lucide-react";
 import { useUser } from "../context/user.context";
 import { logOut } from "../services/user.service";
 import ReportIssueModal from "./dashboard/modals/ReportIssueModal";
+import NotificationBell from "./NotificationBell";
+import { useIsAdmin } from "../hooks/useIsAdmin";
 
 const AppHeader = () => {
   const { user, setUser } = useUser();
@@ -19,6 +22,7 @@ const AppHeader = () => {
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { projectId } = useParams();
+  const isAdmin = useIsAdmin(user?._id);
 
   // Closing dropdown when clicking outside
   useEffect(() => {
@@ -69,6 +73,8 @@ const AppHeader = () => {
 
             {/* Actions Group */}
             <div className="flex items-center gap-3">
+              {user && <NotificationBell />}
+
               {/* Report Issue Button - Always visible or conditionally based on projectId */}
               <button
                 onClick={() => setIsReportModalOpen(true)}
@@ -132,6 +138,17 @@ const AppHeader = () => {
                         <LayoutDashboard size={16} />
                         Dashboard
                       </Link>
+
+                      {isAdmin && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setIsMenuOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors"
+                        >
+                          <ShieldCheck size={16} />
+                          Admin · usage
+                        </Link>
+                      )}
 
                       <button
                         onClick={handleLogout}

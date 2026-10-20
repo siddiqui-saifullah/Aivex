@@ -11,6 +11,7 @@ const Profile = lazy(() => import("../screens/Profile"));
 const Project = lazy(() => import("../screens/Project"));
 const Classroom = lazy(() => import("../screens/Classroom"));
 const JoinClass = lazy(() => import("../screens/JoinClass"));
+const Admin = lazy(() => import("../screens/Admin"));
 const About = lazy(() => import("../screens/About"));
 const Privacy = lazy(() => import("../screens/Privacy"));
 const Terms = lazy(() => import("../screens/Terms"));
@@ -66,6 +67,7 @@ const AppRoutes = () => {
             <Route path="/classes/:classroomId" element={<Classroom />} />
             <Route path="/join" element={<JoinClass />} />
             <Route path="/join/:code" element={<JoinClass />} />
+            <Route path="/admin" element={<Admin />} />
           </Route>
 
           <Route element={<PublicLayout />}>

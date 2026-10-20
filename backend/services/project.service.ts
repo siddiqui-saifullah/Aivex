@@ -5,6 +5,9 @@ import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
 import issueModel from "../models/issue.model.js";
 import Classroom from "../models/classroom.model.js";
+import { isAiDisabledFor } from "./aiPolicy.service.js";
+import { notify, resolveInviteNotifications } from "./notification.service.js";
+import { notifyProjectUpdated } from "../socket/io.js";
 import type { IssueReport } from "../types/index.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
@@ -158,6 +161,7 @@ export const getProjectById = async ({ projectId, userId }: { projectId: string;
         users: userId,
     })
         .populate("users", "name username")
+        .populate("invites.user", "name username")
         .lean();
 
     if (!project) {
@@ -168,6 +172,7 @@ export const getProjectById = async ({ projectId, userId }: { projectId: string;
         ...project,
         files: fromStoredFiles(project.files),
         isOwner: project.owner.toString() === userId.toString(),
+        aiDisabled: await isAiDisabledFor(project.classroom, userId),
     };
 };
 
@@ -323,21 +328,132 @@ export const inviteUsersToProject = async ({ ownerId, projectId, users }: {
         throw new AppError("Invalid users in list", 400);
     }
 
-    const usersToAdd = uniqueUsers.filter(
-        id => !project.users.some(u => u.equals(id))
+    // Members and people with a pending invite are skipped
+    const toInvite = uniqueUsers.filter(
+        id => !project.users.some(u => u.equals(id)) && !project.invites.some(i => i.user.equals(id))
     );
 
-    if (usersToAdd.length === 0) {
-        throw new AppError("All users already in project", 400);
+    if (toInvite.length === 0) {
+        throw new AppError("Everyone selected is already a member or has been invited", 400);
     }
 
-    project.users.push(...usersToAdd.map(id => new mongoose.Types.ObjectId(id)));
+    // Nobody joins without saying yes: they get an invitation to accept or decline
+    project.invites.push(...toInvite.map(id => ({
+        user: new mongoose.Types.ObjectId(id),
+        invitedBy: new mongoose.Types.ObjectId(String(ownerId)),
+        createdAt: new Date(),
+    })));
     await project.save();
 
+    void notify({
+        users: toInvite,
+        type: "project-invite",
+        title: `{actor} invited you to “${project.name}”`,
+        body: "Accept to join the project and start coding together.",
+        link: "",
+        actorId: ownerId,
+        projectId: project._id,
+        status: "pending",
+    });
+
     return {
-        addedCount: usersToAdd.length,
+        invitedCount: toInvite.length,
         usersCount: project.users.length,
     };
+};
+
+/* -------------------------------------------------------------------------- */
+/* INVITATIONS (accept / decline / cancel)                                    */
+/* -------------------------------------------------------------------------- */
+export const listMyInvites = async ({ userId }: { userId: Id }) => {
+    const projects = await Project.find({ "invites.user": userId })
+        .select("name stack owner users invites")
+        .populate("owner", "name username")
+        .populate("invites.invitedBy", "name username")
+        .lean();
+
+    return projects.map((p) => {
+        const invite = p.invites.find((i) => String(i.user) === String(userId))!;
+        const invitedBy = invite.invitedBy as unknown as { name?: string; username?: string } | null;
+        const owner = p.owner as unknown as { name?: string; username?: string };
+        return {
+            projectId: p._id,
+            name: p.name,
+            stack: p.stack,
+            membersCount: p.users.length,
+            owner: { name: owner?.name, username: owner?.username },
+            invitedBy: { name: invitedBy?.name, username: invitedBy?.username },
+            createdAt: invite.createdAt,
+        };
+    });
+};
+
+export const respondToInvite = async ({ projectId, userId, accept }: {
+    projectId: string;
+    userId: Id;
+    accept: boolean;
+}) => {
+    if (!mongoose.Types.ObjectId.isValid(projectId)) throw new AppError("Invalid projectId", 400);
+
+    const project = await Project.findOne({ _id: projectId, "invites.user": userId })
+        .select("name invites")
+        .lean();
+    if (!project) {
+        // Deleted project or withdrawn invite: settle the stale notification
+        void resolveInviteNotifications({ userId, projectId, status: "expired" });
+        throw new AppError("This invitation is no longer available", 404);
+    }
+    const invite = project.invites.find((i) => String(i.user) === String(userId))!;
+
+    // Only if the invite is still there, so a double click can't answer twice
+    const remaining = project.invites.filter((i) => String(i.user) !== String(userId));
+    const result = await Project.updateOne(
+        { _id: projectId, "invites.user": userId },
+        accept
+            ? { $set: { invites: remaining }, $addToSet: { users: userId } }
+            : { $set: { invites: remaining } },
+    );
+    if (result.modifiedCount === 0) throw new AppError("This invitation is no longer available", 404);
+
+    void resolveInviteNotifications({ userId, projectId, status: accept ? "accepted" : "declined" });
+    void notify({
+        users: [invite.invitedBy],
+        type: accept ? "invite-accepted" : "invite-declined",
+        title: accept
+            ? `{actor} accepted your invite to “${project.name}”`
+            : `{actor} declined your invite to “${project.name}”`,
+        link: `/projects/${projectId}`,
+        actorId: userId,
+    });
+    notifyProjectUpdated(projectId, "members");
+
+    return { accepted: accept, projectId };
+};
+
+export const cancelInvite = async ({ projectId, ownerId, userId }: {
+    projectId: string;
+    ownerId: Id;
+    userId: string;
+}) => {
+    if (!mongoose.Types.ObjectId.isValid(projectId) || !mongoose.Types.ObjectId.isValid(userId)) {
+        throw new AppError("Invalid id", 400);
+    }
+    const project = await Project.findById(projectId).select("owner invites").lean();
+    if (!project) throw new AppError("Project not found", 404);
+    if (String(project.owner) !== String(ownerId)) {
+        throw new AppError("Only the owner can cancel invitations", 403);
+    }
+
+    const remaining = project.invites.filter((i) => String(i.user) !== userId);
+    const result = await Project.updateOne(
+        { _id: projectId, "invites.user": userId },
+        { $set: { invites: remaining } },
+    );
+    if (result.modifiedCount === 0) throw new AppError("No pending invitation for this user", 404);
+
+    void resolveInviteNotifications({ userId, projectId, status: "cancelled" });
+    notifyProjectUpdated(projectId, "members");
+    return { success: true };
 };
 
 /* -------------------------------------------------------------------------- */
@@ -457,6 +573,14 @@ export const transferOwnership = async ({ projectId, ownerId, newOwnerId }: {
     project.owner = new mongoose.Types.ObjectId(newOwnerId);
     await project.save();
 
+    void notify({
+        users: [newOwnerId],
+        type: "project-owner",
+        title: `{actor} made you the owner of “${project.name}”`,
+        link: `/projects/${project._id}`,
+        actorId: ownerId,
+    });
+
     return { success: true, owner: newOwnerId };
 };
 
@@ -489,6 +613,14 @@ export const removeMember = async ({ projectId, ownerId, memberId }: {
 
     project.users = project.users.filter(id => !id.equals(memberId));
     await project.save();
+
+    void notify({
+        users: [memberId],
+        type: "project-removed",
+        title: `{actor} removed you from “${project.name}”`,
+        link: "/dashboard",
+        actorId: ownerId,
+    });
 
     return { success: true, usersCount: project.users.length };
 };

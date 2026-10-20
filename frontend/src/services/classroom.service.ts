@@ -11,7 +11,12 @@ export const getClassroom = async (id: string): Promise<ClassroomDetails> => {
   return data;
 };
 
-export const createClassroom = async (payload: { name: string; stack: string; templateProjectId?: string }) => {
+export const createClassroom = async (payload: {
+  name: string;
+  stack: string;
+  templateProjectId?: string;
+  aiEnabled?: boolean;
+}) => {
   const { data } = await axios.post<{ _id: string; name: string; code: string; stack: string }>("/classrooms", payload);
   return data;
 };
@@ -21,6 +26,12 @@ export const joinClassroom = async (code: string) => {
     "/classrooms/join",
     { code },
   );
+  return data;
+};
+
+/** Teacher: allow or block Vex AI for the class's students. */
+export const updateClassroom = async (id: string, settings: { aiEnabled: boolean }) => {
+  const { data } = await axios.patch<{ aiEnabled: boolean }>(`/classrooms/${id}`, settings);
   return data;
 };
 

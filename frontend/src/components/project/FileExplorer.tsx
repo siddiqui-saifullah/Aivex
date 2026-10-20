@@ -1,7 +1,7 @@
 import { buildFileTree } from "../../utils/buildFileTree";
 import TreeNode from "./TreeNode";
 import { useMemo, useState } from "react";
-import { Download, Plus, X } from "lucide-react";
+import { Download, PanelLeftClose, Plus, X } from "lucide-react";
 import type { CreateFilePayload, FileItemType, FlatFileTree } from "../../types";
 
 interface FileExplorerProps {
@@ -12,6 +12,8 @@ interface FileExplorerProps {
   onDeleteFile: (path: string, type: FileItemType) => void;
   onRenameItem: (path: string, newName: string) => boolean | Promise<boolean>;
   onDownload: () => void;
+  /** Collapse the explorer to a rail (desktop). */
+  onCollapse?: () => void;
   className?: string;
 }
 
@@ -23,6 +25,7 @@ const FileExplorer = ({
   onDeleteFile,
   onRenameItem,
   onDownload,
+  onCollapse,
   className = "",
 }: FileExplorerProps) => {
   const [selectedPath, setSelectedPath] = useState("");
@@ -112,6 +115,16 @@ const FileExplorer = ({
         >
           <Plus size={18} />
         </button>
+        {onCollapse && (
+          <button
+            onClick={onCollapse}
+            className="hidden md:block p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-zinc-200 transition"
+            title="Hide files (Ctrl+Shift+E)"
+            aria-label="Hide files"
+          >
+            <PanelLeftClose size={16} />
+          </button>
+        )}
         </div>
       </div>
 

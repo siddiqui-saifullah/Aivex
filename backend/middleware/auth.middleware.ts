@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import redisClient from '../services/redis.service.js';
+import { touchUser } from '../services/activity.service.js';
 
 
 
@@ -20,6 +21,7 @@ export const authUser = async (req: Request, res: Response, next: NextFunction) 
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
         req.user = { _id: decoded.userId };
+        touchUser(decoded.userId);
         next();
 
     } catch (error) {

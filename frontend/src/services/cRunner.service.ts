@@ -13,7 +13,7 @@ import {
 } from "../runtime/c/protocol";
 
 /** Bump when public/wcc changes so browsers fetch the new compiler. */
-const WCC_VERSION = "1";
+const WCC_VERSION = "2";
 const BASE = `${import.meta.env.BASE_URL}wcc/`;
 
 /** CPU time a program may use (time spent waiting for typed input doesn't count). */
@@ -120,6 +120,9 @@ export const runC = (
         waitingForInput = true;
         handlers.onInputRequest?.();
         break;
+      case "sleep":
+        activeMs -= msg.ms; // sleeping isn't CPU time
+        break;
       case "done":
         finish(msg.result);
         break;
@@ -162,3 +165,15 @@ export const runC = (
     },
   };
 };
+
+const SIGNAL_EXITS: Record<number, string> = {
+  130: "Interrupted",
+  134: "Aborted",
+  136: "Floating point exception",
+  139: "Segmentation fault",
+  143: "Terminated",
+};
+
+/** How a non-zero exit code reads in the output ("Aborted" for abort()). */
+export const describeExitCode = (code: number) =>
+  SIGNAL_EXITS[code] ? `${SIGNAL_EXITS[code]} (exit code ${code})` : `Exited with code ${code}`;

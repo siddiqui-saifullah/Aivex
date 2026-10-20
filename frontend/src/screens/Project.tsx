@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense, type CSSProperties } from "react";
 import { Code2, FolderTree, Loader2, MessageSquare } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { WebContainer } from "@webcontainer/api";
 import {
   getProjectById,
+  cancelInvite,
   getProjectChats,
   updateProjectFiles,
   deleteProject,
@@ -19,6 +20,10 @@ import {
 } from "../services/message.service";
 import { useTypingIndicator } from "../hooks/useTypingIndicator";
 import ProjectHeader from "../components/project/ProjectHeader";
+import ChatRail from "../components/project/ChatRail";
+import ExplorerRail from "../components/project/ExplorerRail";
+import PaneResizer from "../components/project/PaneResizer";
+import { useSidePane } from "../hooks/useSidePane";
 import MessageArea from "../components/project/MessageArea";
 import SidePanel from "../components/project/SidePanel";
 import FileExplorer from "../components/project/FileExplorer";
@@ -29,7 +34,7 @@ import OutputPanel, { type OutputKind, type OutputLine } from "../components/pro
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
 import { getRunnerLanguage, runFile } from "../services/runner.service";
-import { runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
+import { describeExitCode, runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
 import { downloadProjectZip } from "../utils/downloadZip";
@@ -110,7 +115,7 @@ interface UserJoinedEvent {
 
 interface ProjectUpdatedEvent {
   projectId: string;
-  reason: "members" | "owner" | "renamed" | "deleted";
+  reason: "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy";
 }
 
 type SendAck =
@@ -329,6 +334,21 @@ const Project = () => {
 
   // Small screens show one pane at a time
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  // Desktop: the chat and explorer columns can be collapsed to rails and resized
+  const chatPanel = useSidePane({
+    storageKey: "aivex-chat",
+    minWidth: 288,
+    maxWidth: 640,
+    isShortcut: (e) => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b",
+  });
+  const explorerPane = useSidePane<HTMLDivElement>({
+    storageKey: "aivex-explorer",
+    minWidth: 180,
+    maxWidth: 480,
+    isShortcut: (e) => (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "e",
+  });
+  // Messages already seen when the chat was collapsed (the rest count as unread)
+  const [seenMessageCount, setSeenMessageCount] = useState(0);
 
   const appendOutput = useCallback((chunk: string, kind: OutputKind = "stdout") => {
     const lines = kind === "stdout" || kind === "stderr" ? toTerminalLines(chunk) : chunk.split("\n");
@@ -579,7 +599,12 @@ const Project = () => {
 
       try {
         const updated = await getProjectById(projectId);
-        if (isMounted) applyProject(updated);
+        if (!isMounted) return;
+        applyProject(updated);
+        if (reason === "ai-policy") {
+          if (updated.aiDisabled) toast.info("Your teacher turned off Vex AI for this class");
+          else toast.success("Your teacher turned Vex AI back on");
+        }
       } catch {
         // No longer a member (removed by the owner)
         if (!isMounted) return;
@@ -621,7 +646,11 @@ const Project = () => {
 
     // AI mode auto-mentions Vex so the server routes the message to the AI
     const text =
-      aiMode && !/^\s*@vex\b/i.test(message) ? `@Vex ${message.trim()}` : message;
+      aiMode && !project?.aiDisabled && !/^\s*@vex\b/i.test(message) ? `@Vex ${message.trim()}` : message;
+    if (project?.aiDisabled && /^\s*@vex\b/i.test(text)) {
+      toast.info("Your teacher has turned off Vex AI for this class");
+      return;
+    }
     const userMessage = formatUserMessage(text, user);
     setMessages((prev) => [...prev, userMessage]);
     setMessage("");
@@ -671,7 +700,7 @@ const Project = () => {
     try {
       // Don't send the mention itself to the enhancer; put it back afterwards
       const mention = /^\s*@vex\s*/i.exec(text)?.[0] ?? "";
-      const improved = await enhancePrompt(text.slice(mention.length));
+      const improved = await enhancePrompt(text.slice(mention.length), projectId);
       return mention ? `@Vex ${improved}` : improved;
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not enhance the prompt"));
@@ -800,18 +829,26 @@ const Project = () => {
   };
 
   const handleSelectUser = async (users: User[]) => {
-    const addedUserMessages: ChatMessage[] = users.map((user) => ({
-      text: `${user.username} was added to the project`,
-      type: "system",
-      timestamp: Date.now(),
-    }));
-
-    setMessages((prev) => [...prev, ...addedUserMessages]);
+    toast.success(
+      users.length === 1
+        ? `Invitation sent to @${users[0].username}`
+        : `Invitations sent to ${users.length} people`,
+    );
 
     try {
       applyProject(await getProjectById(projectId));
     } catch (err) {
       console.error("Failed to refresh project:", err);
+    }
+  };
+
+  const handleCancelInvite = async (invitee: User) => {
+    try {
+      await cancelInvite(projectId, invitee._id);
+      toast.info(`Invitation for @${invitee.username} withdrawn`);
+      applyProject(await getProjectById(projectId));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not cancel the invitation"));
     }
   };
 
@@ -1033,7 +1070,7 @@ const Project = () => {
               break;
             case "exit":
               appendOutput(
-                `${result.code === 0 ? "Finished" : `Exited with code ${result.code}`}${timing(result.compileMs, result.runMs)}`,
+                `${result.code === 0 ? "Finished" : describeExitCode(result.code)}${timing(result.compileMs, result.runMs)}`,
                 result.code === 0 ? "success" : "error",
               );
               break;
@@ -1311,8 +1348,28 @@ const Project = () => {
     return <ProjectSkeleton />;
   }
 
+  const unreadMessages = chatPanel.collapsed
+    ? messages.slice(seenMessageCount).filter((m) => m.type === "incoming").length
+    : 0;
+  const collapseChat = () => {
+    setSeenMessageCount(messages.length);
+    chatPanel.setCollapsed(true);
+  };
+  const explorerWidthClass = explorerPane.collapsed
+    ? "md:w-12"
+    : explorerPane.width
+      ? "md:w-(--explorer-w)"
+      : "md:w-64";
+  const chatWidthClass = chatPanel.collapsed
+    ? "md:w-12"
+    : chatPanel.width
+      ? "md:w-(--chat-w)"
+      : "md:w-[30%] lg:w-[28%] md:min-w-72 md:max-w-[460px]";
+
+  // The class teacher can turn the AI off for students
+  const aiDisabled = Boolean(project.aiDisabled);
   const mentionables: Mentionable[] = [
-    { id: "vex", handle: "Vex", label: "Vex AI", isAI: true },
+    ...(aiDisabled ? [] : [{ id: "vex", handle: "Vex", label: "Vex AI", isAI: true }]),
     ...project.users
       .filter((member) => member._id !== user?._id)
       .map((member) => ({
@@ -1331,13 +1388,30 @@ const Project = () => {
   return (
     <main className="h-[calc(100dvh-4rem)] flex flex-col md:flex-row overflow-hidden">
       <section
-        className={`${mobileTab === "chat" ? "flex" : "hidden"} md:flex relative flex-col flex-1 min-h-0 md:flex-none md:w-[30%] lg:w-[28%] md:min-w-72 md:max-w-[460px] border-r border-white/10 bg-zinc-950 overflow-hidden`}
+        ref={chatPanel.panelRef}
+        aria-label="Chat"
+        style={chatPanel.width ? ({ "--chat-w": `${chatPanel.width}px` } as CSSProperties) : undefined}
+        className={`${mobileTab === "chat" ? "flex" : "hidden"} md:flex relative flex-col flex-1 min-h-0 md:flex-none ${chatWidthClass} ${chatPanel.isResizing ? "" : "md:transition-[width] md:duration-200"} border-r border-white/10 bg-zinc-950 overflow-hidden`}
       >
+        {chatPanel.collapsed && (
+          <ChatRail
+            unread={unreadMessages}
+            isAiThinking={isAiThinking}
+            isTyping={Object.keys(typingUsers).length > 0}
+            members={project.users}
+            currentUserId={user?._id}
+            onExpand={() => chatPanel.setCollapsed(false)}
+          />
+        )}
+
+        {/* Stays mounted while collapsed, so the draft and scroll position survive */}
+        <div className={`flex flex-col flex-1 min-h-0 ${chatPanel.collapsed ? "md:hidden" : ""}`}>
         {/* Header */}
         <ProjectHeader
           project={project}
           isSidePanelOpen={isSidePanelOpen}
           onToggleSidePanel={() => setIsSidePanelOpen((prev) => !prev)}
+          onCollapse={collapseChat}
         />
 
         {/* Message Area */}
@@ -1351,13 +1425,14 @@ const Project = () => {
           isAiThinking={isAiThinking}
           onDeleteMessage={handleDeleteMessage}
           onApplyFiles={handleApplyFiles}
+          aiDisabled={aiDisabled}
           inputProps={{
             mentionables,
-            aiMode,
-            onToggleAiMode: toggleAiMode,
-            onEnhance: handleEnhancePrompt,
+            aiMode: aiMode && !aiDisabled,
+            onToggleAiMode: aiDisabled ? undefined : toggleAiMode,
+            onEnhance: aiDisabled ? undefined : handleEnhancePrompt,
             aiContext:
-              activeFile && activeFile !== ".aivex" && !aiContextDismissed
+              !aiDisabled && activeFile && activeFile !== ".aivex" && !aiContextDismissed
                 ? {
                     label: editorSelection
                       ? `${activeFile.split("/").pop()} · lines ${editorSelection.startLine}–${editorSelection.endLine}`
@@ -1379,11 +1454,15 @@ const Project = () => {
           onLeave={handleLeaveProject}
           onTransferOwnership={handleTransferOwnership}
           onRemoveMember={handleRemoveMember}
+          onCancelInvite={handleCancelInvite}
           onSaveMemory={handleSaveMemory}
           currentUserId={user?._id}
           invitePermissionError={invitePermissionError}
           deletePermissionError={deletePermissionError}
         />
+        </div>
+
+        {!chatPanel.collapsed && <PaneResizer pane={chatPanel} label="Resize chat" />}
 
         {/* Invite User Modal */}
         <Suspense fallback={null}>
@@ -1393,6 +1472,7 @@ const Project = () => {
             onSelectUser={handleSelectUser}
             projectId={projectId}
             existingMembers={project.users || []}
+            pendingInvites={(project.invites ?? []).map((i) => i.user)}
           />
         </Suspense>
 
@@ -1435,8 +1515,20 @@ const Project = () => {
         </Suspense>
       </section>
 
+      <div
+        ref={explorerPane.panelRef}
+        style={explorerPane.width ? ({ "--explorer-w": `${explorerPane.width}px` } as CSSProperties) : undefined}
+        className={`${mobileTab === "files" ? "flex" : "hidden"} md:flex relative flex-1 min-h-0 md:flex-none ${explorerWidthClass} ${explorerPane.isResizing ? "" : "md:transition-[width] md:duration-200"}`}
+      >
+      {explorerPane.collapsed && (
+        <ExplorerRail
+          onExpand={() => explorerPane.setCollapsed(false)}
+          onQuickOpen={() => setIsQuickOpen(true)}
+        />
+      )}
       <FileExplorer
-        className={`${mobileTab === "files" ? "flex" : "hidden"} md:flex flex-1 min-h-0 md:flex-none md:w-64`}
+        className={`flex flex-1 min-h-0 min-w-0 ${explorerPane.collapsed ? "md:hidden" : ""}`}
+        onCollapse={() => explorerPane.setCollapsed(true)}
         fileTree={flatFileTree}
         activeFile={activeFile}
         onSelectFile={(path) => {
@@ -1448,6 +1540,8 @@ const Project = () => {
         onRenameItem={handleRenameItem}
         onDownload={handleDownload}
       />
+      {!explorerPane.collapsed && <PaneResizer pane={explorerPane} label="Resize files" />}
+      </div>
 
       <section
         className={`${mobileTab === "code" ? "flex" : "hidden"} md:flex flex-col flex-1 min-w-0 min-h-0 bg-black`}

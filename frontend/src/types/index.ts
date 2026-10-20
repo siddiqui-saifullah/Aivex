@@ -41,6 +41,10 @@ export interface Project {
   usersCount?: number;
   /** Class this project belongs to (a student's copy of an assignment). */
   classroom?: string | null;
+  /** The class teacher turned Vex AI off for this user. */
+  aiDisabled?: boolean;
+  /** Invited but not yet accepted (populated on the project page). */
+  invites?: { user: User; createdAt: string }[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -52,6 +56,8 @@ export interface ClassroomSummary {
   _id: string;
   name: string;
   stack: string;
+  /** Whether students may use Vex AI. */
+  aiEnabled?: boolean;
   role: ClassroomRole;
   /** Join code (teacher only). */
   code?: string;
@@ -148,4 +154,42 @@ export interface EditorSelection {
 
 export interface ApiErrorBody {
   message?: string;
+}
+
+export type NotificationType =
+  | "project-invite"
+  | "invite-accepted"
+  | "invite-declined"
+  | "project-removed"
+  | "project-owner"
+  | "mention"
+  | "class-join"
+  | "class-ai";
+
+export interface AppNotification {
+  _id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  /** In-app path to open. */
+  link: string;
+  actor: { id: string | null; username: string } | null;
+  /** Invites: the project, and whether it was answered. */
+  projectId?: string | null;
+  status?: InviteStatus | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export type InviteStatus = "pending" | "accepted" | "declined" | "cancelled" | "expired";
+
+/** An invitation waiting for the current user's answer. */
+export interface ProjectInvite {
+  projectId: string;
+  name: string;
+  stack: string;
+  membersCount: number;
+  owner: { name?: string; username?: string };
+  invitedBy: { name?: string; username?: string };
+  createdAt: string;
 }

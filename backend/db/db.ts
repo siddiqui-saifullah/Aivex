@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { resetAdminPasswords } from "../services/adminBootstrap.service.js";
 
 function connect(): void {
     const mongoUrl = process.env.MONGO_URL;
@@ -8,7 +9,10 @@ function connect(): void {
     }
 
     mongoose.connect(mongoUrl)
-        .then(() => console.log("Connected to database"))
+        .then(() => {
+            console.log("Connected to database");
+            return resetAdminPasswords().catch((err) => console.error("Admin password reset failed:", err));
+        })
         .catch((err: unknown) => {
             console.error('Failed to connect to MongoDB:', err);
             process.exit(1);

@@ -15,6 +15,8 @@ interface InviteUserModalProps {
   onSelectUser: (users: User[]) => void;
   projectId: string;
   existingMembers?: User[];
+  /** People with a pending invitation (shown, but can't be picked again). */
+  pendingInvites?: User[];
 }
 
 const MAX_SELECTION = 10;
@@ -25,6 +27,7 @@ const InviteUserModal = ({
   onSelectUser,
   projectId,
   existingMembers = [],
+  pendingInvites = [],
 }: InviteUserModalProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isInviting, setIsInviting] = useState(false);
@@ -35,6 +38,7 @@ const InviteUserModal = ({
   // Hide people who are already members; inviting them would be rejected
   const memberIds = new Set(existingMembers.map((m) => String(m._id)));
   const users = searchResults.filter((u) => !memberIds.has(String(u._id)));
+  const invitedIds = new Set(pendingInvites.map((u) => String(u._id)));
   const {
     selectedUserIds,
     toggleUser,
@@ -58,9 +62,9 @@ const InviteUserModal = ({
       onSelectUser(selectedUsers);
       clearModal();
     } catch (error) {
-      console.error("Failed to add users:", error);
+      console.error("Failed to invite users:", error);
       setInviteError(
-        getErrorMessage(error, "Failed to add members. Please try again.")
+        getErrorMessage(error, "Failed to send invitations. Please try again.")
       );
     } finally {
       setIsInviting(false);
@@ -85,9 +89,9 @@ const InviteUserModal = ({
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex justify-between">
           <div>
-            <h2 className="text-white font-semibold">Add Members</h2>
+            <h2 className="text-white font-semibold">Invite people</h2>
             <p className="text-xs text-zinc-500">
-              {selectedUserIds.length}/{MAX_SELECTION} selected
+              They join once they accept · {selectedUserIds.length}/{MAX_SELECTION} selected
             </p>
           </div>
           <button onClick={clearModal} disabled={isInviting}>
@@ -130,9 +134,14 @@ const InviteUserModal = ({
           {users.map((user) => (
             <div
               key={user._id}
-              onClick={() => !isInviting && toggleUser(user._id)}
-              className="relative cursor-pointer"
+              onClick={() => !isInviting && !invitedIds.has(String(user._id)) && toggleUser(user._id)}
+              className={`relative ${invitedIds.has(String(user._id)) ? "cursor-default opacity-60" : "cursor-pointer"}`}
             >
+              {invitedIds.has(String(user._id)) && (
+                <span className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-300">
+                  Invited
+                </span>
+              )}
               <UserTile
                 user={user}
                 isActive={selectedUserIds.includes(user._id)}
@@ -163,7 +172,7 @@ const InviteUserModal = ({
             disabled={!selectedUserIds.length || isInviting}
             className="flex-1"
           >
-            Add ({selectedUserIds.length})
+            Invite ({selectedUserIds.length})
           </Button>
         </div>
       </div>

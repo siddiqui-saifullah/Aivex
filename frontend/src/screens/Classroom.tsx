@@ -14,25 +14,17 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { classInviteLink, deleteClassroom, getClassroom } from "../services/classroom.service";
+import { classInviteLink, deleteClassroom, getClassroom, updateClassroom } from "../services/classroom.service";
+import AiToggle from "../components/classroom/AiToggle";
 import { useToast } from "../context/toast.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { plural } from "../utils/plural";
 import { STACK_FORMATTER } from "../constants/options";
 import { colorFor } from "../utils/userColor";
+import { timeAgo } from "../utils/timeAgo";
 import type { ClassroomDetails, ClassroomStudent } from "../types";
 
 const REFRESH_MS = 5000;
-
-const timeAgo = (iso: string, now: number) => {
-  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 60) return "just now";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return `${Math.round(h / 24)} d ago`;
-};
 
 const initials = (name: string) =>
   name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
@@ -48,6 +40,7 @@ const Classroom = () => {
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [savingAi, setSavingAi] = useState(false);
 
   // Live roster: refresh while the tab is visible
   useEffect(() => {
@@ -95,6 +88,21 @@ const Classroom = () => {
       setTimeout(() => setCopied(null), 1500);
     } catch {
       toast.error("Could not copy");
+    }
+  };
+
+  const handleToggleAi = async (aiEnabled: boolean) => {
+    if (!data) return;
+    setSavingAi(true);
+    setData({ ...data, aiEnabled }); // optimistic
+    try {
+      await updateClassroom(data._id, { aiEnabled });
+      toast.success(aiEnabled ? "Vex AI is on for students" : "Vex AI is off for students");
+    } catch (err) {
+      setData((d) => (d ? { ...d, aiEnabled: !aiEnabled } : d));
+      toast.error(getErrorMessage(err, "Could not update the class"));
+    } finally {
+      setSavingAi(false);
     }
   };
 
@@ -174,6 +182,10 @@ const Classroom = () => {
               or open <span className="text-zinc-300">{classInviteLink(data.code ?? "").replace(/^https?:\/\//, "")}</span>
             </p>
           </div>
+        </div>
+
+        <div className="mb-8 max-w-xl">
+          <AiToggle enabled={data.aiEnabled !== false} onChange={handleToggleAi} busy={savingAi} />
         </div>
 
         {/* Roster */}

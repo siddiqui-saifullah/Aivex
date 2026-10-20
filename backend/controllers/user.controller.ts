@@ -1,6 +1,7 @@
 import catchAsync from "../utils/catchAsync.js";
 import AppError from "../errors/AppError.js";
 import * as userService from "../services/user.service.js";
+import { recordLogin } from "../services/activity.service.js";
 
 /* -------------------------------------------------------------------------- */
 /* REGISTER                                                                   */
@@ -30,6 +31,7 @@ export const loginController = catchAsync(async (req, res) => {
         email,
         password,
     });
+    recordLogin(user._id);
 
     res.status(200).json({
         token,

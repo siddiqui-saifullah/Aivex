@@ -25,6 +25,21 @@ index 1644884..7d63f0e 100644
  int isupper(int c);
  int islower(int c);
  int isascii(int c);
+diff --git a/include/dos.h b/include/dos.h
+new file mode 100644
+index 0000000..a59549b
+--- /dev/null
++++ b/include/dos.h
+@@ -0,0 +1,9 @@
++#pragma once
++
++// Minimal Turbo C <dos.h> compatibility for course material.
++#include <stdio.h>
++#include <unistd.h>
++
++static inline void delay(unsigned int ms) { usleep(ms * 1000u); }
++static inline void sound(unsigned int frequency) { (void)frequency; }
++static inline void nosound(void) {}
 diff --git a/include/inttypes.h b/include/inttypes.h
 index 43896d6..ffe5fd8 100644
 --- a/include/inttypes.h
@@ -38,6 +53,57 @@ index 43896d6..ffe5fd8 100644
 +intmax_t imaxabs(intmax_t x);
 +intmax_t strtoimax(const char *restrict p, char **restrict pp, int base);
 +uintmax_t strtoumax(const char *restrict p, char **restrict pp, int base);
+diff --git a/include/limits.h b/include/limits.h
+index 0383749..6e60f33 100644
+--- a/include/limits.h
++++ b/include/limits.h
+@@ -2,35 +2,38 @@
+ 
+ #define CHAR_BIT   (8)  // Number of bits in one char
+ 
++#define SCHAR_MIN  (-128)  // -(2^7)
++#define SCHAR_MAX  (127)   //  (2^7)-1
+ #define CHAR_MIN   (-128)  // -(2^7)
+ #define CHAR_MAX   (127)   //  (2^7)-1
+ #define UCHAR_MAX  (255)   // (2^8)-1
++#define MB_LEN_MAX (4)
+ 
+ #define SHRT_MIN   (-32768)  // -(2^15)
+ #define SHRT_MAX   ( 32767)  //  (2^15)-1
+ #define USHRT_MAX  (65535)  // (2^16)-1
+ 
+-#define INT_MIN    (-2147483648)  // -(2^31)
++#define INT_MIN    (-2147483647 - 1)  // -(2^31)
+ #define INT_MAX    ( 2147483647)  //  (2^31)-1
+-#define UINT_MAX   (4294967295)  // (2^32)-1
++#define UINT_MAX   (4294967295U)  // (2^32)-1
+ 
+ #if defined(__ILP32__)
+ 
+-#define LONG_MIN   (-2147483648)  // -(2^31)
+-#define LONG_MAX   ( 2147483647)  //  (2^31)-1
+-#define ULONG_MAX  (4294967295)  // (2^32)-1
++#define LONG_MIN   (-2147483647L - 1)  // -(2^31)
++#define LONG_MAX   ( 2147483647L)  //  (2^31)-1
++#define ULONG_MAX  (4294967295UL)  // (2^32)-1
+ 
+-#define LLONG_MIN  (-9223372036854775808LL)  // -(2^63)
++#define LLONG_MIN  (-9223372036854775807LL - 1)  // -(2^63)
+ #define LLONG_MAX  ( 9223372036854775807LL)  //  (2^63)-1
+ #define ULLONG_MAX (18446744073709551615ULL)  // (2^64)-1
+ 
+ #elif defined(__LP64__)
+ 
+-#define LONG_MIN   (-9223372036854775808L)  // -(2^63)
++#define LONG_MIN   (-9223372036854775807L - 1)  // -(2^63)
+ #define LONG_MAX   ( 9223372036854775807L)  //  (2^63)-1
+ #define ULONG_MAX  (18446744073709551615UL)  // (2^64)-1
+ 
+-#define LLONG_MIN  (-9223372036854775808LL)  // -(2^63)
++#define LLONG_MIN  (-9223372036854775807LL - 1)  // -(2^63)
+ #define LLONG_MAX  ( 9223372036854775807LL)  //  (2^63)-1
+ #define ULLONG_MAX (18446744073709551615ULL)  // (2^64)-1
+ 
 diff --git a/include/math.h b/include/math.h
 index 1c4682a..1a1f202 100644
 --- a/include/math.h
@@ -323,6 +389,24 @@ index 46e7da8..94a7d39 100644
  int brk(void *addr);
  void *sbrk(intptr_t increment);
  
+diff --git a/include/windows.h b/include/windows.h
+new file mode 100644
+index 0000000..2add980
+--- /dev/null
++++ b/include/windows.h
+@@ -0,0 +1,12 @@
++#pragma once
++
++// Tiny subset of <windows.h> that console course programs use.
++#include <stdio.h>
++#include <unistd.h>
++
++typedef unsigned long DWORD;
++typedef int BOOL;
++#define TRUE  1
++#define FALSE 0
++
++static inline void Sleep(DWORD ms) { usleep((unsigned int)ms * 1000u); }
 diff --git a/libsrc/_wasm/unistd/clock.c b/libsrc/_wasm/unistd/clock.c
 new file mode 100644
 index 0000000..0a7eb41
@@ -347,6 +431,20 @@ index 0000000..0a7eb41
 +  clock_time_get(CLOCK_MONOTONIC, 1, &now);
 +  return (clock_t)((now - start_ns) / (1000000000ULL / CLOCKS_PER_SEC));
 +}
+diff --git a/libsrc/_wasm/unistd/open.c b/libsrc/_wasm/unistd/open.c
+index ee511aa..efbcf57 100644
+--- a/libsrc/_wasm/unistd/open.c
++++ b/libsrc/_wasm/unistd/open.c
+@@ -69,6 +69,9 @@ int open(const char *fn, int flag, ...) {
+       od.oflags |= OFLAGS_TRUNC;
+     if (flag & O_EXCL)
+       od.oflags |= OFLAGS_EXCL;
++    // fopen(..., "a"): writes go to the end of the file
++    if (flag & O_APPEND)
++      od.fdflags |= FDFLAGS_APPEND;
+   }
+ 
+   if (_search_preopen(fn, &od, search_open))
 diff --git a/libsrc/_wasm/unistd/signal.c b/libsrc/_wasm/unistd/signal.c
 new file mode 100644
 index 0000000..6bfee6b
@@ -3605,6 +3703,244 @@ index d40a42e..5df58e8 100644
  #endif
  } GotoLabel;
  
+diff --git a/src/cc/frontend/fe_misc.c b/src/cc/frontend/fe_misc.c
+index e990d0c..0ada921 100644
+--- a/src/cc/frontend/fe_misc.c
++++ b/src/cc/frontend/fe_misc.c
+@@ -1492,3 +1492,87 @@ void modify_dtor_func(Vector *decls) {
+   vec_push(decls, new_decl_defun(register_func));
+ }
+ #endif
++
++
++// Standard functions called without their #include, like gcc's builtin
++// knowledge: declare the real prototype and warn instead of failing.
++// Signature letters: i=int u=size_t l=long d=double c=char* P=void* v=void,
++// first letter is the return type, '.' marks variadic.
++static const struct {
++  const char *name, *header, *sig;
++} kImplicitFuncs[] = {
++  {"printf", "stdio.h", "ic."}, {"scanf", "stdio.h", "ic."}, {"sprintf", "stdio.h", "icc."},
++  {"puts", "stdio.h", "ic"}, {"putchar", "stdio.h", "ii"}, {"getchar", "stdio.h", "i"},
++  {"gets", "stdio.h", "cc"},
++  {"abs", "stdlib.h", "ii"}, {"labs", "stdlib.h", "ll"}, {"atoi", "stdlib.h", "ic"},
++  {"atol", "stdlib.h", "lc"}, {"atof", "stdlib.h", "dc"}, {"malloc", "stdlib.h", "Pu"},
++  {"calloc", "stdlib.h", "Puu"}, {"realloc", "stdlib.h", "PPu"}, {"free", "stdlib.h", "vP"},
++  {"exit", "stdlib.h", "vi"}, {"rand", "stdlib.h", "i"}, {"srand", "stdlib.h", "vi"},
++  {"system", "stdlib.h", "ic"},
++  {"strlen", "string.h", "uc"}, {"strcpy", "string.h", "ccc"}, {"strncpy", "string.h", "cccu"},
++  {"strcat", "string.h", "ccc"}, {"strncat", "string.h", "cccu"}, {"strcmp", "string.h", "icc"},
++  {"strncmp", "string.h", "iccu"}, {"strchr", "string.h", "cci"}, {"strrchr", "string.h", "cci"},
++  {"strstr", "string.h", "ccc"}, {"strdup", "string.h", "cc"}, {"memset", "string.h", "PPiu"},
++  {"memcpy", "string.h", "PPPu"}, {"memmove", "string.h", "PPPu"}, {"memcmp", "string.h", "iPPu"},
++  {"sqrt", "math.h", "dd"}, {"pow", "math.h", "ddd"}, {"fabs", "math.h", "dd"},
++  {"floor", "math.h", "dd"}, {"ceil", "math.h", "dd"}, {"round", "math.h", "dd"},
++  {"trunc", "math.h", "dd"}, {"sin", "math.h", "dd"}, {"cos", "math.h", "dd"},
++  {"tan", "math.h", "dd"}, {"asin", "math.h", "dd"}, {"acos", "math.h", "dd"},
++  {"atan", "math.h", "dd"}, {"atan2", "math.h", "ddd"}, {"exp", "math.h", "dd"},
++  {"log", "math.h", "dd"}, {"log10", "math.h", "dd"}, {"log2", "math.h", "dd"},
++  {"fmod", "math.h", "ddd"}, {"hypot", "math.h", "ddd"}, {"cbrt", "math.h", "dd"},
++  {"isdigit", "ctype.h", "ii"}, {"isalpha", "ctype.h", "ii"}, {"isalnum", "ctype.h", "ii"},
++  {"isspace", "ctype.h", "ii"}, {"isupper", "ctype.h", "ii"}, {"islower", "ctype.h", "ii"},
++  {"ispunct", "ctype.h", "ii"}, {"isprint", "ctype.h", "ii"}, {"toupper", "ctype.h", "ii"},
++  {"tolower", "ctype.h", "ii"},
++};
++
++static Type *implicit_sig_type(char c) {
++  switch (c) {
++  case 'i': return &tyInt;
++  case 'u': return &tySize;
++#ifndef __NO_FLONUM
++  case 'd': return &tyDouble;
++#endif
++  case 'c': return ptrof(&tyChar);
++  case 'P': return &tyVoidPtr;
++  case 'v': return &tyVoid;
++  case 'l': return get_fixnum_type(FX_LONG, false, 0);
++  default: return NULL;
++  }
++}
++
++VarInfo *declare_implicit_function(const Token *ident) {
++  const Name *name = ident->ident;
++  for (size_t i = 0; i < sizeof(kImplicitFuncs) / sizeof(*kImplicitFuncs); ++i) {
++    const char *fname = kImplicitFuncs[i].name;
++    if ((size_t)name->bytes != strlen(fname) || strncmp(name->chars, fname, name->bytes) != 0)
++      continue;
++
++    const char *sig = kImplicitFuncs[i].sig;
++    Type *ret = implicit_sig_type(sig[0]);
++    if (ret == NULL)
++      return NULL;
++    Vector *param_types = new_vector();
++    Vector *param_vars = new_vector();
++    bool vaargs = false;
++    for (const char *p = sig + 1; *p != '\0'; ++p) {
++      if (*p == '.') {
++        vaargs = true;
++        break;
++      }
++      Type *t = implicit_sig_type(*p);
++      if (t == NULL)
++        return NULL;
++      vec_push(param_types, t);
++      var_add(param_vars, alloc_dummy_ident(), t, VS_PARAM);
++    }
++    Type *functype = new_func_type(ret, param_types, vaargs);
++    functype->func.param_vars = param_vars;
++    parse_error(PE_WARNING, ident, "implicit declaration of function `%.*s'; add #include <%s>",
++                NAMES(name), kImplicitFuncs[i].header);
++    define_func(functype, ident, param_vars, VS_EXTERN | VS_USED, NULL);
++    return scope_find(global_scope, name, NULL);
++  }
++  return NULL;
++}
+diff --git a/src/cc/frontend/fe_misc.h b/src/cc/frontend/fe_misc.h
+index 7505f29..14f769d 100644
+--- a/src/cc/frontend/fe_misc.h
++++ b/src/cc/frontend/fe_misc.h
+@@ -107,6 +107,9 @@ bool check_funcend_return(Stmt *stmt);
+ bool satisfy_inline_criteria(const VarInfo *varinfo);
+ Stmt *embed_inline_funcall(VarInfo *varinfo);
+ 
++// A standard function used without its #include: declare it (with a warning).
++VarInfo *declare_implicit_function(const Token *ident);
++
+ Function *define_func(Type *functype, const Token *ident, const Vector *param_vars,
+                       int storage, Table *attributes);
+ 
+diff --git a/src/cc/frontend/parser.c b/src/cc/frontend/parser.c
+index 9721107..580042c 100644
+--- a/src/cc/frontend/parser.c
++++ b/src/cc/frontend/parser.c
+@@ -1111,7 +1111,25 @@ static Declaration *parse_declaration(Vector *decls) {
+   }
+ 
+   ParsedTypeInfo tinfo;
+-  Type *type = parse_var_def(NULL, &tinfo);
++  Type *type = NULL;
++  // Old (K&R / Turbo C) style `main() { ... }`: no return type means int.
++  Token *head = match(TK_IDENT);
++  if (head != NULL) {
++    bool implicit_int = fetch_token()->kind == TK_LPAR &&
++                        find_typedef(curscope, head->ident, NULL) == NULL;
++    unget_token(head);
++    if (implicit_int) {
++      parse_error(PE_WARNING, head, "return type of `%.*s' defaults to `int'",
++                  NAMES(head->ident));
++      tinfo.rawType = &tyInt;
++      tinfo.storage = 0;
++      tinfo.ident = NULL;
++      tinfo.attributes = NULL;
++      type = parse_var_def(&tyInt, &tinfo);
++    }
++  }
++  if (type == NULL)
++    type = parse_var_def(NULL, &tinfo);
+   if (type != NULL) {
+     if (tinfo.ident == NULL) {
+       if ((type->kind == TY_STRUCT ||
+diff --git a/src/cc/frontend/parser_expr.c b/src/cc/frontend/parser_expr.c
+index 660a75c..dfd0083 100644
+--- a/src/cc/frontend/parser_expr.c
++++ b/src/cc/frontend/parser_expr.c
+@@ -322,8 +322,17 @@ static Expr *variable(Token *ident) {
+       if (varinfo->storage & VS_ENUM_MEMBER)
+         return new_expr_fixlit(varinfo->type, ident, varinfo->enum_member.value);
+       type = varinfo->type;
++    } else if (fetch_token()->kind == TK_LPAR &&
++               (varinfo = declare_implicit_function(ident)) != NULL) {
++      type = varinfo->type;
++      scope = global_scope;
+     } else {
+-      parse_error(PE_NOFATAL, ident, "`%.*s' undeclared", NAMES(ident->ident));
++      if (fetch_token()->kind == TK_LPAR)
++        parse_error(PE_NOFATAL, ident,
++                    "function `%.*s' undeclared: define or declare it before calling it",
++                    NAMES(ident->ident));
++      else
++        parse_error(PE_NOFATAL, ident, "`%.*s' undeclared", NAMES(ident->ident));
+       scope = curscope;
+       add_var_to_scope(scope, ident, type, VS_USED, false);
+     }
+diff --git a/src/wcc/emit_wasm.c b/src/wcc/emit_wasm.c
+index 2ff68d9..2af1dfc 100644
+--- a/src/wcc/emit_wasm.c
++++ b/src/wcc/emit_wasm.c
+@@ -170,6 +170,7 @@ typedef struct {
+   DataStorage ds;
+   Vector *reloc_data;
+   uint32_t p2align;
++  uint32_t bss_size;  // Zero-filled: only the size is written.
+ } DataSegment;
+ 
+ static Vector *construct_data_segment(void) {  // <DataSegment*>
+@@ -208,13 +209,8 @@ static Vector *construct_data_segment(void) {  // <DataSegment*>
+       if (k == 0) {
+         segment->reloc_data = construct_data_segment_sub(&segment->ds, varinfo);
+       } else {
+-        // Output BSS as zero-filled data to tell its size.
+-        DataStorage *ds = &segment->ds;
+-        size_t start = ds->len;
+-        size_t size = type_size(varinfo->type);
+-        data_reserve(ds, start + size);
+-        memset(ds->buf + start, 0, size);
+-        ds->len += size;
++        // BSS: only its size goes to the object file (no zeros to write).
++        segment->bss_size = type_size(varinfo->type);
+       }
+       vec_push(segments, segment);
+ 
+@@ -563,6 +559,10 @@ static Vector *emit_data_section(EmitWasm *ew) {
+       data_push(&datasec, OP_I32_CONST);
+       data_leb128(&datasec, -1, address);
+       data_push(&datasec, OP_END);
++      if (segment->bss_size > 0) {  // Size goes to the "xcc.bss" section.
++        data_uleb128(&datasec, -1, 0);
++        continue;
++      }
+       // Content
+       data_uleb128(&datasec, -1, segment->ds.len);
+       uint32_t offset = datasec.len;
+@@ -836,6 +836,32 @@ static inline void emit_linking_init_funcs(DataStorage *linking_section, Vector
+   }
+ }
+ 
++static void emit_bss_section(EmitWasm *ew) {
++  Vector *segments = ew->data_segments;
++  int count = 0;
++  for (int i = 0; i < segments->len; ++i)
++    count += ((DataSegment*)segments->data[i])->bss_size > 0;
++  if (count == 0)
++    return;
++
++  DataStorage ds;
++  data_init(&ds);
++  data_open_chunk(&ds);
++  data_string(&ds, XCC_BSS_SECTION_NAME, sizeof(XCC_BSS_SECTION_NAME) - 1);
++  data_uleb128(&ds, -1, count);
++  for (int i = 0; i < segments->len; ++i) {
++    DataSegment *segment = segments->data[i];
++    if (segment->bss_size > 0) {
++      data_uleb128(&ds, -1, i);
++      data_uleb128(&ds, -1, segment->bss_size);
++    }
++  }
++  data_close_chunk(&ds, -1);
++  fputc(SEC_CUSTOM, ew->ofp);
++  fwrite(ds.buf, ds.len, 1, ew->ofp);
++  ++ew->section_index;
++}
++
+ static void emit_linking_section(EmitWasm *ew, Vector *decls) {
+   DataStorage linking_section;
+   static const char kLinkingName[] = "linking";
+@@ -995,4 +1021,5 @@ void emit_wasm(FILE *ofp, const char *import_module_name, Table *exports, Vector
+   emit_linking_section(ew, decls);
+   emit_reloc_code_section(ew);
+   emit_reloc_data_section(ew, reloc_data);
++  emit_bss_section(ew);
+ }
 diff --git a/src/wcc/gen_wasm.c b/src/wcc/gen_wasm.c
 index 6e0245b..400aaed 100644
 --- a/src/wcc/gen_wasm.c
@@ -3752,19 +4088,68 @@ index fad418a..7150d23 100644
      Stmt *stmt = stmts->data[i];
      if (stmt->kind == ST_LABEL) {
        i = traverse_label(stmt, stmts, i);
+diff --git a/src/wcc/wasm.h b/src/wcc/wasm.h
+index 15abbea..4c40dbc 100644
+--- a/src/wcc/wasm.h
++++ b/src/wcc/wasm.h
+@@ -6,6 +6,11 @@
+ #define WASM_BINARY_MAGIC  {'\0', 'a', 's', 'm'}
+ #define WASM_BINARY_VERSION  (1)
+ 
++// Custom section in xcc object files listing zero-filled (BSS) data segments
++// as (segment index, size): their content is left empty in the data section,
++// so big arrays don't put megabytes of zeros into the object file.
++#define XCC_BSS_SECTION_NAME  "xcc.bss"
++
+ typedef struct {
+   char magic[4];
+   uint32_t binary_version;
+diff --git a/src/wcc/wasm_obj.c b/src/wcc/wasm_obj.c
+index db77d37..b0a1ae9 100644
+--- a/src/wcc/wasm_obj.c
++++ b/src/wcc/wasm_obj.c
+@@ -538,9 +538,25 @@ static void read_reloc(WasmObj *wasmobj, unsigned char *p, int is_data) {
+   wasmobj->reloc[is_data].count = count;
+ }
+ 
++// Sizes of zero-filled segments whose content was left empty.
++static void read_bss_section(WasmObj *wasmobj, unsigned char *p) {
++  uint32_t count = read_uleb128(p, &p);
++  for (uint32_t i = 0; i < count; ++i) {
++    uint32_t index = read_uleb128(p, &p);
++    uint32_t size = read_uleb128(p, &p);
++    if (index >= wasmobj->data.count)
++      error("malformed bss section");
++    DataSegmentForLink *segment = &wasmobj->data.segments[index];
++    segment->size = size;
++    segment->is_bss = true;
++  }
++}
++
+ static void read_custom_section(WasmObj *wasmobj, unsigned char *p, unsigned char *end) {
+   unsigned char *q;
+-  if (match_string(p, "linking", &q)) {
++  if (match_string(p, XCC_BSS_SECTION_NAME, &q)) {
++    read_bss_section(wasmobj, q);
++  } else if (match_string(p, "linking", &q)) {
+     read_linking(wasmobj, q, end);
+   } else if (match_string(p, "reloc.CODE", &q)) {
+     read_reloc(wasmobj, q, 0);
 diff --git a/src/wcc/www/lib_list.json b/src/wcc/www/lib_list.json
-index f877203..16735fd 100644
+index f877203..00002a1 100644
 --- a/src/wcc/www/lib_list.json
 +++ b/src/wcc/www/lib_list.json
-@@ -12,6 +12,7 @@
+@@ -12,7 +12,9 @@
        "alloca.h": "./include/alloca.h",
        "ar.h": "./include/ar.h",
        "assert.h": "./include/assert.h",
 +      "conio.h": "./include/conio.h",
        "ctype.h": "./include/ctype.h",
++      "dos.h": "./include/dos.h",
        "errno.h": "./include/errno.h",
        "fcntl.h": "./include/fcntl.h",
-@@ -21,6 +22,7 @@
+       "float.h": "./include/float.h",
+@@ -21,6 +23,7 @@
        "limits.h": "./include/limits.h",
        "math.h": "./include/math.h",
        "setjmp.h": "./include/setjmp.h",
@@ -3772,3 +4157,13 @@ index f877203..16735fd 100644
        "stdarg.h": "./include/stdarg.h",
        "stdbool.h": "./include/stdbool.h",
        "stddef.h": "./include/stddef.h",
+@@ -33,7 +36,8 @@
+       "time.h": "./include/time.h",
+       "unistd.h": "./include/unistd.h",
+       "wasi.h": "./libsrc/_wasm/wasi.h",
+-      "wchar.h": "./include/wchar.h"
++      "wchar.h": "./include/wchar.h",
++      "windows.h": "./include/windows.h"
+     },
+     "lib": {
+       "wcrt0.a": "./lib/wcrt0.a",

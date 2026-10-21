@@ -12,7 +12,10 @@ git checkout "$XCC_COMMIT"
 # Aivex changes: backward goto support in the wasm backend; glibc-compatible
 # printf/scanf/strtod; prompt flushing before reading stdin; subnormal frexp;
 # missing libc (C99 math + float variants, <time.h> tm/strftime/clock,
-# <signal.h>, sleep, div, gets/rewind/setvbuf, <conio.h> basics)
+# <signal.h>, sleep, div, gets/rewind/setvbuf, <conio.h>, <dos.h>, a tiny
+# <windows.h>); fopen "a" appends; K&R `main()` and standard functions used
+# without their #include compile with a warning (like gcc); big global
+# arrays are kept out of object files (they used to hang the compiler)
 git apply "$HERE/xcc-libc.patch"
 make wcc          # native cross compiler + wasm libc
 make wcc-gen2     # the compiler compiled to WebAssembly (cc.wasm)

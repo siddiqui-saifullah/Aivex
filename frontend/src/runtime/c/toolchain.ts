@@ -171,7 +171,10 @@ export const compileC = (
 /** Friendly names for WebAssembly traps. */
 export const describeCrash = (err: unknown): string => {
   const message = err instanceof Error ? err.message : String(err);
-  if (/call stack|too much recursion/i.test(message)) return "Stack overflow: recursion is too deep";
+  if (/call stack|too much recursion/i.test(message)) {
+    // The browser's own stack, not the program's: it fits a few thousand nested calls
+    return "Stack overflow: recursion is too deep (the browser allows a few thousand nested calls; use a loop or a smaller input)";
+  }
   if (/divide by zero|division by zero/i.test(message)) return "Floating point exception: division by zero";
   if (/integer overflow/i.test(message)) return "Arithmetic error: integer overflow in division";
   if (/out of bounds|memory access/i.test(message)) return "Segmentation fault: invalid memory access";

@@ -13,7 +13,7 @@ import {
 } from "../runtime/c/protocol";
 
 /** Bump when public/wcc changes so browsers fetch the new compiler. */
-const WCC_VERSION = "2";
+const WCC_VERSION = "3";
 const BASE = `${import.meta.env.BASE_URL}wcc/`;
 
 /** CPU time a program may use (time spent waiting for typed input doesn't count). */

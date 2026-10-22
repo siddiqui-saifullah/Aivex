@@ -1,0 +1,11 @@
+In-browser C++ compiler
+
+- Clang/LLVM 21.1.4 compiled to WebAssembly by the YoWASP project
+  (@yowasp/clang, https://yowasp.org, ISC license). Copied here at build time
+  by scripts/prepare-cxx.mjs.
+- LLVM, Clang, libc++, libc++abi and libunwind: Apache License 2.0 with LLVM
+  Exceptions (https://llvm.org/LICENSE.txt). libc++, libc++abi and libunwind
+  in sysroot.tar.gz are rebuilt with WebAssembly exceptions by
+  tools/cxx/build.sh.
+- wasi-libc (in sysroot.tar.gz): MIT, Apache-2.0 WITH LLVM-exception and
+  others (https://github.com/WebAssembly/wasi-libc/blob/main/LICENSE).

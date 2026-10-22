@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/prepare-cxx.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/prepare-cxx.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -16,6 +18,7 @@
     "@tailwindcss/vite": "^4.1.17",
     "@vercel/analytics": "^1.6.1",
     "@webcontainer/api": "^1.6.1",
+    "@yowasp/clang": "21.1.4-3",
     "axios": "^1.13.2",
     "fflate": "^0.8.3",
     "lucide-react": "^0.554.0",

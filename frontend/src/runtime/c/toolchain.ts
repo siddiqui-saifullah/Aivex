@@ -115,10 +115,7 @@ class PullStdin extends Fd {
   }
 }
 
-const runWasi = (instanceModule: WebAssembly.Module, w: WASI): number => {
-  const instance = new WebAssembly.Instance(instanceModule, {
-    wasi_snapshot_preview1: w.wasiImport,
-  });
+const startWasi = (instance: WebAssembly.Instance, w: WASI): number => {
   try {
     return w.start(instance as unknown as { exports: { memory: WebAssembly.Memory; _start: () => unknown } });
   } catch (err) {
@@ -157,7 +154,7 @@ export const compileC = (
   const w = new WASI(args, [], fds, { debug: false });
   let code: number;
   try {
-    code = runWasi(toolchain.compiler, w);
+    code = startWasi(new WebAssembly.Instance(toolchain.compiler, { wasi_snapshot_preview1: w.wasiImport }), w);
   } catch (err) {
     return { ok: false, diagnostics: `Compiler crashed: ${(err as Error).message}` };
   }
@@ -232,6 +229,21 @@ const busySleep = (ms: number) => {
   }
 };
 
+/**
+ * C++: wasm exceptions have no unwinder search phase, so an exception nobody
+ * catches leaves the program instead of reaching std::terminate. Programs
+ * from the C++ compiler export a helper that prints GCC's message for it.
+ */
+const reportUncaughtException = (instance: WebAssembly.Instance, err: WebAssembly.Exception) => {
+  const { __cpp_exception: tag, __aivex_uncaught: report } = instance.exports as Record<string, unknown>;
+  if (!(tag instanceof WebAssembly.Tag) || typeof report !== "function" || !err.is(tag)) return;
+  try {
+    (report as (payload: unknown) => void)(err.getArg(tag, 0));
+  } catch {
+    /* the message is a nicety */
+  }
+};
+
 /** Run a compiled program to completion. */
 export const runProgram = (wasm: Uint8Array, io: RunIo): ExitReason => {
   const module = new WebAssembly.Module(wasm as Uint8Array<ArrayBuffer>);
@@ -250,9 +262,15 @@ export const runProgram = (wasm: Uint8Array, io: RunIo): ExitReason => {
   const env = [`TZOFFSET=${-new Date().getTimezoneOffset()}`];
   const w = new WASI(["a.out"], env, fds, { debug: false });
   (w.wasiImport as Record<string, unknown>).poll_oneoff = makePollOneoff(w, io.sleep ?? busySleep);
+  let instance: WebAssembly.Instance | null = null;
   try {
-    return { kind: "exit", code: runWasi(module, w) };
+    instance = new WebAssembly.Instance(module, { wasi_snapshot_preview1: w.wasiImport });
+    return { kind: "exit", code: startWasi(instance, w) };
   } catch (err) {
+    if (instance && err instanceof WebAssembly.Exception) {
+      reportUncaughtException(instance, err);
+      return { kind: "crash", message: "Aborted: uncaught exception" };
+    }
     return { kind: "crash", message: describeCrash(err) };
   }
 };

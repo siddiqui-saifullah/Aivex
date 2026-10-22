@@ -82,9 +82,9 @@ PISTON_TOKEN=                         # only if your Piston instance requires on
 
 ## Code Runner (C, C++, Java, Python, ...)
 
-Node.js projects run in the browser (WebContainer). Other languages are sent
-to a [Piston](https://github.com/engineer-man/piston) sandbox through
-`POST /run`. The public Piston API now requires a token, so self-host it for
+Node.js projects run in the browser (WebContainer), and C and C++ are compiled
+to WebAssembly and run in the browser too. Other languages are sent to a
+[Piston](https://github.com/engineer-man/piston) sandbox through `POST /run`. The public Piston API now requires a token, so self-host it for
 free, e.g. on an Oracle Cloud "Always Free" VM (or any Linux box with Docker):
 
 ```bash

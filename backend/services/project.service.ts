@@ -34,6 +34,32 @@ int main(void) {
 `,
 };
 
+/** Starter for C++ projects: compiled and run in the browser too. */
+const CPP_STARTER: Record<string, string> = {
+    "main.cpp": `#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int main() {
+    string name;
+    int n;
+
+    cout << "What's your name? ";
+    cin >> name;
+    cout << "Hello, " << name << "! How many squares should I print? ";
+    cin >> n;
+
+    vector<int> squares;
+    for (int i = 1; i <= n; i++) squares.push_back(i * i);
+    for (int i = 0; i < (int)squares.size(); i++) {
+        cout << i + 1 << " x " << i + 1 << " = " << squares[i] << "\\n";
+    }
+    return 0;
+}
+`,
+};
+
 /** Starter for HTML/CSS/JS projects: previews instantly, no install. */
 const STATIC_SITE_STARTER: Record<string, string> = {
     "index.html": `<!DOCTYPE html>
@@ -92,10 +118,10 @@ button.addEventListener("click", () => {
 /* -------------------------------------------------------------------------- */
 /* CREATE PROJECT                                                             */
 /* -------------------------------------------------------------------------- */
-/** "Next.js" -> "nextjs", "Node.js" -> "nodejs", "HTML/CSS/JS" -> "htmlcssjs"; throws if unknown. */
+/** "Next.js" -> "nextjs", "Node.js" -> "nodejs", "HTML/CSS/JS" -> "htmlcssjs", "C++" -> "cpp"; throws if unknown. */
 export const normalizeStack = (stack: unknown): ProjectStack => {
     const normalized = typeof stack === "string"
-        ? stack.toLowerCase().replace(/[.\-\s/]/g, "")
+        ? stack.toLowerCase().replace(/[.\-\s/]/g, "").replace("c++", "cpp")
         : "nodejs";
     if (!PROJECT_STACKS.includes(normalized as ProjectStack)) {
         throw new AppError(`Stack must be one of: ${PROJECT_STACKS.join(", ")}`, 400);
@@ -108,6 +134,7 @@ export const starterFilesFor = (stack: ProjectStack): Record<string, string> => 
     ".aivex": "//Aivex System File - Do not delete",
     ...(stack === "htmlcssjs" ? STATIC_SITE_STARTER : {}),
     ...(stack === "c" ? C_STARTER : {}),
+    ...(stack === "cpp" ? CPP_STARTER : {}),
 });
 
 export const createProject = async ({ name, userId, stack }: { name: string; userId: Id; stack?: unknown }) => {

@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 /**
- * Compiles and runs C in a worker so the page never freezes. Interactive input
+ * Compiles and runs C in a worker so the page never freezes (C++ arrives
+ * already compiled by the C++ compiler worker). Interactive input
  * (scanf waiting for the user) blocks this worker on a SharedArrayBuffer until
  * the page writes the typed line into it.
  */
@@ -43,25 +44,30 @@ class OutputLimitError extends Error {
 
 const run = async (req: Extract<CWorkerRequest, { type: "run" }>) => {
   const { id } = req;
-  const isCold = toolchainPromise === null;
-  post({ type: "status", id, phase: isCold ? "loading" : "compiling" });
-  let toolchain: Toolchain;
-  try {
-    toolchain = await getToolchain(req.base, req.version);
-  } catch (err) {
-    post({ type: "done", id, result: { kind: "error", message: (err as Error).message } });
-    return;
-  }
+  let wasm = req.wasm;
+  let compileMs = req.compileMs ?? 0;
+  if (!wasm) {
+    const isCold = toolchainPromise === null;
+    post({ type: "status", id, phase: isCold ? "loading" : "compiling" });
+    let toolchain: Toolchain;
+    try {
+      toolchain = await getToolchain(req.base, req.version);
+    } catch (err) {
+      post({ type: "done", id, result: { kind: "error", message: (err as Error).message } });
+      return;
+    }
 
-  if (isCold) post({ type: "status", id, phase: "compiling" });
-  const t0 = performance.now();
-  const compiled = compileC(toolchain, req.files, req.sources);
-  const compileMs = performance.now() - t0;
-  if (!compiled.ok || !compiled.wasm) {
-    post({ type: "done", id, result: { kind: "compile-error", diagnostics: compiled.diagnostics, compileMs } });
-    return;
+    if (isCold) post({ type: "status", id, phase: "compiling" });
+    const t0 = performance.now();
+    const compiled = compileC(toolchain, req.files, req.sources);
+    compileMs = performance.now() - t0;
+    if (!compiled.ok || !compiled.wasm) {
+      post({ type: "done", id, result: { kind: "compile-error", diagnostics: compiled.diagnostics, compileMs } });
+      return;
+    }
+    if (compiled.diagnostics.trim()) post({ type: "warnings", id, text: compiled.diagnostics });
+    wasm = compiled.wasm;
   }
-  if (compiled.diagnostics.trim()) post({ type: "warnings", id, text: compiled.diagnostics });
   post({ type: "status", id, phase: "running" });
 
   // Batched output: one message per ~50 ms instead of one per printf
@@ -122,7 +128,7 @@ const run = async (req: Extract<CWorkerRequest, { type: "run" }>) => {
   };
 
   const r0 = performance.now();
-  const result = runProgram(compiled.wasm, {
+  const result = runProgram(wasm, {
     stdout: write("stdout"),
     stderr: write("stderr"),
     readStdin,

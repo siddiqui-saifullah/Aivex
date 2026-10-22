@@ -1,7 +1,9 @@
 /**
- * Runs C programs in the browser (see runtime/c). One worker is kept warm
- * between runs; stopping a program terminates it and the next run starts a
- * fresh one (the compiler comes from the HTTP cache, so that is quick).
+ * Runs C and C++ programs in the browser (see runtime/c and runtime/cxx). One
+ * worker is kept warm between runs; stopping a program terminates it and the
+ * next run starts a fresh one (the compiler comes from the HTTP cache, so that
+ * is quick). C++ is compiled by a separate worker that is never stopped, as
+ * its compiler is much bigger.
  */
 import {
   INPUT_BUFFER_SIZE,
@@ -11,16 +13,31 @@ import {
   type CWorkerEvent,
   type CWorkerRequest,
 } from "../runtime/c/protocol";
+import type { CxxCompilerEvent, CxxCompilerRequest } from "../runtime/cxx/protocol";
 
 /** Bump when public/wcc changes so browsers fetch the new compiler. */
 const WCC_VERSION = "3";
 const BASE = `${import.meta.env.BASE_URL}wcc/`;
+/** public/cxx, versioned by its manifest.json */
+const CXX_BASE = `${import.meta.env.BASE_URL}cxx/`;
+
+export type NativeLanguage = "c" | "cpp";
+
+/** Languages compiled and run in the browser, by file extension. */
+export const nativeLanguageOf = (path: string | null): NativeLanguage | null => {
+  if (!path) return null;
+  if (/\.c$/i.test(path)) return "c";
+  if (/\.(cpp|cc|cxx|c\+\+)$/i.test(path)) return "cpp";
+  return null;
+};
 
 /** CPU time a program may use (time spent waiting for typed input doesn't count). */
 const TIME_LIMIT_MS = 20_000;
 
 export interface CRunHandlers {
   onStatus?: (phase: "loading" | "compiling" | "running") => void;
+  /** First C++ run: compiler download progress in bytes. */
+  onProgress?: (loaded: number, total: number) => void;
   onOutput: (stream: "stdout" | "stderr", text: string) => void;
   onWarnings?: (text: string) => void;
   /** The program is waiting for input (interactive mode). */
@@ -48,16 +65,30 @@ const createWorker = () =>
 
 const getWorker = () => (worker ??= createWorker());
 
-/** Start loading the compiler in the background (e.g. when a .c file is opened). */
-export const warmCRunner = () => {
+let cxxWorker: Worker | null = null;
+
+const getCxxWorker = () =>
+  (cxxWorker ??= new Worker(new URL("../runtime/cxx/cxxCompiler.worker.ts", import.meta.url), {
+    type: "module",
+    name: "cxx-compiler",
+  }));
+
+/** Start loading the compiler in the background (e.g. when a .c or .cpp file is opened). */
+export const warmCRunner = (language: NativeLanguage = "c") => {
+  if (language === "cpp") {
+    const req: CxxCompilerRequest = { type: "warm", base: CXX_BASE };
+    getCxxWorker().postMessage(req);
+    return;
+  }
   const req: CWorkerRequest = { type: "warm", base: BASE, version: WCC_VERSION };
   getWorker().postMessage(req);
 };
 
-/** Pick what to compile: the entry file plus other .c files without their own main(). */
+/** Pick what to compile: the entry file plus other source files without their own main(). */
 export const pickCSources = (entry: string, files: Record<string, string>) => {
+  const language = nativeLanguageOf(entry);
   const others = Object.keys(files).filter(
-    (path) => path !== entry && /\.c$/i.test(path) && !/\bmain\s*\(/.test(files[path] ?? ""),
+    (path) => path !== entry && nativeLanguageOf(path) === language && !/\bmain\s*\(/.test(files[path] ?? ""),
   );
   return [entry, ...others];
 };
@@ -66,6 +97,7 @@ export const runC = (
   { files, entry, stdin }: { files: Record<string, string>; entry: string; stdin: string },
   handlers: CRunHandlers,
 ): CRunHandle => {
+  const language = nativeLanguageOf(entry) ?? "c";
   const id = nextId++;
   const w = getWorker();
   const shared = supportsInteractiveInput() ? new SharedArrayBuffer(8 + INPUT_BUFFER_SIZE) : undefined;
@@ -83,6 +115,7 @@ export const runC = (
     finished = true;
     clearInterval(timer);
     w.removeEventListener("message", onMessage);
+    cxxWorker?.removeEventListener("message", onCompilerMessage);
     handlers.onDone(result);
   };
 
@@ -130,17 +163,56 @@ export const runC = (
   };
   w.addEventListener("message", onMessage);
 
-  const req: CWorkerRequest = {
-    type: "run",
-    id,
-    base: BASE,
-    version: WCC_VERSION,
-    files,
-    sources: pickCSources(entry, files),
-    stdin,
-    input: shared,
+  const sources = pickCSources(entry, files);
+  const start = (compiled?: { wasm: Uint8Array; compileMs: number }) => {
+    const req: CWorkerRequest = {
+      type: "run",
+      id,
+      base: BASE,
+      version: WCC_VERSION,
+      files,
+      sources,
+      stdin,
+      input: shared,
+      ...compiled,
+    };
+    w.postMessage(req, compiled ? [compiled.wasm.buffer] : []);
   };
-  w.postMessage(req);
+
+  // C++: compile in the compiler worker first, then run like C
+  function onCompilerMessage(event: MessageEvent<CxxCompilerEvent>) {
+    const msg = event.data;
+    if (msg.id !== id || finished) return;
+    switch (msg.type) {
+      case "status":
+        handlers.onStatus?.(msg.phase);
+        break;
+      case "progress":
+        handlers.onProgress?.(msg.loaded, msg.total);
+        break;
+      case "result":
+        cxxWorker?.removeEventListener("message", onCompilerMessage);
+        if (!msg.ok) {
+          finish({ kind: "compile-error", diagnostics: msg.diagnostics, compileMs: msg.compileMs });
+          return;
+        }
+        if (msg.diagnostics.trim()) handlers.onWarnings?.(msg.diagnostics);
+        start({ wasm: msg.wasm, compileMs: msg.compileMs });
+        break;
+      case "error":
+        finish({ kind: "error", message: msg.message });
+        break;
+    }
+  }
+
+  if (language === "cpp") {
+    const compiler = getCxxWorker();
+    compiler.addEventListener("message", onCompilerMessage);
+    const req: CxxCompilerRequest = { type: "compile", id, base: CXX_BASE, files, sources };
+    compiler.postMessage(req);
+  } else {
+    start();
+  }
 
   const respond = (state: number, bytes?: Uint8Array) => {
     if (!control || !data || !waitingForInput || finished) return;

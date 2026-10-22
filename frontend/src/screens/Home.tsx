@@ -110,7 +110,7 @@ const Home = () => {
             <FeatureCard
               icon={<Cpu size={24} className="text-white" />}
               title="C in your browser, and more"
-              desc="C compiles and runs right in your browser in milliseconds, with interactive scanf input. C++, Java, Python and more run on the cloud runner."
+              desc="C and C++ compile and run right in your browser, with interactive input (scanf, cin). Java, Python and more run on the cloud runner."
             />
             <FeatureCard
               icon={<Users size={24} className="text-white" />}

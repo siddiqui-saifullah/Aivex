@@ -1,0 +1,19 @@
+{
+  "compile": [
+    "--target=wasm32-wasip1",
+    "-std=gnu++20",
+    "-O2",
+    "-fwasm-exceptions",
+    "-fno-finite-loops",
+    "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST",
+    "-ferror-limit=20"
+  ],
+  "pch": "/usr/share/aivex/stdc++.pch",
+  "pchHeader": "/usr/include/c++/v1/bits/stdc++.h",
+  "link": [
+    "-Wl,-z,stack-size=8388608",
+    "-lunwind",
+    "/usr/lib/wasm32-wasip1/aivex-uncaught.o",
+    "-Wl,--export=__cpp_exception"
+  ]
+}

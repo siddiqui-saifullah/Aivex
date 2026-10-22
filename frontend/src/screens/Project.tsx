@@ -34,7 +34,7 @@ import OutputPanel, { type OutputKind, type OutputLine } from "../components/pro
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
 import { getRunnerLanguage, runFile } from "../services/runner.service";
-import { describeExitCode, runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
+import { describeExitCode, nativeLanguageOf, runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
 import { downloadProjectZip } from "../utils/downloadZip";
@@ -1030,22 +1030,31 @@ const Project = () => {
     }
   };
 
-  /** Run the open C / C++ / Java / Python ... file on the cloud runner. */
-  /** C runs in the browser: compiled to WebAssembly in ~50 ms, interactive input. */
+  /** C and C++ run in the browser: compiled to WebAssembly, interactive input. */
   const runCFile = (entry: string) => {
+    const isCpp = nativeLanguageOf(entry) === "cpp";
     setIsRunningFile(true);
     setIsOutputOpen(true);
     setRevealOutputKey((k) => k + 1);
     streamOpenRef.current = false;
-    appendOutput(`— Running ${entry} (C · in your browser) —`, "info");
+    appendOutput(`— Running ${entry} (${isCpp ? "C++" : "C"} · in your browser) —`, "info");
 
     cRunRef.current = runC(
       { files: flatFileTree, entry, stdin },
       {
         onStatus: (phase) => {
-          if (phase === "loading") appendOutput("Loading the C compiler (one time, ~180 KB)…", "info");
+          if (phase === "loading") {
+            appendOutput(
+              isCpp
+                ? "Loading the C++ compiler (one time, ~40 MB; later runs start instantly)…"
+                : "Loading the C compiler (one time, ~180 KB)…",
+              "info",
+            );
+          }
           setRunProgress(phase === "running" ? "Running…" : phase === "compiling" ? "Compiling…" : "Loading compiler…");
         },
+        onProgress: (loaded, total) =>
+          setRunProgress(`Loading compiler… ${Math.min(100, Math.round((100 * loaded) / total))}%`),
         onWarnings: (text) => appendOutput(text.replace(/\n$/, ""), "stderr"),
         onOutput: (stream, text) => {
           setAwaitingInput(false);
@@ -1096,9 +1105,10 @@ const Project = () => {
 
   const stopCRun = () => cRunRef.current?.stop();
 
-  // Start loading the compiler as soon as a C file is opened, so Run is instant
+  // Start loading the compiler as soon as a C/C++ file is opened, so Run is instant
   useEffect(() => {
-    if (activeFile && /\.c$/i.test(activeFile)) warmCRunner();
+    const language = nativeLanguageOf(activeFile);
+    if (language) warmCRunner(language);
   }, [activeFile]);
 
   const handleRunFile = async () => {
@@ -1106,7 +1116,7 @@ const Project = () => {
     const language = getRunnerLanguage(activeFile);
     if (!language) return;
 
-    if (language.id === "c") {
+    if (nativeLanguageOf(activeFile)) {
       runCFile(activeFile);
       return;
     }

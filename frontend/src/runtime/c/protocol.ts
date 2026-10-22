@@ -19,6 +19,9 @@ export type CWorkerRequest =
       files: Record<string, string>;
       /** Translation units to compile, entry first. */
       sources: string[];
+      /** Already compiled program (C++), run as is. */
+      wasm?: Uint8Array;
+      compileMs?: number;
       /** Input given up front (the Input tab); interactive input follows. */
       stdin: string;
       /** [control: Int32 x2][data] — present when the page is cross-origin isolated. */

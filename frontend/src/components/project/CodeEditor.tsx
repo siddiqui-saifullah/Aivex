@@ -20,9 +20,9 @@ interface CodeEditorProps {
   handleRun: () => void;
   handleUpdate: () => void;
   handleStop: () => void;
-  /** Running a C/C++/Java/... file (C in the browser, others on the server sandbox). */
+  /** Running a C/C++/Java/... file (C and C++ in the browser, others on the server sandbox). */
   onRunFile: () => void;
-  /** Stop the running file (in-browser C). */
+  /** Stop the running file (in-browser C/C++). */
   onStopFile?: () => void;
   isRunningFile?: boolean;
   isSaving?: boolean;
@@ -165,7 +165,7 @@ const CodeEditor = ({
         <div className="space-y-1.5">
           <p className="text-zinc-300 font-medium">No file open</p>
           <p className="text-xs text-zinc-600 max-w-sm">
-            HTML/CSS/JS sites preview instantly · C and Node.js run in your browser · C++, Java, Python and more run on the cloud runner
+            HTML/CSS/JS sites preview instantly · C, C++ and Node.js run in your browser · Java, Python and more run on the cloud runner
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
@@ -320,8 +320,8 @@ const CodeEditor = ({
               )}
             </div>
           )}
-          {runnerLanguage && isRunningFile && runnerLanguage.id === "c" && onStopFile ? (
-            /* In-browser C can be stopped (infinite loop, waiting for input...) */
+          {runnerLanguage && isRunningFile && ["c", "cpp"].includes(runnerLanguage.id) && onStopFile ? (
+            /* In-browser C/C++ can be stopped (infinite loop, waiting for input...) */
             <button
               onClick={onStopFile}
               title="Stop the program"
@@ -330,7 +330,7 @@ const CodeEditor = ({
               <Square size={14} /> Stop
             </button>
           ) : runnerLanguage ? (
-            /* C runs in the browser; C++ / Java / Python ... on the cloud runner */
+            /* C and C++ run in the browser; Java / Python ... on the cloud runner */
             <button
               disabled={isRunningFile}
               onClick={onRunFile}

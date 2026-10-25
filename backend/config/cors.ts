@@ -11,11 +11,8 @@ export const allowedOrigins: string[] = [
 const corsOptions: CorsOptions = {
     origin: function (origin, callback) {
         if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error("Not allowed by CORS"));
-        }
+        // Other sites get no CORS headers, so browsers block them (no 500 error)
+        callback(null, allowedOrigins.includes(origin));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

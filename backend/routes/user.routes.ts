@@ -3,13 +3,31 @@ import * as userController from "../controllers/user.controller.js";
 import * as authMiddleware from "../middleware/auth.middleware.js";
 import * as authvalidator from "../validators/auth.validator.js";
 import { validate } from "../middleware/validate.middleware.js";
+import { rateLimit } from "../middleware/rateLimit.middleware.js";
 
 const router: ExpressRouter = Router();
 
 
-router.post("/register", authvalidator.registerValidator, validate, userController.createUserController);
+// Password guessing: a few tries per account, and per IP across accounts
+const loginLimits = [
+    rateLimit({
+        windowMs: 15 * 60_000,
+        max: 10,
+        key: (req) => `email:${String(req.body?.email ?? "").trim().toLowerCase()}`,
+        message: "Too many login attempts for this account, try again in 15 minutes",
+    }),
+    rateLimit({ windowMs: 15 * 60_000, max: 50, key: (req) => `ip:${req.ip}`, message: "Too many login attempts, try again later" }),
+];
 
-router.post("/login", authvalidator.loginValidator, validate, userController.loginController);
+router.post(
+    "/register",
+    rateLimit({ windowMs: 60 * 60_000, max: 10, key: (req) => `ip:${req.ip}`, message: "Too many sign-ups from this network, try again later" }),
+    authvalidator.registerValidator,
+    validate,
+    userController.createUserController,
+);
+
+router.post("/login", ...loginLimits, authvalidator.loginValidator, validate, userController.loginController);
 
 router.get("/profile", authMiddleware.authUser, userController.profileController);
 
@@ -17,7 +35,14 @@ router.patch("/profile", authMiddleware.authUser, authvalidator.updateProfileVal
 
 router.delete("/profile", authMiddleware.authUser, authvalidator.deleteAccountValidator, validate, userController.deleteAccountController);
 
-router.patch("/password", authMiddleware.authUser, authvalidator.changePasswordValidator, validate, userController.changePasswordController);
+router.patch(
+    "/password",
+    authMiddleware.authUser,
+    rateLimit({ windowMs: 15 * 60_000, max: 10, message: "Too many attempts, try again in 15 minutes" }),
+    authvalidator.changePasswordValidator,
+    validate,
+    userController.changePasswordController,
+);
 
 router.post("/logout", userController.logoutController);
 

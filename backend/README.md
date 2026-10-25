@@ -68,6 +68,7 @@ GEMINI_API_KEY=your_gemini_api_key
 REDIS_HOST=...
 REDIS_PORT=6379
 REDIS_PASSWORD=...
+REDIS_TLS=true                       # if your Redis provider supports TLS (most cloud ones do)
 PORT=3000
 
 # Admin dashboard (/admin): emails allowed to see site-wide usage, comma separated
@@ -106,6 +107,29 @@ curl -X POST localhost:2000/api/v2/packages -H 'Content-Type: application/json' 
 Then set `PISTON_URL=http://<vm-ip>:2000` on the backend (keep port 2000
 firewalled to the backend's IP). Without `PISTON_URL`, the Run button for
 these languages shows "Code runner is not configured".
+
+## Security checklist (ports and services)
+
+The backend only needs one public port: the HTTPS port Render gives it. Every
+other service should be reachable only by the backend:
+
+- **MongoDB Atlas**: Network Access must not allow `0.0.0.0/0` if you can
+  avoid it (Render's paid plans have static outbound IPs to allow instead);
+  use a database user with a long random password that can only access this
+  database.
+- **Redis**: always set a password, and `REDIS_TLS=true` when the provider
+  supports TLS, so the password isn't sent in plain text.
+- **Piston (code runner)**: port 2000 runs any code it is sent and has no
+  login of its own. Never leave it open to the internet: firewall it to the
+  backend, or put it behind a reverse proxy (Caddy/nginx with HTTPS) that
+  only accepts requests whose `Authorization` header equals a long random
+  secret, and set the same secret as `PISTON_TOKEN`.
+- **Secrets**: `JWT_SECRET` should be 32+ random characters; remove
+  `ADMIN_RESET_PASSWORD` after using it.
+
+Built in: security headers (helmet), CORS limited to the site's origins,
+login limited to 10 attempts per account and 50 per IP per 15 minutes,
+sign-ups to 10 per IP per hour, and per-user limits on code runs and AI calls.
 
 ## API Endpoints
 

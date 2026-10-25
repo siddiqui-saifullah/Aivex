@@ -9,7 +9,10 @@
     "-ferror-limit=20"
   ],
   "pch": "/usr/share/aivex/stdc++.pch",
-  "pchHeader": "/usr/include/c++/v1/bits/stdc++.h",
+  "pchHeader": "/usr/share/aivex/pch.h",
+  "pchBuild": [
+    "-fpch-instantiate-templates"
+  ],
   "link": [
     "-Wl,-z,stack-size=8388608",
     "-lunwind",

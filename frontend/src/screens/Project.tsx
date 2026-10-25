@@ -34,7 +34,14 @@ import OutputPanel, { type OutputKind, type OutputLine } from "../components/pro
 import { RUN_STEP_LABELS, initialRunSteps, type RunStep } from "../utils/runSteps";
 import type { RunStepId, RunStepStatus } from "../config/webContainer";
 import { getRunnerLanguage, runFile } from "../services/runner.service";
-import { describeExitCode, nativeLanguageOf, runC, warmCRunner, type CRunHandle } from "../services/cRunner.service";
+import {
+  describeExitCode,
+  nativeLanguageOf,
+  precompileCxx,
+  runC,
+  warmCRunner,
+  type CRunHandle,
+} from "../services/cRunner.service";
 import { enhancePrompt } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
 import { downloadProjectZip } from "../utils/downloadZip";
@@ -1110,6 +1117,14 @@ const Project = () => {
     const language = nativeLanguageOf(activeFile);
     if (language) warmCRunner(language);
   }, [activeFile]);
+
+  // C++ compiles take a second or two: build the open file whenever the user
+  // pauses typing, so Run usually starts the program right away
+  useEffect(() => {
+    if (!activeFile || nativeLanguageOf(activeFile) !== "cpp") return;
+    const timer = setTimeout(() => precompileCxx(flatFileTree, activeFile), 600);
+    return () => clearTimeout(timer);
+  }, [activeFile, flatFileTree]);
 
   const handleRunFile = async () => {
     if (!activeFile || isRunningFile) return;

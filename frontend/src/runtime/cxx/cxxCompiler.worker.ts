@@ -6,6 +6,7 @@
  * kept alive across runs; programs run in the C runner worker.
  */
 import flags from "./flags.json";
+import pchHeader from "./pch.h?raw";
 import type { CxxCompilerEvent, CxxCompilerRequest } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -22,7 +23,9 @@ interface ClangModule {
 
 interface Manifest {
   version: string;
+  /** Gzipped and decoded sizes of each download, for the progress bar. */
   sizes: Record<string, number>;
+  rawSizes: Record<string, number>;
 }
 
 const CORES = ["llvm.core.wasm", "llvm.core2.wasm", "llvm.core3.wasm", "llvm.core4.wasm"];
@@ -33,22 +36,68 @@ const post = (event: CxxCompilerEvent) => self.postMessage(event);
 /** Download progress goes to whichever run is waiting for the compiler. */
 let progressListener: ((loaded: number, total: number) => void) | null = null;
 
-/** Fetch a gzipped file (reporting progress) and decompress it. */
-const fetchGz = async (url: string, onBytes: (n: number) => void): Promise<ArrayBuffer> => {
+/** Progress of one download: the share of its bytes received so far (0..1). */
+type OnProgress = (fraction: number) => void;
+
+const fetchOk = async (url: string) => {
   const response = await fetch(url);
   if (!response.ok || !response.body) throw new Error(`Could not load the C++ compiler (${response.status})`);
-  const counted = response.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        onBytes(chunk.length);
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-  const bytes = new Uint8Array(await new Response(counted).arrayBuffer());
-  // A server may already have undone the gzip (Content-Encoding)
-  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes.buffer;
-  return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  return response;
+};
+
+/**
+ * Read a response, reporting progress. With Content-Encoding the browser
+ * decodes the gzip itself and reports decoded bytes.
+ */
+const readCounted = async (response: Response, gzSize: number, rawSize: number, onProgress: OnProgress) => {
+  const size = response.headers.get("content-encoding") ? rawSize : gzSize;
+  const reader = response.body!.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    onProgress(Math.min(1, received / size));
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+};
+
+const gunzip = async (bytes: Uint8Array): Promise<ArrayBuffer> => {
+  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes.buffer as ArrayBuffer; // already decoded
+  return new Response(new Blob([bytes as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+};
+
+/** Fetch a gzipped file and decompress it. */
+const fetchGz = async (url: string, gzSize: number, rawSize: number, onProgress: OnProgress) =>
+  gunzip(await readCounted(await fetchOk(url), gzSize, rawSize, onProgress));
+
+/**
+ * Compile a gzipped wasm file. When the server sends it as
+ * Content-Encoding: gzip + application/wasm, compile it while it downloads:
+ * the browser then also caches the compiled code, so later page loads skip
+ * compiling the 73 MB compiler.
+ */
+const fetchWasm = async (url: string, gzSize: number, rawSize: number, onProgress: OnProgress) => {
+  const response = await fetchOk(url);
+  const streamable =
+    response.headers.get("content-encoding") === "gzip" &&
+    response.headers.get("content-type")?.startsWith("application/wasm") &&
+    typeof WebAssembly.compileStreaming === "function";
+  if (streamable) {
+    const counting = readCounted(response.clone(), gzSize, rawSize, onProgress);
+    const module = await WebAssembly.compileStreaming(response);
+    await counting;
+    return module;
+  }
+  return WebAssembly.compile(await gunzip(await readCounted(response, gzSize, rawSize, onProgress)));
 };
 
 /**
@@ -74,25 +123,29 @@ const getCompiler = (base: string) => {
       if (!r.ok) throw new Error(`Could not load the C++ compiler (${r.status})`);
       return r.json();
     })) as Manifest;
+    // Progress in compressed bytes, whatever the server's encoding
     const total = Object.values(manifest.sizes).reduce((a, b) => a + b, 0);
-    let loaded = 0;
-    const onBytes = (n: number) => {
-      loaded += n;
-      progressListener?.(loaded, total);
+    const done: Record<string, number> = {};
+    const progress = (file: string) => (fraction: number) => {
+      done[file] = fraction * manifest.sizes[file];
+      progressListener?.(Object.values(done).reduce((a, b) => a + b, 0), total);
     };
     const url = (file: string) => `${base}${file}?v=${manifest.version}`;
+    const load = <T>(file: string, fn: typeof fetchGz | typeof fetchWasm) =>
+      fn(url(file), manifest.sizes[file], manifest.rawSizes?.[file] ?? manifest.sizes[file], progress(file)) as Promise<T>;
 
     const [clang, modules, sysroot, pch] = await Promise.all([
       importScript(url("clang.js")),
-      Promise.all(CORES.map(async (f) => [f, await WebAssembly.compile(await fetchGz(url(`${f}.gz`), onBytes))] as const)),
-      fetchGz(url("sysroot.tar.gz"), onBytes),
-      fetchGz(url("stdc++.pch.gz"), onBytes),
+      Promise.all(CORES.map(async (f) => [f, await load<WebAssembly.Module>(`${f}.gz`, fetchWasm)] as const)),
+      load<ArrayBuffer>("sysroot.tar.gz", fetchGz),
+      load<ArrayBuffer>("stdc++.pch.gz", fetchGz),
     ]);
+    const name = (p: string) => p.split("/").pop()!;
     clang.setResources({
       modules: async () => Object.fromEntries(modules),
       filesystem: async (unpackTar) => {
         const usr = unpackTar(sysroot);
-        usr.share = { aivex: { [flags.pch.split("/").pop()!]: new Uint8Array(pch) } };
+        usr.share = { aivex: { [name(flags.pch)]: new Uint8Array(pch), [name(flags.pchHeader)]: pchHeader } };
         return { usr };
       },
     });

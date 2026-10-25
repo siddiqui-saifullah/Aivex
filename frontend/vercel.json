@@ -29,6 +29,24 @@
       ]
     },
     {
+      "source": "/cxx/(.+\\.gz)",
+      "headers": [
+        {
+          "key": "Content-Encoding",
+          "value": "gzip"
+        }
+      ]
+    },
+    {
+      "source": "/cxx/(.+\\.wasm\\.gz)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/wasm"
+        }
+      ]
+    },
+    {
       "source": "/assets/(.*)",
       "headers": [
         {

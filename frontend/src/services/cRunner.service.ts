@@ -65,13 +65,110 @@ const createWorker = () =>
 
 const getWorker = () => (worker ??= createWorker());
 
-let cxxWorker: Worker | null = null;
+// ---- C++ compiler worker ----
+// Compiles are queued one at a time and cached by content, and the open file
+// is compiled in the background as soon as the user pauses typing, so Run
+// usually finds the program already built.
 
-const getCxxWorker = () =>
-  (cxxWorker ??= new Worker(new URL("../runtime/cxx/cxxCompiler.worker.ts", import.meta.url), {
+type CxxResult = Extract<CxxCompilerEvent, { type: "result" }>;
+
+interface CxxWatcher {
+  onStatus?: CRunHandlers["onStatus"];
+  onProgress?: CRunHandlers["onProgress"];
+}
+
+let cxxWorker: Worker | null = null;
+let nextCompileId = 1;
+const pendingCompiles = new Map<number, { resolve: (r: CxxResult) => void; reject: (e: Error) => void }>();
+/** Runs waiting for the compiler to download see its progress. */
+const cxxWatchers = new Set<CxxWatcher>();
+let cxxDownloading = false;
+
+const getCxxWorker = () => {
+  if (cxxWorker) return cxxWorker;
+  cxxWorker = new Worker(new URL("../runtime/cxx/cxxCompiler.worker.ts", import.meta.url), {
     type: "module",
     name: "cxx-compiler",
-  }));
+  });
+  cxxWorker.addEventListener("message", (event: MessageEvent<CxxCompilerEvent>) => {
+    const msg = event.data;
+    switch (msg.type) {
+      case "status":
+        cxxDownloading = msg.phase === "loading";
+        for (const w of cxxWatchers) w.onStatus?.(msg.phase);
+        break;
+      case "progress":
+        for (const w of cxxWatchers) w.onProgress?.(msg.loaded, msg.total);
+        break;
+      case "result":
+        pendingCompiles.get(msg.id)?.resolve(msg);
+        pendingCompiles.delete(msg.id);
+        break;
+      case "error":
+        pendingCompiles.get(msg.id)?.reject(new Error(msg.message));
+        pendingCompiles.delete(msg.id);
+        break;
+    }
+  });
+  return cxxWorker;
+};
+
+const CACHE_SIZE = 8;
+/** Finished and in-flight compiles by content (Map order = least recently used first). */
+const compileCache = new Map<string, Promise<CxxResult>>();
+let compileQueue: Promise<unknown> = Promise.resolve();
+let compilesInFlight = 0;
+let nextSpeculative: { files: Record<string, string>; sources: string[] } | null = null;
+
+const compileKey = (files: Record<string, string>, sources: string[]) =>
+  JSON.stringify([sources, Object.entries(files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))]);
+
+const compileCxx = (files: Record<string, string>, sources: string[]): Promise<CxxResult> => {
+  const key = compileKey(files, sources);
+  const cached = compileCache.get(key);
+  if (cached) {
+    compileCache.delete(key);
+    compileCache.set(key, cached);
+    return cached;
+  }
+  compilesInFlight++;
+  const result = compileQueue.then(
+    () =>
+      new Promise<CxxResult>((resolve, reject) => {
+        const id = nextCompileId++;
+        pendingCompiles.set(id, { resolve, reject });
+        const req: CxxCompilerRequest = { type: "compile", id, base: CXX_BASE, files, sources };
+        getCxxWorker().postMessage(req);
+      }),
+  );
+  compileQueue = result.catch(() => {});
+  compileCache.set(key, result);
+  if (compileCache.size > CACHE_SIZE) compileCache.delete(compileCache.keys().next().value!);
+  result
+    .catch(() => compileCache.delete(key)) // e.g. the download failed: try again next time
+    .finally(() => {
+      compilesInFlight--;
+      pumpSpeculative();
+    });
+  return result;
+};
+
+function pumpSpeculative() {
+  if (compilesInFlight > 0 || !nextSpeculative) return;
+  const { files, sources } = nextSpeculative;
+  nextSpeculative = null;
+  compileCxx(files, sources).catch(() => {});
+}
+
+/**
+ * Compile the open C++ file in the background (call when the user pauses
+ * typing). Only the latest version waits if a compile is already running.
+ */
+export const precompileCxx = (files: Record<string, string>, entry: string) => {
+  if (nativeLanguageOf(entry) !== "cpp") return;
+  nextSpeculative = { files, sources: pickCSources(entry, files) };
+  pumpSpeculative();
+};
 
 /** Start loading the compiler in the background (e.g. when a .c or .cpp file is opened). */
 export const warmCRunner = (language: NativeLanguage = "c") => {
@@ -115,7 +212,7 @@ export const runC = (
     finished = true;
     clearInterval(timer);
     w.removeEventListener("message", onMessage);
-    cxxWorker?.removeEventListener("message", onCompilerMessage);
+    cxxWatchers.delete(watcher);
     handlers.onDone(result);
   };
 
@@ -176,40 +273,32 @@ export const runC = (
       input: shared,
       ...compiled,
     };
-    w.postMessage(req, compiled ? [compiled.wasm.buffer] : []);
+    w.postMessage(req);
   };
 
-  // C++: compile in the compiler worker first, then run like C
-  function onCompilerMessage(event: MessageEvent<CxxCompilerEvent>) {
-    const msg = event.data;
-    if (msg.id !== id || finished) return;
-    switch (msg.type) {
-      case "status":
-        handlers.onStatus?.(msg.phase);
-        break;
-      case "progress":
-        handlers.onProgress?.(msg.loaded, msg.total);
-        break;
-      case "result":
-        cxxWorker?.removeEventListener("message", onCompilerMessage);
-        if (!msg.ok) {
-          finish({ kind: "compile-error", diagnostics: msg.diagnostics, compileMs: msg.compileMs });
+  // C++: compile in the compiler worker first (or reuse the background
+  // compile of this exact code), then run like C
+  const watcher: CxxWatcher = { onStatus: handlers.onStatus, onProgress: handlers.onProgress };
+  if (language === "cpp") {
+    nextSpeculative = null; // this run's compile supersedes it
+    cxxWatchers.add(watcher);
+    handlers.onStatus?.(cxxDownloading ? "loading" : "compiling");
+    const t0 = performance.now();
+    compileCxx(files, sources).then(
+      (result) => {
+        cxxWatchers.delete(watcher);
+        if (finished) return;
+        // Time the user actually waited (0 when it was compiled in the background)
+        const compileMs = performance.now() - t0;
+        if (!result.ok) {
+          finish({ kind: "compile-error", diagnostics: result.diagnostics, compileMs });
           return;
         }
-        if (msg.diagnostics.trim()) handlers.onWarnings?.(msg.diagnostics);
-        start({ wasm: msg.wasm, compileMs: msg.compileMs });
-        break;
-      case "error":
-        finish({ kind: "error", message: msg.message });
-        break;
-    }
-  }
-
-  if (language === "cpp") {
-    const compiler = getCxxWorker();
-    compiler.addEventListener("message", onCompilerMessage);
-    const req: CxxCompilerRequest = { type: "compile", id, base: CXX_BASE, files, sources };
-    compiler.postMessage(req);
+        if (result.diagnostics.trim()) handlers.onWarnings?.(result.diagnostics);
+        start({ wasm: result.wasm, compileMs });
+      },
+      (err: Error) => finish({ kind: "error", message: err.message }),
+    );
   } else {
     start();
   }

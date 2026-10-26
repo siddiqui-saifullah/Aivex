@@ -166,7 +166,7 @@ other service should be reachable only by the backend:
   `ADMIN_RESET_PASSWORD` after using it.
 
 Built in: security headers (helmet), CORS limited to the site's origins,
-login limited to 10 attempts per account and 50 per IP per 15 minutes,
+login limited to 10 wrong passwords per account and 50 per IP per 15 minutes,
 sign-ups to 10 per IP per hour, and per-user limits on code runs and AI calls.
 
 ## API Endpoints

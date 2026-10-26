@@ -8,15 +8,23 @@ import { rateLimit } from "../middleware/rateLimit.middleware.js";
 const router: ExpressRouter = Router();
 
 
-// Password guessing: a few tries per account, and per IP across accounts
+// Password guessing: a few wrong tries per account, and per IP across accounts
+// (successful sign-ins don't count)
 const loginLimits = [
     rateLimit({
         windowMs: 15 * 60_000,
         max: 10,
+        failuresOnly: true,
         key: (req) => `email:${String(req.body?.email ?? "").trim().toLowerCase()}`,
         message: "Too many login attempts for this account, try again in 15 minutes",
     }),
-    rateLimit({ windowMs: 15 * 60_000, max: 50, key: (req) => `ip:${req.ip}`, message: "Too many login attempts, try again later" }),
+    rateLimit({
+        windowMs: 15 * 60_000,
+        max: 50,
+        failuresOnly: true,
+        key: (req) => `ip:${req.ip}`,
+        message: "Too many login attempts, try again later",
+    }),
 ];
 
 router.post(

@@ -71,6 +71,23 @@ REDIS_PASSWORD=...
 REDIS_TLS=true                       # if your Redis provider supports TLS (most cloud ones do)
 PORT=3000
 
+# Sign-up email codes (OTP). Any SMTP provider: Brevo, Resend, Zoho,
+# Gmail with an app password, Amazon SES... Without these, sign-up skips
+# email verification.
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587                        # 465 = TLS, 587 = STARTTLS
+SMTP_USER=...
+SMTP_PASS=...
+MAIL_FROM="Aivex <no-reply@aivex.in>"
+
+# "Continue with Google / GitHub" (each button appears once its pair is set)
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+FRONTEND_URL=https://aivex.in        # where sign-in returns to
+BACKEND_URL=https://your-backend.onrender.com   # optional: this server's public URL
+
 # Admin dashboard (/admin): emails allowed to see site-wide usage, comma separated
 ADMIN_EMAILS=you@example.com
 # Locked out? Set this once (8+ chars), deploy, sign in, then delete it
@@ -107,6 +124,27 @@ curl -X POST localhost:2000/api/v2/packages -H 'Content-Type: application/json' 
 Then set `PISTON_URL=http://<vm-ip>:2000` on the backend (keep port 2000
 firewalled to the backend's IP). Without `PISTON_URL`, the Run button for
 these languages shows "Code runner is not configured".
+
+## Sign-up and sign-in
+
+- **Email sign-up** is two steps: `POST /users/register` checks the details
+  and emails a 6-digit code (valid 10 minutes, 5 wrong tries, resend after
+  60 s, at most 5 codes), then `POST /users/register/verify` creates the
+  account. Without SMTP settings the account is created right away.
+- **Spam filters**: throwaway email services (a list of 120k+ domains) and
+  domains that can't receive mail are refused; Gmail dots and `+tags` count
+  as the same mailbox; usernames that are reserved (admin, support, aivex...),
+  abusive, spammy (casino, crypto...) or random (`asdfghjkl`, `user98765`)
+  and spammy names are refused; a hidden form field catches bots; sign-ups
+  and codes are rate limited.
+- **Google**: in Google Cloud Console → APIs & Services → Credentials, create
+  an OAuth client ID (Web application). Authorized redirect URI:
+  `https://<backend>/auth/google/callback`.
+- **GitHub**: Settings → Developer settings → OAuth Apps → New. Callback URL:
+  `https://<backend>/auth/github/callback`.
+- Google/GitHub sign-in uses the verified email: it signs in to the existing
+  account with that email, or creates one (with a username picked from the
+  profile). Such accounts can add a password from their profile.
 
 ## Security checklist (ports and services)
 

@@ -7,6 +7,8 @@ import * as chatService from "../services/chats.service.js";
 import ChatMessage from "../models/chat.model.js";
 import AppError from "../errors/AppError.js";
 import redisClient from "../services/redis.service.js";
+import crypto from "node:crypto";
+import { assertNameAllowed, assertUsernameAllowed, canonicalEmail } from "../utils/spamFilter.js";
 
 interface MongoDuplicateKeyError {
     code?: number;
@@ -16,24 +18,50 @@ interface MongoDuplicateKeyError {
 /* -------------------------------------------------------------------------- */
 /* CREATE USER                                                                */
 /* -------------------------------------------------------------------------- */
-export const createUser = async ({ name, username, email, password }: {
+/** 400 if the email (or another alias of the same mailbox) or username is taken. */
+export const assertAccountAvailable = async ({ email, username }: { email: string; username?: string }) => {
+    const address = email.trim().toLowerCase();
+    const canonical = canonicalEmail(address);
+    if (await userModel.exists({ $or: [{ email: address }, { email: canonical }, { emailCanonical: canonical }] })) {
+        throw new AppError("Email is already registered", 400);
+    }
+    if (username && (await userModel.exists({ username: username.trim().toLowerCase() }))) {
+        throw new AppError("Username is already taken", 400);
+    }
+};
+
+/**
+ * Create an account. Pass `password` (plain) or `passwordHash` (an email
+ * sign-up hashes it before sending the code); OAuth accounts pass neither.
+ */
+export const createUser = async ({ name, username, email, password, passwordHash, googleId, githubId }: {
     name?: string;
     username?: string;
     email?: string;
     password?: string;
+    passwordHash?: string;
+    googleId?: string;
+    githubId?: string;
 }) => {
-    if (!name || !username || !email || !password) {
+    const oauth = Boolean(googleId || githubId);
+    if (!name || !username || !email || (!password && !passwordHash && !oauth)) {
         throw new AppError("All fields are required", 400);
     }
 
     try {
-        const hashedPassword = await userModel.hashPassword(password);
+        const hasPassword = Boolean(password || passwordHash);
+        // OAuth accounts get an unusable random password until they set one
+        const hashed = passwordHash ?? (await userModel.hashPassword(password ?? crypto.randomBytes(32).toString("hex")));
 
         return await userModel.create({
             name,
             username,
             email,
-            password: hashedPassword,
+            emailCanonical: canonicalEmail(email),
+            password: hashed,
+            hasPassword,
+            googleId,
+            githubId,
         });
 
     } catch (error) {
@@ -51,6 +79,18 @@ export const createUser = async ({ name, username, email, password }: {
     }
 };
 
+/** Accounts created before emailCanonical existed get it filled in once (at startup). */
+export const backfillCanonicalEmails = async () => {
+    const users = await userModel.find({ emailCanonical: { $exists: false } }).select("_id email").lean();
+    if (users.length === 0) return;
+    await userModel.bulkWrite(
+        users.map((u) => ({
+            updateOne: { filter: { _id: u._id }, update: { $set: { emailCanonical: canonicalEmail(u.email) } } },
+        })),
+    );
+    console.log(`Filled in emailCanonical for ${users.length} accounts`);
+};
+
 /* -------------------------------------------------------------------------- */
 /* LOGIN USER                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -59,6 +99,9 @@ export const loginUser = async ({ email, password }: { email: string; password: 
 
     if (!user) {
         throw new AppError("Invalid credentials", 401);
+    }
+    if (user.hasPassword === false) {
+        throw new AppError("This account signs in with Google or GitHub. Use that button, or set a password from your profile", 401);
     }
 
     const isMatch = await user.isValidPassword(password);
@@ -77,7 +120,7 @@ export const loginUser = async ({ email, password }: { email: string; password: 
 /* -------------------------------------------------------------------------- */
 export const userProfiler = async ({ userID }: { userID: Types.ObjectId | string }) => {
     return userModel.findById(userID)
-        .select("name username email bio createdAt updatedAt")
+        .select("name username email bio hasPassword createdAt updatedAt")
         .lean();
 };
 
@@ -139,6 +182,11 @@ export const updateProfile = async ({ userID, name, username, bio }: {
         throw new AppError("Nothing to update", 400);
     }
 
+    // Spam checks only for what actually changes (old accounts keep their names)
+    const current = await userModel.findById(userID).select("name username").lean();
+    if (updates.username !== undefined && updates.username !== current?.username) assertUsernameAllowed(updates.username);
+    if (updates.name !== undefined && updates.name !== current?.name) assertNameAllowed(updates.name);
+
     try {
         const user = await userModel.findByIdAndUpdate(userID, updates, {
             new: true,
@@ -162,21 +210,24 @@ export const updateProfile = async ({ userID, name, username, bio }: {
 /* -------------------------------------------------------------------------- */
 export const changePassword = async ({ userID, currentPassword, newPassword }: {
     userID: Types.ObjectId | string;
-    currentPassword: string;
+    currentPassword?: string;
     newPassword: string;
 }) => {
     const user = await userModel.findById(userID).select("+password");
     if (!user) throw new AppError("User not found", 404);
 
-    if (!(await user.isValidPassword(currentPassword))) {
-        throw new AppError("Current password is incorrect", 400);
-    }
-
-    if (currentPassword === newPassword) {
-        throw new AppError("New password must be different", 400);
+    // Google/GitHub accounts set their first password without a current one
+    if (user.hasPassword !== false) {
+        if (!currentPassword || !(await user.isValidPassword(currentPassword))) {
+            throw new AppError("Current password is incorrect", 400);
+        }
+        if (currentPassword === newPassword) {
+            throw new AppError("New password must be different", 400);
+        }
     }
 
     user.password = await userModel.hashPassword(newPassword);
+    user.hasPassword = true;
     await user.save();
 };
 
@@ -189,12 +240,13 @@ export const changePassword = async ({ userID, currentPassword, newPassword }: {
  */
 export const deleteAccount = async ({ userID, password }: {
     userID: Types.ObjectId | string;
-    password: string;
+    password?: string;
 }) => {
     const user = await userModel.findById(userID).select("+password");
     if (!user) throw new AppError("User not found", 404);
 
-    if (!(await user.isValidPassword(password))) {
+    // Accounts without a password (Google/GitHub) confirm with their session
+    if (user.hasPassword !== false && (!password || !(await user.isValidPassword(password)))) {
         throw new AppError("Password is incorrect", 400);
     }
 

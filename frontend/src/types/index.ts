@@ -6,6 +6,8 @@ export interface User {
   username: string;
   email?: string;
   bio?: string;
+  /** False for Google/GitHub accounts that haven't set a password yet. */
+  hasPassword?: boolean;
   avatar?: string;
   isOnline?: boolean;
   createdAt?: string;

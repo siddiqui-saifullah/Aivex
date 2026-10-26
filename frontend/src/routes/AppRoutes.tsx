@@ -6,6 +6,7 @@ import Loader from "../components/ui/Loader";
 const Home = lazy(() => import("../screens/Home"));
 const Login = lazy(() => import("../screens/Login"));
 const Register = lazy(() => import("../screens/Register"));
+const AuthCallback = lazy(() => import("../screens/AuthCallback"));
 const Dashboard = lazy(() => import("../screens/Dashboard"));
 const Profile = lazy(() => import("../screens/Profile"));
 const Project = lazy(() => import("../screens/Project"));
@@ -51,6 +52,7 @@ const AppRoutes = () => {
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
           </Route>
 
           {/* Protected App */}

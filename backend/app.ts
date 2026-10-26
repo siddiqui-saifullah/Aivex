@@ -8,6 +8,7 @@ import runnerRoutes from './routes/runner.routes.js';
 import classroomRoutes from './routes/classroom.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import authRoutes from './routes/auth.routes.js';
 import compression from 'compression';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -45,6 +46,7 @@ app.get("/", (req, res) => {
     })
 });
 app.use('/users', userRoutes);
+app.use('/auth', authRoutes);
 app.use('/projects', projectRoutes);
 app.use('/ai', aiRoutes);
 app.use('/run', runnerRoutes);

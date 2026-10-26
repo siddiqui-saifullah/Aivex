@@ -27,6 +27,23 @@ router.post(
     userController.createUserController,
 );
 
+// Code checks are limited per email inside the service (5 wrong codes)
+router.post(
+    "/register/verify",
+    rateLimit({ windowMs: 15 * 60_000, max: 30, key: (req) => `verify:${req.ip}`, message: "Too many attempts, try again later" }),
+    authvalidator.verifySignupValidator,
+    validate,
+    userController.verifySignupController,
+);
+
+router.post(
+    "/register/resend",
+    rateLimit({ windowMs: 60 * 60_000, max: 10, key: (req) => `resend:${req.ip}`, message: "Too many codes requested, try again later" }),
+    authvalidator.resendSignupValidator,
+    validate,
+    userController.resendSignupCodeController,
+);
+
 router.post("/login", ...loginLimits, authvalidator.loginValidator, validate, userController.loginController);
 
 router.get("/profile", authMiddleware.authUser, userController.profileController);

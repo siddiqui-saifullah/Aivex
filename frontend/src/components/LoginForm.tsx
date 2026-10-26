@@ -7,6 +7,7 @@ import InputField from "./ui/InputField";
 import Button from "./ui/Button";
 import { useUser } from "../context/user.context";
 import { useToast } from "../context/toast.context";
+import OAuthButtons from "./OAuthButtons";
 
 const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -42,6 +43,8 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <OAuthButtons theme={theme} next={target} />
+
       <InputField
         theme={theme}
         icon={<Mail size={20} />}

@@ -1,23 +1,39 @@
 import catchAsync from "../utils/catchAsync.js";
 import AppError from "../errors/AppError.js";
 import * as userService from "../services/user.service.js";
+import * as signupService from "../services/signup.service.js";
 import { recordLogin } from "../services/activity.service.js";
 
 /* -------------------------------------------------------------------------- */
 /* REGISTER                                                                   */
 /* -------------------------------------------------------------------------- */
-export const createUserController = catchAsync(async (req, res) => {
-    const user = await userService.createUser(req.body);
-    const token = user.generateJWT();
+const authResponse = (user: { _id: unknown; name: string; username: string; generateJWT(): string }) => ({
+    token: user.generateJWT(),
+    user: { _id: user._id, name: user.name, username: user.username },
+});
 
-    res.status(201).json({
-        token,
-        user: {
-            _id: user._id,
-            name: user.name,
-            username: user.username,
-        },
-    });
+/** Step 1: check the details and email a code (or create the account if email isn't set up). */
+export const createUserController = catchAsync(async (req, res) => {
+    const { name, username, email, password, website } = req.body;
+    const result = await signupService.startSignup({ name, username, email, password, website });
+    if (result.verificationRequired) {
+        res.status(202).json({ verificationRequired: true, email: result.email });
+        return;
+    }
+    recordLogin(result.user._id);
+    res.status(201).json(authResponse(result.user));
+});
+
+/** Step 2: the emailed code creates the account. */
+export const verifySignupController = catchAsync(async (req, res) => {
+    const user = await signupService.verifySignup({ email: req.body.email, code: req.body.code });
+    recordLogin(user._id);
+    res.status(201).json(authResponse(user));
+});
+
+export const resendSignupCodeController = catchAsync(async (req, res) => {
+    await signupService.resendSignupCode({ email: req.body.email });
+    res.status(200).json({ message: "A new code is on its way" });
 });
 
 /* -------------------------------------------------------------------------- */

@@ -3,6 +3,7 @@ import { Eye, EyeOff, Mail, Lock, User, AtSign, KeyRound } from "lucide-react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { registerUser, resendSignupCode, verifySignup, type AuthResponse } from "../services/user.service";
 import OAuthButtons from "./OAuthButtons";
+import { safeNextPath } from "../utils/safeNextPath";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import InputField from "./ui/InputField";
 import Button from "./ui/Button";
@@ -28,7 +29,7 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next");
-  const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const target = safeNextPath(next);
   const { success, error } = useToast();
 
   useEffect(() => {

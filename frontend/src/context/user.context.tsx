@@ -19,12 +19,27 @@ interface UserContextValue {
 // eslint-disable-next-line react-refresh/only-export-components
 export const UserContext = createContext<UserContextValue | null>(null);
 
-/** Read the persisted session; clears it if it is corrupt. */
+/** Whether a JWT's expiry (exp, seconds) has passed; unreadable tokens count as expired. */
+const isExpired = (token: string) => {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: number };
+    return typeof payload.exp === "number" && payload.exp * 1000 <= Date.now();
+  } catch {
+    return true;
+  }
+};
+
+/** Read the persisted session; clears it if it is corrupt or expired. */
 const loadStoredUser = (): SessionUser | null => {
   const storedUser = localStorage.getItem("user");
   const storedToken = localStorage.getItem("token");
 
   if (!storedUser || !storedToken) return null;
+  if (isExpired(storedToken)) {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    return null;
+  }
 
   try {
     return JSON.parse(storedUser) as SessionUser;

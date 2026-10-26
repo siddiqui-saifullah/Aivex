@@ -4,6 +4,7 @@ import { exchangeOAuthCode } from "../services/user.service";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { useUser } from "../context/user.context";
 import { useToast } from "../context/toast.context";
+import { safeNextPath } from "../utils/safeNextPath";
 
 /** Where Google/GitHub sign-in lands: trade the one-time code for a session. */
 const AuthCallback = () => {
@@ -19,8 +20,7 @@ const AuthCallback = () => {
     const code = params.get("code");
     if (!code || started.current) return;
     started.current = true; // the code works once (StrictMode runs effects twice)
-    const next = params.get("next") ?? "";
-    const target = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+    const target = safeNextPath(params.get("next"));
     exchangeOAuthCode(code)
       .then((data) => {
         localStorage.setItem("token", data.token);

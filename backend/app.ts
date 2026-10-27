@@ -8,7 +8,9 @@ import runnerRoutes from './routes/runner.routes.js';
 import classroomRoutes from './routes/classroom.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import authRoutes from './routes/auth.routes.js';
 import compression from 'compression';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import corsMiddleware from "./config/cors.js";
 import { errorHandler } from "./middleware/error.middleware.js"
@@ -20,6 +22,12 @@ export const API_VERSION = 3;
 
 const app: Express = express();
 
+// Behind Render's proxy: use the client's address (X-Forwarded-For) for
+// per-IP rate limits instead of the proxy's
+app.set("trust proxy", true);
+// Security headers; this is a JSON API, so other sites may still read it
+// through CORS (cross-origin resource policy)
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(corsMiddleware);
 // gzip JSON responses (project files, chat history)
 app.use(compression());
@@ -38,6 +46,7 @@ app.get("/", (req, res) => {
     })
 });
 app.use('/users', userRoutes);
+app.use('/auth', authRoutes);
 app.use('/projects', projectRoutes);
 app.use('/ai', aiRoutes);
 app.use('/run', runnerRoutes);

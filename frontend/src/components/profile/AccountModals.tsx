@@ -194,11 +194,13 @@ export const EditProfileModal = ({ user, onClose, onSaved }: EditProfileModalPro
 /* -------------------------------------------------------------------------- */
 
 interface ChangePasswordModalProps {
+  /** False for Google/GitHub accounts: they set a first password without a current one. */
+  hasPassword?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
 
-export const ChangePasswordModal = ({ onClose, onChanged }: ChangePasswordModalProps) => {
+export const ChangePasswordModal = ({ hasPassword = true, onClose, onChanged }: ChangePasswordModalProps) => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -220,7 +222,7 @@ export const ChangePasswordModal = ({ onClose, onChanged }: ChangePasswordModalP
     try {
       setLoading(true);
       setError("");
-      await changePassword(currentPassword, newPassword);
+      await changePassword(hasPassword ? currentPassword : undefined, newPassword);
       onChanged();
     } catch (err) {
       setError(getErrorMessage(err, "Failed to change password"));
@@ -231,25 +233,31 @@ export const ChangePasswordModal = ({ onClose, onChanged }: ChangePasswordModalP
 
   return (
     <ModalShell
-      title="Change Password"
-      description="Use at least 8 characters."
+      title={hasPassword ? "Change Password" : "Set a Password"}
+      description={
+        hasPassword
+          ? "Use at least 8 characters."
+          : "You sign in with Google or GitHub. Add a password to also sign in with your email."
+      }
       icon={<KeyRound size={24} />}
       onClose={onClose}
     >
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <FieldLabel>Current Password</FieldLabel>
-          <InputField
-            theme="dark"
-            type="password"
-            icon={<Lock size={18} />}
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            autoComplete="current-password"
-            autoFocus
-            required
-          />
-        </div>
+        {hasPassword && (
+          <div>
+            <FieldLabel>Current Password</FieldLabel>
+            <InputField
+              theme="dark"
+              type="password"
+              icon={<Lock size={18} />}
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              autoFocus
+              required
+            />
+          </div>
+        )}
         <div>
           <FieldLabel>New Password</FieldLabel>
           <InputField
@@ -277,7 +285,7 @@ export const ChangePasswordModal = ({ onClose, onChanged }: ChangePasswordModalP
         <ErrorText error={error} />
         <div className="space-y-3 pt-2">
           <Button variant="primary" loading={loading} className="w-full">
-            Update Password
+            {hasPassword ? "Update Password" : "Set Password"}
           </Button>
           <Button
             type="button"
@@ -299,11 +307,13 @@ export const ChangePasswordModal = ({ onClose, onChanged }: ChangePasswordModalP
 /* -------------------------------------------------------------------------- */
 
 interface DeleteAccountModalProps {
+  /** Accounts without a password (Google/GitHub) confirm by typing DELETE. */
+  hasPassword?: boolean;
   onClose: () => void;
   onDeleted: () => void;
 }
 
-export const DeleteAccountModal = ({ onClose, onDeleted }: DeleteAccountModalProps) => {
+export const DeleteAccountModal = ({ hasPassword = true, onClose, onDeleted }: DeleteAccountModalProps) => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -314,7 +324,7 @@ export const DeleteAccountModal = ({ onClose, onDeleted }: DeleteAccountModalPro
     try {
       setLoading(true);
       setError("");
-      await deleteAccount(password);
+      await deleteAccount(hasPassword ? password : undefined);
       onDeleted();
     } catch (err) {
       setError(getErrorMessage(err, "Failed to delete account"));
@@ -337,14 +347,14 @@ export const DeleteAccountModal = ({ onClose, onDeleted }: DeleteAccountModalPro
       </div>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <FieldLabel>Confirm with your password</FieldLabel>
+          <FieldLabel>{hasPassword ? "Confirm with your password" : "Type DELETE to confirm"}</FieldLabel>
           <InputField
             theme="dark"
-            type="password"
+            type={hasPassword ? "password" : "text"}
             icon={<Lock size={18} />}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
+            autoComplete={hasPassword ? "current-password" : "off"}
             autoFocus
             required
           />
@@ -354,7 +364,7 @@ export const DeleteAccountModal = ({ onClose, onDeleted }: DeleteAccountModalPro
           <Button
             variant="danger"
             loading={loading}
-            disabled={!password}
+            disabled={hasPassword ? !password : password !== "DELETE"}
             className="w-full"
           >
             Delete My Account

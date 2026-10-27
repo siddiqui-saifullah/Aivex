@@ -17,4 +17,19 @@ axiosInstance.interceptors.request.use((config) => {
     return config;
 });
 
+// The session ended (expired or revoked token): sign in again and come back
+// to this page. Only for requests that were sent with a token, so a wrong
+// password on the login form is still shown as an error.
+axiosInstance.interceptors.response.use(undefined, (error) => {
+    const hadToken = Boolean(error.config?.headers?.Authorization);
+    const isLogout = String(error.config?.url ?? '').includes('/users/logout');
+    if (error.response?.status === 401 && hadToken && !isLogout && localStorage.getItem('token')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        const here = `${window.location.pathname}${window.location.search}`;
+        window.location.assign(`/login?next=${encodeURIComponent(here)}`);
+    }
+    return Promise.reject(error);
+});
+
 export default axiosInstance;

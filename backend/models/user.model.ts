@@ -7,6 +7,12 @@ export interface IUser {
     username: string;
     email: string;
     password: string;
+    /** False for accounts created with Google/GitHub until they set a password. */
+    hasPassword: boolean;
+    /** Email with Gmail dots and +tags removed: one account per real mailbox. */
+    emailCanonical: string;
+    googleId?: string;
+    githubId?: string;
     bio: string;
     /** Usage tracking (admin dashboard). */
     lastActiveAt: Date | null;
@@ -58,6 +64,10 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
             minlength: [6, "Email must be at least 6 characters long"],
             maxlength: [254, "Email must be less than 254 characters"],
         },
+        emailCanonical: { type: String, lowercase: true, trim: true, index: true },
+        hasPassword: { type: Boolean, default: true },
+        googleId: { type: String, index: { unique: true, sparse: true } },
+        githubId: { type: String, index: { unique: true, sparse: true } },
         bio: {
             type: String,
             trim: true,

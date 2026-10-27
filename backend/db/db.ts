@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { resetAdminPasswords } from "../services/adminBootstrap.service.js";
+import { backfillCanonicalEmails } from "../services/user.service.js";
 
 function connect(): void {
     const mongoUrl = process.env.MONGO_URL;
@@ -11,6 +12,7 @@ function connect(): void {
     mongoose.connect(mongoUrl)
         .then(() => {
             console.log("Connected to database");
+            backfillCanonicalEmails().catch((err) => console.error("emailCanonical backfill failed:", err));
             return resetAdminPasswords().catch((err) => console.error("Admin password reset failed:", err));
         })
         .catch((err: unknown) => {

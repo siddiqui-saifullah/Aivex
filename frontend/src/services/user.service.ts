@@ -6,13 +6,44 @@ export interface AuthResponse {
     user: Pick<User, "_id" | "name" | "username">;
 }
 
+/** Sign-up step 1: the server emails a code (or signs in right away if email isn't set up). */
 export const registerUser = async (payload: {
     name: string;
     username: string;
     email: string;
     password: string;
-}): Promise<AuthResponse> => {
-    const response = await axios.post<AuthResponse>("/users/register", payload);
+    /** Honeypot: hidden from people, so only bots fill it in. */
+    website?: string;
+}): Promise<AuthResponse | { verificationRequired: true; email: string }> => {
+    const response = await axios.post<AuthResponse | { verificationRequired: true; email: string }>("/users/register", payload);
+    return response.data;
+};
+
+/** Sign-up step 2: the emailed code creates the account. */
+export const verifySignup = async (email: string, code: string): Promise<AuthResponse> => {
+    const response = await axios.post<AuthResponse>("/users/register/verify", { email, code });
+    return response.data;
+};
+
+export const resendSignupCode = async (email: string) => {
+    await axios.post("/users/register/resend", { email });
+};
+
+export type OAuthProvider = "google" | "github";
+
+/** Which "Continue with ..." buttons the server supports. */
+export const getAuthProviders = async (): Promise<Record<OAuthProvider, boolean>> => {
+    const response = await axios.get<Record<OAuthProvider, boolean>>("/auth/providers");
+    return response.data;
+};
+
+/** Full-page redirect to the provider; it comes back to /auth/callback. */
+export const oauthStartUrl = (provider: OAuthProvider, next: string) =>
+    `${import.meta.env.VITE_API_URL}/auth/${provider}?next=${encodeURIComponent(next)}`;
+
+/** Trade the one-time code from /auth/callback for a session. */
+export const exchangeOAuthCode = async (code: string): Promise<AuthResponse> => {
+    const response = await axios.post<AuthResponse>("/auth/exchange", { code });
     return response.data;
 };
 
@@ -68,7 +99,8 @@ export const updateProfile = async (updates: { name?: string; username?: string;
     return response.data;
 };
 
-export const changePassword = async (currentPassword: string, newPassword: string) => {
+/** `currentPassword` is left out when a Google/GitHub account sets its first password. */
+export const changePassword = async (currentPassword: string | undefined, newPassword: string) => {
     const response = await axios.patch<{ message: string }>("/users/password", {
         currentPassword,
         newPassword,
@@ -77,7 +109,8 @@ export const changePassword = async (currentPassword: string, newPassword: strin
 };
 
 /** Permanently delete the account; the server also revokes the token. */
-export const deleteAccount = async (password: string): Promise<void> => {
+/** `password` is left out for Google/GitHub accounts without one. */
+export const deleteAccount = async (password: string | undefined): Promise<void> => {
     await axios.delete("/users/profile", { data: { password } });
     localStorage.removeItem("token");
     localStorage.removeItem("user");

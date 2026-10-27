@@ -321,15 +321,18 @@ const Profile = () => {
       )}
       {openModal === "password" && (
         <ChangePasswordModal
+          hasPassword={user.hasPassword !== false}
           onClose={() => setOpenModal(null)}
           onChanged={() => {
             setOpenModal(null);
-            toast.success("Password updated");
+            setUser({ ...user, hasPassword: true });
+            toast.success(user.hasPassword === false ? "Password set" : "Password updated");
           }}
         />
       )}
       {openModal === "delete" && (
         <DeleteAccountModal
+          hasPassword={user.hasPassword !== false}
           onClose={() => setOpenModal(null)}
           onDeleted={handleAccountDeleted}
         />

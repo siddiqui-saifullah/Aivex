@@ -7,6 +7,8 @@ import InputField from "./ui/InputField";
 import Button from "./ui/Button";
 import { useUser } from "../context/user.context";
 import { useToast } from "../context/toast.context";
+import OAuthButtons from "./OAuthButtons";
+import { safeNextPath } from "../utils/safeNextPath";
 
 const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -18,7 +20,7 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
   const [params] = useSearchParams();
   // Back to where the user was going (e.g. a class invite link); same-site paths only
   const next = params.get("next");
-  const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const target = safeNextPath(next);
   const { setUser } = useUser();
   const { success, error } = useToast();
 
@@ -42,6 +44,8 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <OAuthButtons theme={theme} next={target} />
+
       <InputField
         theme={theme}
         icon={<Mail size={20} />}

@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from "react";
-import { Eye, EyeOff, Mail, Lock, User, AtSign } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Eye, EyeOff, Mail, Lock, User, AtSign, KeyRound } from "lucide-react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { registerUser } from "../services/user.service";
+import { registerUser, resendSignupCode, verifySignup, type AuthResponse } from "../services/user.service";
+import OAuthButtons from "./OAuthButtons";
+import { safeNextPath } from "../utils/safeNextPath";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import InputField from "./ui/InputField";
 import Button from "./ui/Button";
@@ -16,25 +18,47 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Honeypot: hidden from people, bots fill it in and get rejected
+  const [website, setWebsite] = useState("");
+  // Step 2: the code emailed to this address
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
 
   const { setUser } = useUser();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next");
-  const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const target = safeNextPath(next);
   const { success, error } = useToast();
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  const signIn = (data: AuthResponse) => {
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    setUser(data.user);
+    success("Account created successfully!");
+    navigate(target, { replace: true });
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const data = await registerUser({ name, username, email, password });
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      setUser(data.user);
-      success("Account created successfully!");
-      navigate(target, { replace: true });
+      const data = await registerUser({ name, username, email, password, website });
+      if ("verificationRequired" in data) {
+        setPendingEmail(data.email);
+        setCode("");
+        setResendIn(60);
+      } else {
+        signIn(data);
+      }
     } catch (err) {
       error(getErrorMessage(err, "Registration failed"));
     } finally {
@@ -42,8 +66,90 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
     }
   };
 
+  const handleVerify = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!pendingEmail) return;
+    setLoading(true);
+    try {
+      signIn(await verifySignup(pendingEmail, code.trim()));
+    } catch (err) {
+      error(getErrorMessage(err, "Verification failed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!pendingEmail || resendIn > 0) return;
+    try {
+      await resendSignupCode(pendingEmail);
+      success("A new code is on its way");
+      setResendIn(60);
+    } catch (err) {
+      error(getErrorMessage(err, "Couldn't send a new code"));
+    }
+  };
+
+  const link = theme === "dark" ? "text-teal-400 hover:text-teal-300" : "text-indigo-500 hover:text-indigo-400";
+  const muted = theme === "dark" ? "text-zinc-400" : "text-slate-600";
+
+  if (pendingEmail) {
+    return (
+      <form onSubmit={handleVerify} className="space-y-5">
+        <p className={`text-center text-sm ${muted}`}>
+          We sent a 6-digit code to <span className="font-semibold">{pendingEmail}</span>. It expires in 10 minutes
+          (check spam too).
+        </p>
+        <InputField
+          theme={theme}
+          icon={<KeyRound size={20} />}
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder="6-digit code"
+          aria-label="Verification code"
+          maxLength={6}
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          autoFocus
+          required
+        />
+        <Button variant="primary" loading={loading} disabled={code.length !== 6} className="w-full">
+          Verify and create account
+        </Button>
+        <div className={`flex items-center justify-between text-sm ${muted}`}>
+          <button type="button" onClick={() => setPendingEmail(null)} className={`font-medium ${link}`}>
+            Change details
+          </button>
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={resendIn > 0}
+            className={`font-medium disabled:opacity-60 ${resendIn > 0 ? "" : link}`}
+          >
+            {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <OAuthButtons theme={theme} next={target} />
+
+      {/* Honeypot: off-screen and skipped by keyboards and password managers */}
+      <input
+        type="text"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        value={website}
+        onChange={(e) => setWebsite(e.target.value)}
+        className="absolute -left-[9999px] h-0 w-0 opacity-0"
+      />
+
       <InputField
         theme={theme}
         icon={<User size={20} />}

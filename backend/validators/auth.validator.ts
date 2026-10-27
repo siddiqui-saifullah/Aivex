@@ -6,8 +6,8 @@ export const registerValidator = [
         .notEmpty()
         .withMessage("Name is required")
         .bail()
-        .isLength({ min: 3 })
-        .withMessage("Name must be at least 3 characters long")
+        .isLength({ min: 3, max: 50 })
+        .withMessage("Name must be between 3 and 50 characters")
         .bail()
         .matches(/^[A-Za-z ]+$/)
         .withMessage("Name must contain only letters and spaces"),
@@ -30,16 +30,28 @@ export const registerValidator = [
         .withMessage("Email is required")
         .bail()
         .isEmail()
-        .withMessage("Invalid email format"),
+        .withMessage("Invalid email format")
+        .bail()
+        .isLength({ max: 254 })
+        .withMessage("Email is too long"),
 
     body("password")
         .notEmpty()
         .withMessage("Password is required")
         .bail()
-        .isLength({ min: 8 })
-        .withMessage("Password must be at least 8 characters long"),
+        .isLength({ min: 8, max: 128 })
+        .withMessage("Password must be between 8 and 128 characters"),
 ];
 
+
+export const verifySignupValidator = [
+    body("email").trim().isEmail().withMessage("Email must be a valid address"),
+    body("code").trim().matches(/^\d{6}$/).withMessage("Enter the 6-digit code from the email"),
+];
+
+export const resendSignupValidator = [
+    body("email").trim().isEmail().withMessage("Email must be a valid address"),
+];
 
 export const loginValidator = [
     body("email").isEmail().withMessage("Email must be valid address"),
@@ -78,10 +90,10 @@ export const updateProfileValidator = [
 
 
 export const changePasswordValidator = [
+    // Optional for accounts created with Google/GitHub (no password yet)
     body("currentPassword")
-        .isString().withMessage("Current password is required")
-        .bail()
-        .notEmpty().withMessage("Current password is required"),
+        .optional()
+        .isString().withMessage("Current password is required"),
 
     body("newPassword")
         .isString().withMessage("New password is required")
@@ -91,9 +103,9 @@ export const changePasswordValidator = [
 ];
 
 
+// The service requires it unless the account has no password (Google/GitHub)
 export const deleteAccountValidator = [
     body("password")
-        .isString().withMessage("Password is required to delete your account")
-        .bail()
-        .notEmpty().withMessage("Password is required to delete your account"),
+        .optional()
+        .isString().withMessage("Password is required to delete your account"),
 ];

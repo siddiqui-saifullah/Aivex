@@ -6,6 +6,7 @@ import Loader from "../components/ui/Loader";
 const Home = lazy(() => import("../screens/Home"));
 const Login = lazy(() => import("../screens/Login"));
 const Register = lazy(() => import("../screens/Register"));
+const AuthCallback = lazy(() => import("../screens/AuthCallback"));
 const Dashboard = lazy(() => import("../screens/Dashboard"));
 const Profile = lazy(() => import("../screens/Profile"));
 const Project = lazy(() => import("../screens/Project"));
@@ -25,6 +26,7 @@ const AppLayout = lazy(() => import("../layouts/AppLayout"));
 const PublicLayout = lazy(() => import("../layouts/PublicLayout"));
 
 import ProtectedRoute from "./ProtectedRoute";
+import GuestOnly from "./GuestOnly";
 import PageTitle from "./PageTitle";
 
 const AppRoutes = () => {
@@ -35,7 +37,7 @@ const AppRoutes = () => {
         <Routes>
           {/* Public */}
           <Route element={<PublicLayout />}>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<GuestOnly><Home /></GuestOnly>} />
             <Route path="/about" element={<About />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
@@ -49,8 +51,9 @@ const AppRoutes = () => {
 
           {/* Auth */}
           <Route element={<AuthLayout />}>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+            <Route path="/register" element={<GuestOnly><Register /></GuestOnly>} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
           </Route>
 
           {/* Protected App */}

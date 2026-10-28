@@ -39,5 +39,15 @@ export const deleteClassroom = async (id: string) => {
   await axios.delete(`/classrooms/${id}`);
 };
 
+/** Student: leave a class; the class project stays as a personal project. */
+export const leaveClassroom = async (id: string) => {
+  await axios.post(`/classrooms/${id}/leave`);
+};
+
+/** Teacher: remove a student; they keep their project as a personal one. */
+export const removeStudent = async (id: string, studentId: string) => {
+  await axios.delete(`/classrooms/${id}/students/${studentId}`);
+};
+
 /** Shareable invite link for a class code. */
 export const classInviteLink = (code: string) => `${window.location.origin}/join/${code}`;

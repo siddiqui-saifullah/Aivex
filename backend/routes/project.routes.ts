@@ -3,6 +3,7 @@ import { body } from "express-validator";
 
 import * as projectController from "../controllers/project.controller.js";
 import * as authMiddleware from "../middleware/auth.middleware.js";
+import { rateLimit } from "../middleware/rateLimit.middleware.js";
 import {
     updateProjectFilesValidator,
     validate,
@@ -111,8 +112,12 @@ router.patch(
 /* NESTED ROUTES                                                              */
 /* -------------------------------------------------------------------------- */
 
-//Report Bug
-router.post("/:projectId/issues", projectController.reportIssueController);
+// Report a bug, idea or feedback ("general" when not in a project)
+router.post(
+    "/:projectId/issues",
+    rateLimit({ windowMs: 60 * 60_000, max: 10, message: "Too many reports, try again later" }),
+    projectController.reportIssueController,
+);
 
 // Project chats
 router.use("/:projectId/chats", chatRoutes);

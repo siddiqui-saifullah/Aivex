@@ -166,6 +166,9 @@ export type NotificationType =
   | "project-owner"
   | "mention"
   | "class-join"
+  | "class-leave"
+  | "class-removed"
+  | "report-update"
   | "class-ai";
 
 export interface AppNotification {

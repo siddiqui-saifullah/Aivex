@@ -11,10 +11,11 @@ import {
   Maximize2,
   Search,
   Trash2,
+  UserMinus,
   Users,
   X,
 } from "lucide-react";
-import { classInviteLink, deleteClassroom, getClassroom, updateClassroom } from "../services/classroom.service";
+import { classInviteLink, deleteClassroom, getClassroom, removeStudent, updateClassroom } from "../services/classroom.service";
 import AiToggle from "../components/classroom/AiToggle";
 import { useToast } from "../context/toast.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
@@ -106,9 +107,24 @@ const Classroom = () => {
     }
   };
 
+  const handleRemove = async (s: ClassroomStudent) => {
+    if (!data) return;
+    const name = s.name || s.username || "this student";
+    if (!window.confirm(`Remove ${name} from “${data.name}”? They keep their project as a personal one, and you can no longer open it.`)) return;
+    try {
+      await removeStudent(data._id, String(s.userId));
+      setData((d) =>
+        d ? { ...d, studentCount: d.studentCount - 1, students: d.students?.filter((x) => x.userId !== s.userId) } : d,
+      );
+      toast.success(`${name} removed from the class`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not remove the student"));
+    }
+  };
+
   const handleDelete = async () => {
     if (!data) return;
-    if (!window.confirm(`Delete “${data.name}”? Students keep their projects, but the class and its code are removed.`)) return;
+    if (!window.confirm(`Delete “${data.name}”? Students keep their projects as personal ones, and you can no longer open them.`)) return;
     try {
       await deleteClassroom(data._id);
       toast.success("Class deleted");
@@ -217,7 +233,7 @@ const Classroom = () => {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {students.map((s) => (
-              <StudentCard key={s.userId} student={s} now={now} />
+              <StudentCard key={s.userId} student={s} now={now} onRemove={() => handleRemove(s)} />
             ))}
             {students.length === 0 && <p className="text-sm text-zinc-500">No students match “{query}”.</p>}
           </div>
@@ -246,7 +262,7 @@ const Classroom = () => {
   );
 };
 
-const StudentCard = ({ student: s, now }: { student: ClassroomStudent; now: number }) => {
+const StudentCard = ({ student: s, now, onRemove }: { student: ClassroomStudent; now: number; onRemove: () => void }) => {
   const name = s.name || s.username || "Student";
   return (
     <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-zinc-900/50 p-4">
@@ -276,6 +292,14 @@ const StudentCard = ({ student: s, now }: { student: ClassroomStudent; now: numb
       >
         Open <ExternalLink size={12} />
       </Link>
+      <button
+        onClick={onRemove}
+        title={`Remove ${name} from the class`}
+        aria-label={`Remove ${name} from the class`}
+        className="shrink-0 rounded-lg p-1.5 text-zinc-600 hover:bg-white/5 hover:text-red-400"
+      >
+        <UserMinus size={14} />
+      </button>
     </div>
   );
 };

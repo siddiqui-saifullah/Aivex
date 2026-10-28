@@ -16,11 +16,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import ColumnChart from "../components/admin/ColumnChart";
+import ModerationPanel from "../components/admin/ModerationPanel";
+import { useToast } from "../context/toast.context";
+import { getErrorMessage } from "../utils/getErrorMessage";
 import {
   checkIsAdmin,
   getAdminOverview,
   getAdminProjects,
   getAdminUsers,
+  setUserSuspension,
   type AdminOverview,
   type AdminProject,
   type AdminUser,
@@ -197,6 +201,8 @@ const Admin = () => {
           <Stat icon={MessageSquare} label="AI replies" value={totals.aiReplies} hint={`${totals.messages.toLocaleString()} chat messages`} />
         </div>
 
+        <ModerationPanel onChanged={() => setReloadKey((k) => k + 1)} />
+
         {/* Last 30 days */}
         <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wider text-zinc-300">Last 30 days</h2>
         <div className="grid gap-3 md:grid-cols-2">
@@ -277,7 +283,7 @@ const Admin = () => {
           ) : rows.items.length === 0 ? (
             <p className="py-12 text-center text-sm text-zinc-500">Nothing found</p>
           ) : tab === "users" ? (
-            <UsersTable users={rows.items as AdminUser[]} />
+            <UsersTable users={rows.items as AdminUser[]} onChanged={() => setReloadKey((k) => k + 1)} />
           ) : (
             <ProjectsTable projects={rows.items as AdminProject[]} />
           )}
@@ -312,8 +318,42 @@ const Admin = () => {
 const th = "px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 whitespace-nowrap";
 const td = "px-4 py-3 align-top text-zinc-300";
 
-const UsersTable = ({ users }: { users: AdminUser[] }) => (
-  <table className="w-full min-w-[56rem] text-sm">
+/** Suspend (after abuse) or let back in. */
+const SuspendButton = ({ user, onChanged }: { user: AdminUser; onChanged: () => void }) => {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const toggle = async () => {
+    const suspend = !user.suspendedAt;
+    const reason = suspend ? window.prompt(`Suspend @${user.username}? They are signed out everywhere. Reason (kept for admins):`) : "";
+    if (suspend && reason === null) return;
+    if (!suspend && !window.confirm(`Let @${user.username} sign in again?`)) return;
+    setBusy(true);
+    try {
+      await setUserSuspension(user._id, suspend, reason || undefined);
+      toast.success(suspend ? `@${user.username} suspended` : `@${user.username} can sign in again`);
+      onChanged();
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not update the account"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      title={user.suspendedAt ? user.suspendedReason || "Suspended" : "Suspend this account"}
+      className={`rounded-md px-2 py-1 text-xs disabled:opacity-50 ${
+        user.suspendedAt ? "bg-red-500/15 text-red-300 hover:bg-red-500/25" : "text-zinc-500 hover:bg-white/5 hover:text-red-300"
+      }`}
+    >
+      {user.suspendedAt ? "Suspended · lift" : "Suspend"}
+    </button>
+  );
+};
+
+const UsersTable = ({ users, onChanged }: { users: AdminUser[]; onChanged: () => void }) => (
+  <table className="w-full min-w-[60rem] text-sm">
     <thead className="border-b border-white/10 bg-zinc-950">
       <tr>
         <th className={th}>User</th>
@@ -323,6 +363,7 @@ const UsersTable = ({ users }: { users: AdminUser[] }) => (
         <th className={`${th} text-right`}>Projects</th>
         <th className={th}>Last opened project</th>
         <th className={th}>Joined</th>
+        <th className={th}>Account</th>
       </tr>
     </thead>
     <tbody className="divide-y divide-white/5">
@@ -361,6 +402,9 @@ const UsersTable = ({ users }: { users: AdminUser[] }) => (
           </td>
           <td className={td}>
             <When iso={u.createdAt} />
+          </td>
+          <td className={td}>
+            <SuspendButton user={u} onChanged={onChanged} />
           </td>
         </tr>
       ))}

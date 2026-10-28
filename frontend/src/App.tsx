@@ -2,6 +2,7 @@ import AppRoutes from "./routes/AppRoutes";
 import { UserProvider } from "./context/user.context";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/toast.context";
+import { ReportProvider } from "./context/report.context";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import ToastContainer from "./components/ToastContainer";
 import { Analytics } from "@vercel/analytics/react";
@@ -12,7 +13,9 @@ function App() {
       <ThemeProvider>
         <UserProvider>
           <ToastProvider>
-            <AppRoutes />
+            <ReportProvider>
+              <AppRoutes />
+            </ReportProvider>
             <ToastContainer />
             <Analytics />
           </ToastProvider>

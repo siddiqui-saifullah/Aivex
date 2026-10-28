@@ -44,6 +44,11 @@ const LoginForm = ({ theme }: { theme: "dark" | "light" }) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {params.get("suspended") && (
+        <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          Your account has been suspended after reports of abuse. If you think this is a mistake, contact support.
+        </p>
+      )}
       <OAuthButtons theme={theme} next={target} />
 
       <InputField

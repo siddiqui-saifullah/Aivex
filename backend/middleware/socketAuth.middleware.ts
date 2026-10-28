@@ -4,6 +4,7 @@ import Project from "../models/project.model.js";
 import userModal from "../models/user.model.js";
 import redisClient from "../services/redis.service.js";
 import { touchUser } from "../services/activity.service.js";
+import { isSuspended } from "../services/report.service.js";
 import type { Socket } from "socket.io";
 import type { AppSocket } from "../socket/socketHandler.js";
 
@@ -21,6 +22,7 @@ export const authenticateSocketUser = async (handshake: Handshake) => {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
         if (!decoded?.userId) return null;
+        if (await isSuspended(decoded.userId)) return null;
 
         const user = await userModal.findById(decoded.userId).select("_id username").lean();
         if (!user) return null;

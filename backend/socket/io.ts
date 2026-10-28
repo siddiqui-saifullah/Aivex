@@ -30,6 +30,21 @@ export const disconnectUserFromProject = async (projectId: string, userId: strin
     }
 };
 
+/** A chat message was removed (e.g. by a moderator): drop it from open chats. */
+export const notifyMessageDeleted = (projectId: string, messageId: string) => {
+    ioInstance?.to(String(projectId)).emit("message-deleted", { id: String(messageId) });
+};
+
+/** Close every live connection of a user (suspended accounts). */
+export const disconnectUser = async (userId: string) => {
+    if (!ioInstance) return;
+    for (const nsp of [ioInstance.of("/"), ioInstance.of("/notifications")]) {
+        for (const socket of await nsp.fetchSockets()) {
+            if (String(socket.data.user?.id) === String(userId)) socket.disconnect(true);
+        }
+    }
+};
+
 /** Who is connected to each project's room right now (user ids). */
 export const onlineUsersByProject = async (projectIds: string[]) => {
     const online = new Map<string, Set<string>>();

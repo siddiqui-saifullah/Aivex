@@ -3,12 +3,11 @@ import Project, { PROJECT_STACKS, type ProjectStack } from "../models/project.mo
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
-import issueModel from "../models/issue.model.js";
 import Classroom from "../models/classroom.model.js";
 import { isAiDisabledFor } from "./aiPolicy.service.js";
+import { pullStudent } from "./classroom.service.js";
 import { notify, resolveInviteNotifications } from "./notification.service.js";
 import { notifyProjectUpdated } from "../socket/io.js";
-import type { IssueReport } from "../types/index.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 
 type Id = Types.ObjectId | string;
@@ -162,6 +161,19 @@ export const createProject = async ({ name, userId, stack }: { name: string; use
 };
 
 /* -------------------------------------------------------------------------- */
+/* CLASS PROJECTS                                                             */
+/* -------------------------------------------------------------------------- */
+/**
+ * A student's class project belongs to the student and the class's teacher
+ * only: membership comes from the class, not from project invites.
+ */
+const classTeacherOf = async (project: { classroom?: Types.ObjectId | null }) => {
+    if (!project.classroom) return null;
+    const classroom = await Classroom.findById(project.classroom).select("teacher").lean();
+    return classroom ? classroom.teacher : null;
+};
+
+/* -------------------------------------------------------------------------- */
 /* USER PROJECTS                                                              */
 /* -------------------------------------------------------------------------- */
 export const userAllProjects = async ({ userId }: { userId: Id }) => {
@@ -221,7 +233,7 @@ export const deleteProject = async ({ projectId, userId }: { projectId: string; 
 
     // A deleted class project also leaves its class
     if (project.classroom) {
-        await Classroom.updateOne({ _id: project.classroom }, { $pull: { students: { project: project._id } } });
+        await pullStudent(project.classroom, { project: project._id });
     }
 
     await project.deleteOne();
@@ -347,6 +359,9 @@ export const inviteUsersToProject = async ({ ownerId, projectId, users }: {
     if (!project) throw new AppError("Project not found", 404);
     if (!project.owner.equals(ownerId)) {
         throw new AppError("Only owner can invite users", 403);
+    }
+    if (await classTeacherOf(project)) {
+        throw new AppError("Class projects are only shared with your teacher", 403);
     }
 
     const validUsers = await userModel.find({ _id: { $in: uniqueUsers } }).select("_id");
@@ -494,6 +509,10 @@ export const leaveProject = async ({ projectId, userId }: { projectId: string; u
     if (project.owner.equals(userId)) {
         throw new AppError("Owner cannot leave project", 403);
     }
+    const teacher = await classTeacherOf(project);
+    if (teacher?.equals(userId)) {
+        throw new AppError("This is your student's class project. Remove the student from the class instead", 403);
+    }
 
     if (!project.users.some(id => id.equals(userId))) {
         throw new AppError("User not in project", 400);
@@ -596,6 +615,9 @@ export const transferOwnership = async ({ projectId, ownerId, newOwnerId }: {
     if (!project.users.some(id => id.equals(newOwnerId))) {
         throw new AppError("New owner must be a member of the project", 400);
     }
+    if (await classTeacherOf(project)) {
+        throw new AppError("A class project stays with its student", 403);
+    }
 
     project.owner = new mongoose.Types.ObjectId(newOwnerId);
     await project.save();
@@ -637,6 +659,10 @@ export const removeMember = async ({ projectId, ownerId, memberId }: {
     if (!project.users.some(id => id.equals(memberId))) {
         throw new AppError("User is not a member of this project", 404);
     }
+    const teacher = await classTeacherOf(project);
+    if (teacher?.equals(memberId)) {
+        throw new AppError("Your teacher stays in class projects. Leave the class to remove them", 403);
+    }
 
     project.users = project.users.filter(id => !id.equals(memberId));
     await project.save();
@@ -652,42 +678,3 @@ export const removeMember = async ({ projectId, ownerId, memberId }: {
     return { success: true, usersCount: project.users.length };
 };
 
-/* -------------------------------------------------------------------------- */
-/* REPORT ISSUE                                                               */
-/* -------------------------------------------------------------------------- */
-export const reportIssueInProject = async ({
-    projectId,
-    report,
-    userId,
-}: {
-    projectId: string;
-    report: IssueReport;
-    userId: Id;
-}) => {
-    const {
-        type = "bug",
-        title,
-        description,
-        severity = "medium",
-        context = {},
-    } = report;
-
-    if (!projectId) {
-        throw new AppError("Project ID is required", 400);
-    }
-
-    if (!title || !description) {
-        throw new AppError("Title and description are required", 400);
-    }
-
-    const issue = await issueModel.create({
-        type,
-        title,
-        description,
-        severity,
-        reportedBy: userId,
-        context,
-    });
-
-    return issue;
-};

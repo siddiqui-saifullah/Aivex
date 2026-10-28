@@ -16,6 +16,7 @@ interface MessageProps {
   files?: FlatFileTree | null;
   onApplyFiles?: () => void;
   onDelete?: () => void;
+  onReport?: () => void;
 }
 
 const Message = ({
@@ -31,6 +32,7 @@ const Message = ({
   files,
   onApplyFiles,
   onDelete,
+  onReport,
 }: MessageProps) => {
   /* ---------------- System Message ---------------- */
   if (type === "system") {
@@ -67,6 +69,7 @@ const Message = ({
       position={position}
       files={files}
       onApplyFiles={onApplyFiles}
+      onReport={onReport}
     />
   );
 };

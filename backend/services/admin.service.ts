@@ -115,7 +115,7 @@ export const listUsers = async ({ q, sort, page }: { q?: string; sort?: string; 
             .sort(USER_SORTS[sort ?? ""] ?? USER_SORTS.active)
             .skip((pageNo - 1) * PAGE_SIZE)
             .limit(PAGE_SIZE)
-            .select("name username email createdAt lastActiveAt lastLoginAt loginCount lastProject")
+            .select("name username email createdAt lastActiveAt lastLoginAt loginCount lastProject suspendedAt suspendedReason")
             .lean(),
     ]);
 
@@ -148,6 +148,8 @@ export const listUsers = async ({ q, sort, page }: { q?: string; sort?: string; 
             lastProject: u.lastProject ?? null,
             projectsOwned: counts.get(String(u._id))?.owned ?? 0,
             projectsShared: counts.get(String(u._id))?.member ?? 0,
+            suspendedAt: u.suspendedAt ?? null,
+            suspendedReason: u.suspendedReason ?? "",
         })),
     };
 };

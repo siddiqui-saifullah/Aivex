@@ -14,5 +14,7 @@ router.post("/join", rateLimit({ windowMs: 60_000, max: 15 }), classroomControll
 router.get("/:classroomId", classroomController.getClassroom);
 router.patch("/:classroomId", rateLimit({ windowMs: 60_000, max: 30 }), classroomController.updateClassroom);
 router.delete("/:classroomId", classroomController.deleteClassroom);
+router.post("/:classroomId/leave", classroomController.leaveClassroom);
+router.delete("/:classroomId/students/:studentId", classroomController.removeStudent);
 
 export default router;

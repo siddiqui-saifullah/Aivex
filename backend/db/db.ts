@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { resetAdminPasswords } from "../services/adminBootstrap.service.js";
 import { backfillCanonicalEmails } from "../services/user.service.js";
+import { syncSuspensions } from "../services/report.service.js";
 
 function connect(): void {
     const mongoUrl = process.env.MONGO_URL;
@@ -13,6 +14,7 @@ function connect(): void {
         .then(() => {
             console.log("Connected to database");
             backfillCanonicalEmails().catch((err) => console.error("emailCanonical backfill failed:", err));
+            syncSuspensions().catch((err) => console.error("Suspension sync failed:", err));
             return resetAdminPasswords().catch((err) => console.error("Admin password reset failed:", err));
         })
         .catch((err: unknown) => {

@@ -13,6 +13,9 @@ export interface IUser {
     emailCanonical: string;
     googleId?: string;
     githubId?: string;
+    /** Set by an admin after abuse reports: the account can't sign in. */
+    suspendedAt: Date | null;
+    suspendedReason: string;
     bio: string;
     /** Usage tracking (admin dashboard). */
     lastActiveAt: Date | null;
@@ -67,6 +70,8 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
         emailCanonical: { type: String, lowercase: true, trim: true, index: true },
         hasPassword: { type: Boolean, default: true },
         googleId: { type: String, index: { unique: true, sparse: true } },
+        suspendedAt: { type: Date, default: null },
+        suspendedReason: { type: String, default: "", maxlength: 300 },
         githubId: { type: String, index: { unique: true, sparse: true } },
         bio: {
             type: String,

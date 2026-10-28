@@ -1,4 +1,5 @@
 import Message from "./Message";
+import { useReport } from "../../context/report.context";
 import type { BubblePosition } from "./Message/types";
 import type { GroupedMessageItem } from "../../utils/messageGrouping";
 import type { FlatFileTree, MessageType } from "../../types";
@@ -25,6 +26,7 @@ const MessageGroup = ({
   onDeleteMessage,
   onApplyFiles,
 }: MessageGroupProps) => {
+  const report = useReport();
   if (!isTyping && messages.length === 0) return null;
 
   const getPosition = (idx: number, total: number): BubblePosition => {
@@ -87,6 +89,11 @@ const MessageGroup = ({
               onDelete={
                 msg.id && onDeleteMessage && type === "outgoing"
                   ? () => onDeleteMessage(msg.id!)
+                  : undefined
+              }
+              onReport={
+                msg.id && type === "incoming" && !isAI
+                  ? () => report.open({ targetType: "message", targetId: msg.id!, label: `a message from ${username ?? "someone"}` })
                   : undefined
               }
             />

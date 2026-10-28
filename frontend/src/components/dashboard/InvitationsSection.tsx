@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, Loader2, MailOpen, Users } from "lucide-react";
+import { Check, Loader2, MailOpen, Users, Flag } from "lucide-react";
 import { getMyInvites, respondToInvite } from "../../services/project.service";
+import { useReport } from "../../context/report.context";
 import { useToast } from "../../context/toast.context";
 import { getErrorMessage } from "../../utils/getErrorMessage";
 import { INVITES_CHANGED } from "../../utils/inviteEvents";
@@ -14,6 +15,7 @@ import type { ProjectInvite } from "../../types";
 const InvitationsSection = ({ onAccepted }: { onAccepted?: () => void }) => {
   const navigate = useNavigate();
   const toast = useToast();
+  const report = useReport();
   const [invites, setInvites] = useState<ProjectInvite[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -99,6 +101,14 @@ const InvitationsSection = ({ onAccepted }: { onAccepted?: () => void }) => {
                 className="flex-1 rounded-lg border border-white/10 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/5 hover:text-white disabled:opacity-60"
               >
                 Decline
+              </button>
+              <button
+                onClick={() => report.open({ targetType: "project", targetId: invite.projectId, label: `the invitation to “${invite.name}”` })}
+                title="Report as spam or abuse"
+                aria-label={`Report the invitation to ${invite.name}`}
+                className="rounded-lg border border-white/10 px-2.5 text-zinc-500 transition hover:bg-white/5 hover:text-red-300"
+              >
+                <Flag size={14} />
               </button>
             </div>
           </div>

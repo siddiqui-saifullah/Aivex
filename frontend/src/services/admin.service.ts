@@ -26,6 +26,8 @@ export interface AdminUser {
   lastProject: { project: string; name: string; at: string } | null;
   projectsOwned: number;
   projectsShared: number;
+  suspendedAt: string | null;
+  suspendedReason: string;
 }
 
 export interface AdminProject {
@@ -82,3 +84,58 @@ export const getAdminProjects = async (params: {
   );
   return { total: data.total, page: data.page, pageSize: data.pageSize, items: data.projects };
 };
+
+/* ---- reports & moderation ---- */
+
+export interface AdminAbuseReport {
+  _id: string;
+  reporter: { _id: string; name: string; username: string } | null;
+  targetType: "user" | "project" | "message";
+  target: string;
+  targetUser: { _id: string; name: string; username: string; email: string; suspendedAt: string | null } | null;
+  reason: string;
+  details: string;
+  snapshot: { text?: string; name?: string; username?: string; projectId?: string | null };
+  status: "open" | "closed";
+  action: string | null;
+  adminNote: string;
+  reportsAgainstUser: number;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface AdminIssue {
+  _id: string;
+  type: "bug" | "feature" | "feedback";
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: "open" | "acknowledged" | "resolved" | "closed";
+  reportedBy: { _id: string; name: string; username: string; email: string } | null;
+  project: { _id: string; name: string } | null;
+  adminReply: string;
+  context?: { filePath?: string; line?: number; stack?: string; runtimeLogs?: string; userAgent?: string };
+  createdAt: string;
+}
+
+export interface ListPage<T> extends Page<T> {
+  /** Reports still waiting for an admin. */
+  open: number;
+}
+
+export const getAdminReports = async (params: { status?: string; page?: number }) =>
+  (await axios.get<ListPage<AdminAbuseReport>>("/admin/reports", { params })).data;
+
+export type ReportAction = "dismissed" | "no-action" | "content-removed" | "user-suspended";
+
+export const resolveAdminReport = async (id: string, action: ReportAction, note?: string) =>
+  (await axios.patch<{ closed: number }>(`/admin/reports/${id}`, { action, note })).data;
+
+export const getAdminIssues = async (params: { status?: string; type?: string; page?: number }) =>
+  (await axios.get<ListPage<AdminIssue>>("/admin/issues", { params })).data;
+
+export const updateAdminIssue = async (id: string, changes: { status?: AdminIssue["status"]; reply?: string }) =>
+  (await axios.patch<AdminIssue>(`/admin/issues/${id}`, changes)).data;
+
+export const setUserSuspension = async (userId: string, suspended: boolean, reason?: string) =>
+  (await axios.patch(`/admin/users/${userId}/suspension`, { suspended, reason })).data;

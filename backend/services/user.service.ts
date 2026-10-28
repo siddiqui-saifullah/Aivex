@@ -100,6 +100,9 @@ export const loginUser = async ({ email, password }: { email: string; password: 
     if (!user) {
         throw new AppError("Invalid credentials", 401);
     }
+    if (user.suspendedAt) {
+        throw new AppError("This account has been suspended. Contact support if you think this is a mistake", 403);
+    }
     if (user.hasPassword === false) {
         throw new AppError("This account signs in with Google or GitHub. Use that button, or set a password from your profile", 401);
     }

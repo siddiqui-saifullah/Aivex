@@ -61,6 +61,7 @@ export const callback = async (req: Request, res: Response) => {
         res.clearCookie(STATE_COOKIE, { path: "/auth" });
         const { next } = await oauth.consumeState(state, provider);
         const user = await oauth.signInWithProvider(provider, code, redirectUri(req, provider));
+        if (user.suspendedAt) throw new AppError("This account has been suspended", 403);
         recordLogin(user._id);
         back({ code: await oauth.createLoginCode(user.generateJWT()), next });
     } catch (err) {

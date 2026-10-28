@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Clock, Crown, UserMinus, X } from "lucide-react";
+import { Clock, Crown, Flag, UserMinus, X } from "lucide-react";
+import { useReport } from "../../context/report.context";
 import UserTile from "../shared/UserTile";
 import type { ProjectDetails, User } from "../../types";
 
@@ -32,6 +33,7 @@ const ProjectMembers = ({
   onCancelInvite,
   invitePermissionError,
 }: ProjectMembersProps) => {
+  const report = useReport();
   const [cancelling, setCancelling] = useState<string | null>(null);
   const invites = project?.invites ?? [];
   const ownerId = typeof project?.owner === "string" ? project.owner : project?.owner?._id;
@@ -64,14 +66,15 @@ const ProjectMembers = ({
           const isMemberOwner = user._id === ownerId;
           const canManage = isOwner && !isMemberOwner && user._id !== currentUserId;
           const isPending = pending?.memberId === user._id;
+          const canReport = Boolean(currentUserId) && user._id !== currentUserId;
 
           return (
             <div key={user._id} className="group/member">
               <UserTile user={user} isOwner={isMemberOwner} />
 
-              {canManage && !isPending && (
+              {(canManage || canReport) && !isPending && (
                 <div className="mt-1 flex gap-3 px-2 text-xs opacity-0 group-hover/member:opacity-100 focus-within:opacity-100 transition-opacity">
-                  {onTransferOwnership && (
+                  {canManage && onTransferOwnership && (
                     <button
                       onClick={() => setPending({ memberId: user._id, action: "transfer" })}
                       className="flex items-center gap-1 text-zinc-400 hover:text-yellow-300"
@@ -79,12 +82,20 @@ const ProjectMembers = ({
                       <Crown size={12} /> {ACTION_LABELS.transfer}
                     </button>
                   )}
-                  {onRemoveMember && (
+                  {canManage && onRemoveMember && (
                     <button
                       onClick={() => setPending({ memberId: user._id, action: "remove" })}
                       className="flex items-center gap-1 text-zinc-400 hover:text-red-400"
                     >
                       <UserMinus size={12} /> {ACTION_LABELS.remove}
+                    </button>
+                  )}
+                  {canReport && (
+                    <button
+                      onClick={() => report.open({ targetType: "user", targetId: user._id, label: `@${user.username}` })}
+                      className="flex items-center gap-1 text-zinc-500 hover:text-red-300"
+                    >
+                      <Flag size={12} /> Report
                     </button>
                   )}
                 </div>

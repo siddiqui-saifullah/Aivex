@@ -82,8 +82,9 @@ export default function Dashboard() {
   const query = search.trim().toLowerCase();
   const isMine = (p: (typeof projects)[number]) => String(p.ownerId) === String(user?._id);
   const filteredProjects = projects
-    // Students' class projects live on the class page, not in the teacher's list
-    .filter((p) => !p.classroom || isMine(p))
+    // Class projects (yours as a student, or your students') live in the
+    // Classes section: this list is personal work only
+    .filter((p) => !p.classroom)
     .filter((p) => filter !== "my-projects" || String(p.ownerId) === String(user?._id))
     .filter((p) => !query || p.name.toLowerCase().includes(query))
     // Most recently worked-on first
@@ -200,7 +201,7 @@ export default function Dashboard() {
 
         <InvitationsSection onAccepted={fetchProjects} />
 
-        <ClassroomSection ownProjects={projects.filter((p) => isMine(p) && !p.classroom)} />
+        <ClassroomSection ownProjects={projects.filter((p) => isMine(p) && !p.classroom)} onChanged={fetchProjects} />
 
         {/* Filter */}
         <div className="flex flex-col-reverse sm:flex-row sm:items-end justify-between gap-4 mb-8 border-b border-white/10">

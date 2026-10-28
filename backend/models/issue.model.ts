@@ -6,6 +6,11 @@ export interface IIssue {
     description: string;
     severity: "low" | "medium" | "high" | "critical";
     reportedBy: Types.ObjectId;
+    /** The project it was reported from, if any. */
+    project: Types.ObjectId | null;
+    /** The admin's answer, shown to the reporter. */
+    adminReply: string;
+    resolvedAt: Date | null;
     context?: {
         filePath?: string;
         line?: number;
@@ -45,11 +50,9 @@ const issueSchema = new mongoose.Schema<IIssue>(
             default: "medium",
         },
 
-        // projectId: {
-        //     type: mongoose.Schema.Types.ObjectId,
-        //     ref: "Project",
-        //     required: true,
-        // },
+        project: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
+        adminReply: { type: String, default: "", maxlength: 2000 },
+        resolvedAt: { type: Date, default: null },
 
         reportedBy: {
             type: mongoose.Schema.Types.ObjectId,
@@ -75,5 +78,7 @@ const issueSchema = new mongoose.Schema<IIssue>(
         timestamps: true, // adds createdAt & updatedAt
     }
 );
+
+issueSchema.index({ status: 1, createdAt: -1 });
 
 export default mongoose.model<IIssue>("Issue", issueSchema);

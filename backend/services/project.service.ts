@@ -4,7 +4,8 @@ import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import * as chatService from "../services/chats.service.js";
 import Classroom from "../models/classroom.model.js";
-import { isAiDisabledFor } from "./aiPolicy.service.js";
+import { aiPolicyFor } from "./aiPolicy.service.js";
+import Assignment from "../models/assignment.model.js";
 import { pullStudent } from "./classroom.service.js";
 import { notify, resolveInviteNotifications } from "./notification.service.js";
 import { notifyProjectUpdated } from "../socket/io.js";
@@ -207,11 +208,29 @@ export const getProjectById = async ({ projectId, userId }: { projectId: string;
         throw new AppError("Project not found or access denied", 404);
     }
 
+    const [aiPolicy, assignment] = await Promise.all([
+        aiPolicyFor(project, userId),
+        project.assignment
+            ? Assignment.findById(project.assignment).select("title instructions dueAt aiPolicy classroom").lean()
+            : null,
+    ]);
+
     return {
         ...project,
         files: fromStoredFiles(project.files),
         isOwner: project.owner.toString() === userId.toString(),
-        aiDisabled: await isAiDisabledFor(project.classroom, userId),
+        aiPolicy,
+        aiDisabled: aiPolicy === "disabled",
+        assignment: assignment
+            ? {
+                _id: assignment._id,
+                classroom: assignment.classroom,
+                title: assignment.title,
+                instructions: assignment.instructions,
+                dueAt: assignment.dueAt,
+                aiPolicy: assignment.aiPolicy,
+            }
+            : null,
     };
 };
 

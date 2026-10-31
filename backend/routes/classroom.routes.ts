@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from "express";
 import * as classroomController from "../controllers/classroom.controller.js";
+import * as assignmentController from "../controllers/assignment.controller.js";
 import * as authMiddleware from "../middleware/auth.middleware.js";
 import { rateLimit } from "../middleware/rateLimit.middleware.js";
 
@@ -16,5 +17,7 @@ router.patch("/:classroomId", rateLimit({ windowMs: 60_000, max: 30 }), classroo
 router.delete("/:classroomId", classroomController.deleteClassroom);
 router.post("/:classroomId/leave", classroomController.leaveClassroom);
 router.delete("/:classroomId/students/:studentId", classroomController.removeStudent);
+router.get("/:classroomId/assignments", assignmentController.listAssignments);
+router.post("/:classroomId/assignments", rateLimit({ windowMs: 60_000, max: 20 }), assignmentController.createAssignment);
 
 export default router;

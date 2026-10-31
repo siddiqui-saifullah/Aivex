@@ -6,7 +6,7 @@ import { getErrorMessage } from "../../utils/getErrorMessage";
 import type { Project } from "../../types";
 import AiToggle from "./AiToggle";
 
-const ModalShell = ({ title, subtitle, icon, onClose, children }: {
+export const ModalShell = ({ title, subtitle, icon, onClose, children }: {
   title: string;
   subtitle: string;
   icon: ReactNode;
@@ -31,7 +31,7 @@ const ModalShell = ({ title, subtitle, icon, onClose, children }: {
   </div>
 );
 
-const labelClass = "block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider";
+export const labelClass = "block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider";
 
 /* -------------------------------------------------------------------------- */
 /* CREATE CLASS                                                               */

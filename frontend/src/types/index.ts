@@ -45,6 +45,10 @@ export interface Project {
   classroom?: string | null;
   /** The class teacher turned Vex AI off for this user. */
   aiDisabled?: boolean;
+  /** How much this user may use Vex AI here (class work only differs from "allowed"). */
+  aiPolicy?: AiPolicy;
+  /** The assignment this project is a student's work for. */
+  assignment?: ProjectAssignment | null;
   /** Invited but not yet accepted (populated on the project page). */
   invites?: { user: User; createdAt: string }[];
   createdAt?: string;
@@ -52,6 +56,47 @@ export interface Project {
 }
 
 export type ClassroomRole = "teacher" | "student";
+
+/** How much students may use Vex AI on an assignment. */
+export type AiPolicy = "allowed" | "hints" | "disabled";
+
+/** The assignment shown on a student's work. */
+export interface ProjectAssignment {
+  _id: string;
+  classroom: string;
+  title: string;
+  instructions: string;
+  dueAt: string | null;
+  aiPolicy: AiPolicy;
+}
+
+/** An assignment as listed on the class page. */
+export interface AssignmentSummary extends ProjectAssignment {
+  stack: string;
+  createdAt: string;
+  /** Teacher: how many students started it, out of how many. */
+  started?: number;
+  studentCount?: number;
+  /** Student: their work, once started. */
+  projectId?: string | null;
+  lastActive?: string | null;
+}
+
+export interface AssignmentStudent {
+  userId: string;
+  name?: string;
+  username?: string;
+  projectId: string | null;
+  lastActive: string | null;
+  online: boolean;
+}
+
+export interface AssignmentDetails extends AssignmentSummary {
+  role: ClassroomRole;
+  classroomName: string;
+  /** Teacher only. */
+  students?: AssignmentStudent[];
+}
 
 /** A class as listed on the dashboard. */
 export interface ClassroomSummary {
@@ -169,6 +214,7 @@ export type NotificationType =
   | "class-leave"
   | "class-removed"
   | "report-update"
+  | "assignment"
   | "class-ai";
 
 export interface AppNotification {

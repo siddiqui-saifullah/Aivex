@@ -1,22 +1,34 @@
 import type { Types } from "mongoose";
 import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
+import Assignment, { type AiPolicy } from "../models/assignment.model.js";
 
 type Id = Types.ObjectId | string;
 
 /**
- * Teachers can turn Vex AI off for a class. It then stays off for the
- * students in their class projects; the teacher can still use it there.
+ * How much a user may use Vex AI in a project. Outside classes it's always
+ * "allowed". In a student's class work:
+ * - the teacher can always use it
+ * - a class with AI turned off is "disabled" for students
+ * - otherwise an assignment's own rule applies ("allowed", "hints" or "disabled")
  */
-export const isAiDisabledFor = async (classroomId: Id | null | undefined, userId: Id) => {
-    if (!classroomId) return false;
-    const classroom = await Classroom.findById(classroomId).select("teacher aiEnabled").lean();
-    return !!classroom && classroom.aiEnabled === false && String(classroom.teacher) !== String(userId);
+export const aiPolicyFor = async (
+    project: { classroom?: Id | null; assignment?: Id | null } | null | undefined,
+    userId: Id,
+): Promise<AiPolicy> => {
+    if (!project?.classroom) return "allowed";
+    const classroom = await Classroom.findById(project.classroom).select("teacher aiEnabled").lean();
+    if (!classroom || String(classroom.teacher) === String(userId)) return "allowed";
+    if (classroom.aiEnabled === false) return "disabled";
+    if (!project.assignment) return "allowed";
+    const assignment = await Assignment.findById(project.assignment).select("aiPolicy").lean();
+    return assignment?.aiPolicy ?? "allowed";
 };
 
-export const isAiDisabledInProject = async (projectId: Id, userId: Id) => {
-    const project = await Project.findById(projectId).select("classroom").lean();
-    return isAiDisabledFor(project?.classroom, userId);
-};
+export const aiPolicyInProject = async (projectId: Id, userId: Id) =>
+    aiPolicyFor(await Project.findById(projectId).select("classroom assignment").lean(), userId);
 
-export const AI_DISABLED_MESSAGE = "Your teacher has turned off Vex AI for this class";
+export const isAiDisabledInProject = async (projectId: Id, userId: Id) =>
+    (await aiPolicyInProject(projectId, userId)) === "disabled";
+
+export const AI_DISABLED_MESSAGE = "Your teacher has turned off Vex AI here";

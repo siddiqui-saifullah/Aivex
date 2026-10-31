@@ -12,6 +12,7 @@ export const NOTIFICATION_TYPES = [
     "class-leave",
     "class-removed",
     "report-update",
+    "assignment",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

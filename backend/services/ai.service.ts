@@ -17,6 +17,10 @@ deletedFiles: paths to remove, only if needed.
 memory: updated PROJECT MEMORY (<=600 chars: purpose, stack, structure, user preferences, decisions) when something new is worth remembering; omit otherwise.
 Rules: questions/greetings -> only text. Never use "..." placeholders. Websites/UI without a backend: plain index.html + style.css + script.js, NO package.json (instant live preview). Node: package.json with "type":"module" and a "start" script, minimal deps. Other languages: entry point in the file to run. If code is SELECTED, apply the request to it unless told otherwise; prefer editing the OPEN FILE. Edit the existing project, don't restart it. No secrets, no destructive commands. Unclear/unsafe -> explain in text, no files.`;
 
+/** Added for students on an assignment where the teacher allows hints only. */
+const HINTS_INSTRUCTION = `
+TEACHING MODE (a student's assignment; the teacher allows hints only): never return fileTree or deletedFiles, and never write the solution or large code blocks. Help the student learn: explain concepts and errors, ask guiding questions, point to the line or idea to look at, and give the next small step. Short snippets (<=3 lines) only to show syntax, never the answer.`;
+
 const ENHANCE_INSTRUCTION = `Rewrite the user's request for a coding assistant so it is specific and actionable: name the language/framework, the features, files or behaviour expected and any constraints implied. Keep the user's intent and language, do not add unrelated features, stay under 120 words. Reply with the rewritten request only.`;
 
 /* -------------------------------------------------------------------------- */
@@ -166,15 +170,22 @@ export const generate = async ({
     history = [],
     memory = "",
     focus = {},
+    hintsOnly = false,
+    task,
 }: {
     prompt: string;
     files?: Record<string, string>;
     history?: ChatTurn[];
     memory?: string;
     focus?: EditorFocus;
+    /** Teach instead of writing code (assignment rule "hints"). */
+    hintsOnly?: boolean;
+    /** The assignment the student is working on. */
+    task?: string;
 }): Promise<AiResponse> => {
-    // Stable → variable order (helps prefix caching): memory, files, chat, focus, request
+    // Stable → variable order (helps prefix caching): task, memory, files, chat, focus, request
     const context = [
+        task?.trim() ? `ASSIGNMENT:\n${task.trim().slice(0, 2000)}` : "",
         memory.trim() ? `PROJECT MEMORY:\n${memory.trim()}` : "",
         files ? `CONTEXT (current project):\n${buildProjectContext(files, { prompt, activeFile: focus.activeFile })}` : "",
         history.length ? `RECENT CHAT:\n${buildHistory(history)}` : "",
@@ -186,7 +197,7 @@ export const generate = async ({
         model: MODEL,
         contents: [{ role: "user", parts: [{ text: context }] }],
         config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
+            systemInstruction: hintsOnly ? SYSTEM_INSTRUCTION + HINTS_INSTRUCTION : SYSTEM_INSTRUCTION,
             responseMimeType: "application/json",
             // A small thinking budget keeps answers fast (and within free-tier
             // token limits) while still planning multi-file changes

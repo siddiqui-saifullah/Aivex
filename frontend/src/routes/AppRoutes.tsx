@@ -16,6 +16,7 @@ const Submission = lazy(() => import("../screens/Submission"));
 const JoinClass = lazy(() => import("../screens/JoinClass"));
 const Admin = lazy(() => import("../screens/Admin"));
 const About = lazy(() => import("../screens/About"));
+const Features = lazy(() => import("../screens/Features"));
 const Privacy = lazy(() => import("../screens/Privacy"));
 const Terms = lazy(() => import("../screens/Terms"));
 const Contact = lazy(() => import("../screens/Contact"));
@@ -40,6 +41,7 @@ const AppRoutes = () => {
           {/* Public */}
           <Route element={<PublicLayout />}>
             <Route path="/" element={<GuestOnly><Home /></GuestOnly>} />
+            <Route path="/features" element={<Features />} />
             <Route path="/about" element={<About />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />

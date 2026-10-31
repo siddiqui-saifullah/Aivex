@@ -1,4 +1,4 @@
-import { MessageSquare, Layout, ArrowRight, Folder, Zap, Cpu, Users } from "lucide-react";
+import { MessageSquare, Layout, ArrowRight, Zap, Cpu, Users, GraduationCap } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StatBox, FeatureCard } from "../components/ui";
 import IDEImage from "../images/IDEimage.webp";
@@ -8,9 +8,16 @@ import livedemoPoster from "../images/livedemo-poster.webp";
 import ChatDemoPoster from "../images/ChatDemo-poster.webp";
 import LazyVideo from "../components/ui/LazyVideo";
 import { useUser } from "../context/user.context";
+import { usePageMeta } from "../hooks/usePageMeta";
 
 const Home = () => {
   const { user } = useUser();
+  usePageMeta({
+    title: "Aivex – AI coding IDE and classroom in your browser",
+    description:
+      "Aivex is a browser-based IDE with an AI pair programmer that edits your code, instant web preview, Node.js and C/C++ in the browser, live collaboration and a classroom for teachers. No setup.",
+    path: "/",
+  });
   // Signed-in visitors go straight back to their work
   const primaryCta = user ? { to: "/dashboard", label: "Open Dashboard" } : { to: "/register", label: "Start Coding Now" };
 
@@ -30,7 +37,7 @@ const Home = () => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
             </span>
-            v1.6 Live Beta
+            Aivex 2.0 is live: Classrooms, assignments &amp; code review
           </div>
 
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-8 leading-[1.1]">
@@ -43,8 +50,8 @@ const Home = () => {
           <p className="text-lg text-zinc-400 max-w-2xl mb-12 leading-relaxed">
             Build websites, APIs and apps with an AI pair programmer that edits
             your files and remembers your project. HTML, CSS and JS preview
-            instantly, Node.js runs in your browser, and C, C++, Java and Python
-            run in the cloud. No setup.
+            instantly, Node.js, C and C++ run right in your browser, and teachers
+            can run a whole class in the same IDE. No setup.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-20">
@@ -87,9 +94,14 @@ const Home = () => {
       {/* --- FEATURES GRID --- */}
       <section id="features" className="py-24 bg-zinc-950 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="max-w-2xl mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-3">Everything in one tab</h2>
-            <p className="text-zinc-400">Write, run, preview and ship together, from any device.</p>
+          <div className="mb-12 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-3xl md:text-4xl font-bold mb-3">Everything in one tab</h2>
+              <p className="text-zinc-400">Write, run, preview and ship together, from any device.</p>
+            </div>
+            <Link to="/features" className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-300 hover:text-teal-200">
+              Explore all features <ArrowRight size={16} />
+            </Link>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <FeatureCard
@@ -118,9 +130,9 @@ const Home = () => {
               desc="Invite teammates, chat in the project, see who is typing and build together on the same files."
             />
             <FeatureCard
-              icon={<Folder size={24} className="text-white" />}
-              title="A real file system"
-              desc="Folders, multiple files, tabs, quick open (Ctrl+P) and one-click ZIP download of your whole project."
+              icon={<GraduationCap size={24} className="text-white" />}
+              title="A classroom built in"
+              desc="Create a class, post assignments with starter code and AI rules, review submissions and help students live."
             />
           </div>
         </div>

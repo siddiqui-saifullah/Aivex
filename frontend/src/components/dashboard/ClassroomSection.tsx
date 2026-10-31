@@ -1,20 +1,39 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, GraduationCap, KeyRound, LogOut, Plus, Users } from "lucide-react";
 import { CreateClassModal, JoinClassModal } from "../classroom/ClassModals";
 import { createClassroom, getClassrooms, joinClassroom, leaveClassroom } from "../../services/classroom.service";
 import { getErrorMessage } from "../../utils/getErrorMessage";
 import { useToast } from "../../context/toast.context";
+import { useUser } from "../../context/user.context";
+import { userProfile } from "../../services/user.service";
 import { plural } from "../../utils/plural";
 import { STACK_FORMATTER } from "../../constants/options";
 import type { ClassroomSummary, Project } from "../../types";
 
-/** Dashboard strip: classes the user teaches or is enrolled in, plus create / join. */
+/**
+ * Dashboard strip for classes. Teaching tools only show in teaching mode
+ * (Settings); otherwise the strip only appears for classes the user is in.
+ */
 const ClassroomSection = ({ ownProjects, onChanged }: { ownProjects: Project[]; onChanged?: () => void }) => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user, setUser } = useUser();
   const [classes, setClasses] = useState<ClassroomSummary[] | null>(null);
   const [modal, setModal] = useState<"create" | "join" | null>(null);
+  const teaching = Boolean(user?.teachingMode);
+
+  // Sessions from before teaching mode existed: read it from the profile once
+  useEffect(() => {
+    if (!user || user.teachingMode !== undefined) return;
+    userProfile()
+      .then(({ user: profile }) => {
+        const next = { ...user, teachingMode: Boolean(profile.teachingMode) };
+        localStorage.setItem("user", JSON.stringify(next));
+        setUser(next);
+      })
+      .catch(() => undefined);
+  }, [user, setUser]);
 
   useEffect(() => {
     let alive = true;
@@ -43,13 +62,16 @@ const ClassroomSection = ({ ownProjects, onChanged }: { ownProjects: Project[]; 
     navigate(`/classes/${c._id}`);
   };
 
+  // Not teaching and in no class: keep the dashboard about the user's own projects
+  if (!teaching && (classes === null || classes.length === 0)) return null;
+
   return (
     <section className="mb-10" aria-labelledby="classes-heading">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <GraduationCap size={18} className="text-teal-400" />
           <h2 id="classes-heading" className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
-            Classes
+            {teaching ? "Classes" : "My classes"}
           </h2>
         </div>
         <div className="flex gap-2">
@@ -59,12 +81,14 @@ const ClassroomSection = ({ ownProjects, onChanged }: { ownProjects: Project[]; 
           >
             <KeyRound size={14} /> Join with code
           </button>
-          <button
-            onClick={() => setModal("create")}
-            className="flex items-center gap-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-sm text-teal-300 hover:bg-teal-500/15"
-          >
-            <Plus size={14} /> Create class
-          </button>
+          {teaching && (
+            <button
+              onClick={() => setModal("create")}
+              className="flex items-center gap-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-sm text-teal-300 hover:bg-teal-500/15"
+            >
+              <Plus size={14} /> Create class
+            </button>
+          )}
         </div>
       </div>
 
@@ -72,8 +96,9 @@ const ClassroomSection = ({ ownProjects, onChanged }: { ownProjects: Project[]; 
         <div className="h-20 animate-pulse rounded-xl bg-zinc-900/60" />
       ) : classes.length === 0 ? (
         <p className="rounded-xl border border-dashed border-white/10 px-4 py-5 text-sm text-zinc-500">
-          Teaching? Create a class: students join with a code, each gets the starter code, and you can watch and help
-          everyone live. Learning? Join with the code your teacher gave you.
+          Create your first class: students join with a code, each gets the starter code, and you can post assignments
+          and help everyone live. You can turn teaching mode off in{" "}
+          <Link to="/settings?tab=teaching" className="text-teal-300 hover:underline">Settings</Link>.
         </p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

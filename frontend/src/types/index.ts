@@ -8,6 +8,8 @@ export interface User {
   bio?: string;
   /** False for Google/GitHub accounts that haven't set a password yet. */
   hasPassword?: boolean;
+  /** Shows the teaching tools (create classes) on the dashboard. */
+  teachingMode?: boolean;
   avatar?: string;
   isOnline?: boolean;
   createdAt?: string;

@@ -17,6 +17,8 @@ export interface IUser {
     suspendedAt: Date | null;
     suspendedReason: string;
     bio: string;
+    /** Shows teaching tools (create classes, assignments) on the dashboard. */
+    teachingMode: boolean;
     /** Usage tracking (admin dashboard). */
     lastActiveAt: Date | null;
     lastLoginAt: Date | null;
@@ -73,6 +75,7 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
         suspendedAt: { type: Date, default: null },
         suspendedReason: { type: String, default: "", maxlength: 300 },
         githubId: { type: String, index: { unique: true, sparse: true } },
+        teachingMode: { type: Boolean, default: false },
         bio: {
             type: String,
             trim: true,

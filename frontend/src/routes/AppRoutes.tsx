@@ -8,7 +8,7 @@ const Login = lazy(() => import("../screens/Login"));
 const Register = lazy(() => import("../screens/Register"));
 const AuthCallback = lazy(() => import("../screens/AuthCallback"));
 const Dashboard = lazy(() => import("../screens/Dashboard"));
-const Profile = lazy(() => import("../screens/Profile"));
+const Settings = lazy(() => import("../screens/Settings"));
 const Project = lazy(() => import("../screens/Project"));
 const Classroom = lazy(() => import("../screens/Classroom"));
 const Assignment = lazy(() => import("../screens/Assignment"));
@@ -67,7 +67,9 @@ const AppRoutes = () => {
           >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/projects/:projectId" element={<Project />} />
-            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
+            {/* Old links */}
+            <Route path="/profile" element={<Navigate to="/settings" replace />} />
             <Route path="/classes/:classroomId" element={<Classroom />} />
             <Route path="/classes/:classroomId/assignments/:assignmentId" element={<Assignment />} />
             <Route path="/join" element={<JoinClass />} />

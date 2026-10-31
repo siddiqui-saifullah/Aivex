@@ -79,13 +79,14 @@ export const profileController = catchAsync(async (req, res) => {
 /* UPDATE PROFILE                                                             */
 /* -------------------------------------------------------------------------- */
 export const updateProfileController = catchAsync(async (req, res) => {
-    const { name, username, bio } = req.body;
+    const { name, username, bio, teachingMode } = req.body;
 
     const user = await userService.updateProfile({
         userID: req.user!._id,
         name,
         username,
         bio,
+        teachingMode,
     });
 
     res.status(200).json({ user });

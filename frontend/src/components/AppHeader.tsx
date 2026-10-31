@@ -8,6 +8,8 @@ import {
   ChevronDown,
   Flag,
   ShieldCheck,
+  Settings,
+  KeyRound,
 } from "lucide-react";
 import { useUser } from "../context/user.context";
 import { logOut } from "../services/user.service";
@@ -115,7 +117,7 @@ const AppHeader = () => {
                     {/* User Info Section */}
                     <div
                       onClick={() => {
-                        navigate("/profile");
+                        navigate("/settings");
                         setIsMenuOpen(false);
                       }}
                       className="px-4 py-3 border-b border-zinc-800 mb-1 cursor-pointer hover:bg-zinc-900/50 transition-colors"
@@ -137,6 +139,23 @@ const AppHeader = () => {
                       >
                         <LayoutDashboard size={16} />
                         Dashboard
+                      </Link>
+
+                      <Link
+                        to="/settings"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors"
+                      >
+                        <Settings size={16} />
+                        Settings
+                      </Link>
+                      <Link
+                        to="/join"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors"
+                      >
+                        <KeyRound size={16} />
+                        Join a class
                       </Link>
 
                       {isAdmin && (

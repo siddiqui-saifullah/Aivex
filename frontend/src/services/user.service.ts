@@ -94,7 +94,7 @@ export const userProfile = async () => {
     return response.data;
 };
 
-export const updateProfile = async (updates: { name?: string; username?: string; bio?: string }) => {
+export const updateProfile = async (updates: { name?: string; username?: string; bio?: string; teachingMode?: boolean }) => {
     const response = await axios.patch<{ user: User }>("/users/profile", updates);
     return response.data;
 };

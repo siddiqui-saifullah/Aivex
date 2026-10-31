@@ -1,6 +1,7 @@
 import React, { type ErrorInfo, type ReactNode } from "react";
 import { AlertCircle } from "lucide-react";
 import Button from "../ui/Button";
+import { isStaleBuildError, reloadForNewBuild } from "../../utils/staleBuild";
 
 /**
  * Error Boundary for catching unexpected errors
@@ -22,6 +23,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // The site was updated while this tab was open: load the new version
+    if (isStaleBuildError(error) && reloadForNewBuild()) return;
     console.error("Error caught by boundary:", error, errorInfo);
   }
 

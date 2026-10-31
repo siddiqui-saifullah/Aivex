@@ -13,6 +13,8 @@ export const NOTIFICATION_TYPES = [
     "class-removed",
     "report-update",
     "assignment",
+    "submission",
+    "submission-review",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

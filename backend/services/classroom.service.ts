@@ -3,6 +3,7 @@ import mongoose, { type Types } from "mongoose";
 import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
 import Assignment from "../models/assignment.model.js";
+import Submission from "../models/submission.model.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
@@ -360,6 +361,7 @@ export const deleteClassroom = async ({ classroomId, userId }: { classroomId: st
     if (String(classroom.teacher) !== String(userId)) throw new AppError("Only the teacher can delete the class", 403);
     const projects = await Project.find({ classroom: classroomId }).select("_id").lean();
     await detachStudentProjects(projects.map((p) => p._id), classroom.teacher);
+    await Submission.deleteMany({ classroom: classroomId });
     await Assignment.deleteMany({ classroom: classroomId });
     await Classroom.deleteOne({ _id: classroomId });
 };

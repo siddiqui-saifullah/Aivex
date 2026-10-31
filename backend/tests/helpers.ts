@@ -38,8 +38,17 @@ export const teardown = async () => {
     redis.disconnect();
 };
 
-/** Usernames must pass the spam filter: letters only, no long random runs. */
-const name = () => `tester_${crypto.randomBytes(3).toString("hex").replace(/\d/g, "a")}`;
+/**
+ * Usernames must pass the spam filter (real-looking words, no random runs)
+ * and be unique within a test file: duplicates in parallel inserts hang the
+ * local FerretDB instead of failing fast.
+ */
+const WORDS = ["maple", "river", "lotus", "tiger", "cedar", "amber", "coral", "falcon", "harbor", "meadow", "orbit", "pebble"];
+let created = 0;
+const name = () => {
+    const n = created++;
+    return `tester_${WORDS[n % WORDS.length]}_${WORDS[Math.floor(n / WORDS.length) % WORDS.length]}`;
+};
 
 export interface TestUser {
     id: string;

@@ -5,10 +5,25 @@ import AppError from "../errors/AppError.js";
 import * as oauth from "../services/oauth.service.js";
 import { recordLogin } from "../services/activity.service.js";
 import userModel from "../models/user.model.js";
+import { allowedOrigins } from "../config/cors.js";
 
 const STATE_COOKIE = "oauth_state";
 
-const frontendUrl = () => (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
+
+/** Where to send the browser back when we don't know which site it came from. */
+const frontendUrl = () =>
+    (process.env.FRONTEND_URL || (isProduction ? "https://aivex.in" : "http://localhost:5173")).replace(/\/$/, "");
+
+/** The site (one of ours) that sent the browser to sign in, so it comes back there. */
+const siteOf = (req: Request) => {
+    try {
+        const origin = new URL(String(req.get("referer") ?? "")).origin;
+        return allowedOrigins.includes(origin) ? origin : undefined;
+    } catch {
+        return undefined;
+    }
+};
 
 /** Must match the redirect URI registered with the provider. */
 const redirectUri = (req: Request, provider: oauth.Provider) =>
@@ -34,7 +49,7 @@ export const providers = (_req: Request, res: Response) => {
 /** Step 1: send the browser to the provider's consent screen. */
 export const start = catchAsync(async (req, res) => {
     const provider = providerParam(req);
-    const state = await oauth.createState(provider, safeNext(req.query.next));
+    const state = await oauth.createState(provider, safeNext(req.query.next), siteOf(req));
     // Ties the callback to this browser, so nobody can sign you into their account
     res.cookie(STATE_COOKIE, state, {
         httpOnly: true,
@@ -48,8 +63,9 @@ export const start = catchAsync(async (req, res) => {
 
 /** Step 2: the provider sends the browser back here with a code. */
 export const callback = async (req: Request, res: Response) => {
+    let site = frontendUrl();
     const back = (params: Record<string, string>) =>
-        res.redirect(`${frontendUrl()}/auth/callback?${new URLSearchParams(params)}`);
+        res.redirect(`${site}/auth/callback?${new URLSearchParams(params)}`);
     try {
         const provider = providerParam(req);
         if (req.query.error) return back({ error: "Sign-in was cancelled" });
@@ -59,7 +75,8 @@ export const callback = async (req: Request, res: Response) => {
             throw new AppError("Sign-in expired. Try again", 400);
         }
         res.clearCookie(STATE_COOKIE, { path: "/auth" });
-        const { next } = await oauth.consumeState(state, provider);
+        const { next, site: from } = await oauth.consumeState(state, provider);
+        if (from && allowedOrigins.includes(from)) site = from;
         const user = await oauth.signInWithProvider(provider, code, redirectUri(req, provider));
         if (user.suspendedAt) throw new AppError("This account has been suspended", 403);
         recordLogin(user._id);

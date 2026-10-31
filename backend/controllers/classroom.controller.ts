@@ -46,3 +46,17 @@ export const deleteClassroom = catchAsync(async (req, res) => {
     });
     res.status(204).end();
 });
+
+export const leaveClassroom = catchAsync(async (req, res) => {
+    await classroomService.leaveClassroom({ classroomId: req.params.classroomId as string, userId: req.user!._id });
+    res.status(204).end();
+});
+
+export const removeStudent = catchAsync(async (req, res) => {
+    await classroomService.removeStudent({
+        classroomId: req.params.classroomId as string,
+        teacherId: req.user!._id,
+        studentId: req.params.studentId as string,
+    });
+    res.status(204).end();
+});

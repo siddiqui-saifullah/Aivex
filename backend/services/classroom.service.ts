@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import mongoose, { type Types } from "mongoose";
 import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
@@ -5,7 +6,7 @@ import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 import { normalizeStack, starterFilesFor } from "./project.service.js";
-import { notifyProjectUpdated, onlineUsersByProject } from "../socket/io.js";
+import { disconnectUserFromProject, notifyProjectUpdated, onlineUsersByProject } from "../socket/io.js";
 import { notify } from "./notification.service.js";
 
 type Id = Types.ObjectId | string;
@@ -15,7 +16,7 @@ const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_LENGTH = 6;
 
 const generateCode = () =>
-    Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
+    Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)]).join("");
 
 const isDuplicateKey = (err: unknown) => (err as { code?: number }).code === 11000;
 
@@ -267,13 +268,90 @@ export const updateClassroomSettings = async ({ classroomId, userId, aiEnabled }
 };
 
 /* -------------------------------------------------------------------------- */
-/* DELETE (students keep their projects)                                      */
+/* MEMBERSHIP: leaving, removing students, deleting the class                 */
 /* -------------------------------------------------------------------------- */
+/** Take a student (by user or by project) off the class roster. */
+export const pullStudent = async (classroomId: Id, match: { user?: Id; project?: Id }) => {
+    const [field, id] = match.user ? ["user", match.user] : ["project", match.project];
+    await Classroom.updateOne({ _id: classroomId }, { $pull: { students: { [field as string]: id } } });
+    // FerretDB (local development) accepts $pull with a condition but doesn't apply it
+    const classroom = await Classroom.findById(classroomId).select("students").lean();
+    const remaining = classroom?.students.filter((s) => String(s[field as "user" | "project"]) !== String(id));
+    if (classroom && remaining && remaining.length !== classroom.students.length) {
+        await Classroom.updateOne({ _id: classroomId }, { $set: { students: remaining } });
+    }
+};
+
+/**
+ * A student who is no longer in the class keeps the project as a personal
+ * one, and the teacher loses access to it.
+ */
+const detachStudentProjects = async (projectIds: Id[], teacherId: Id) => {
+    if (projectIds.length === 0) return;
+    await Project.updateMany(
+        { _id: { $in: projectIds } },
+        { $set: { classroom: null }, $pull: { users: teacherId, invites: { user: teacherId } } },
+    );
+    for (const id of projectIds) {
+        notifyProjectUpdated(String(id), "members");
+        void disconnectUserFromProject(String(id), String(teacherId));
+    }
+};
+
+/** A student leaves a class. */
+export const leaveClassroom = async ({ classroomId, userId }: { classroomId: string; userId: Id }) => {
+    assertId(classroomId, "class id");
+    const classroom = await Classroom.findById(classroomId).select("name teacher students").lean();
+    if (!classroom) throw new AppError("Class not found", 404);
+    const mine = classroom.students.find((s) => String(s.user) === String(userId));
+    if (!mine) throw new AppError("You are not a student in this class", 400);
+
+    await pullStudent(classroomId, { user: mine.user });
+    await detachStudentProjects([mine.project], classroom.teacher);
+    void notify({
+        users: [classroom.teacher],
+        type: "class-leave",
+        title: `{actor} left your class “${classroom.name}”`,
+        link: `/classes/${classroom._id}`,
+        actorId: userId,
+    });
+};
+
+/** The teacher removes a student from the class. */
+export const removeStudent = async ({ classroomId, teacherId, studentId }: {
+    classroomId: string;
+    teacherId: Id;
+    studentId: string;
+}) => {
+    assertId(classroomId, "class id");
+    assertId(studentId, "student id");
+    const classroom = await Classroom.findById(classroomId).select("name teacher students").lean();
+    if (!classroom) throw new AppError("Class not found", 404);
+    if (String(classroom.teacher) !== String(teacherId)) {
+        throw new AppError("Only the teacher can remove students", 403);
+    }
+    const student = classroom.students.find((s) => String(s.user) === studentId);
+    if (!student) throw new AppError("This student is not in the class", 404);
+
+    await pullStudent(classroomId, { user: student.user });
+    await detachStudentProjects([student.project], classroom.teacher);
+    void notify({
+        users: [studentId],
+        type: "class-removed",
+        title: `{actor} removed you from the class “${classroom.name}”`,
+        body: "Your project is still yours, as a personal project.",
+        link: `/projects/${student.project}`,
+        actorId: teacherId,
+    });
+};
+
+/** Students keep their projects (as personal ones); the teacher loses access to them. */
 export const deleteClassroom = async ({ classroomId, userId }: { classroomId: string; userId: Id }) => {
     assertId(classroomId, "class id");
     const classroom = await Classroom.findById(classroomId).select("teacher").lean();
     if (!classroom) throw new AppError("Class not found", 404);
     if (String(classroom.teacher) !== String(userId)) throw new AppError("Only the teacher can delete the class", 403);
-    await Project.updateMany({ classroom: classroomId }, { $set: { classroom: null } });
+    const projects = await Project.find({ classroom: classroomId }).select("_id").lean();
+    await detachStudentProjects(projects.map((p) => p._id), classroom.teacher);
     await Classroom.deleteOne({ _id: classroomId });
 };

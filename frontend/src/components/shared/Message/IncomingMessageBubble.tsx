@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Check, Copy, FileCode2 } from "lucide-react";
+import { Bot, Check, Copy, FileCode2, Flag } from "lucide-react";
 import MarkdownRenderer from "../MarkdownRenderer";
 import MentionText from "../MentionText";
 import { colorFor } from "../../../utils/userColor";
@@ -8,6 +8,8 @@ import type { BubblePosition, BubbleProps } from "./types";
 interface IncomingMessageBubbleProps extends BubbleProps {
   username?: string;
   showUsername?: boolean;
+  /** Report this message to the Aivex team (people's messages only). */
+  onReport?: () => void;
 }
 
 const TypingDots = () => (
@@ -29,6 +31,7 @@ const IncomingMessageBubble = ({
   position = "single",
   files,
   onApplyFiles,
+  onReport,
 }: IncomingMessageBubbleProps) => {
   const fileCount = files ? Object.keys(files).length : 0;
   const [copied, setCopied] = useState(false);
@@ -104,6 +107,17 @@ const IncomingMessageBubble = ({
             className="absolute right-1.5 top-1.5 rounded-md p-1 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-zinc-200 focus:opacity-100 group-hover:opacity-100"
           >
             {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+          </button>
+        )}
+
+        {onReport && !isTyping && (
+          <button
+            onClick={onReport}
+            title="Report message"
+            aria-label="Report message"
+            className="absolute right-1.5 top-1.5 rounded-md p-1 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-red-300 focus:opacity-100 group-hover:opacity-100"
+          >
+            <Flag size={12} />
           </button>
         )}
 

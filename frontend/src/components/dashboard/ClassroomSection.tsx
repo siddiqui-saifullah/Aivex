@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, GraduationCap, KeyRound, Plus, Users } from "lucide-react";
+import { ArrowRight, GraduationCap, KeyRound, LogOut, Plus, Users } from "lucide-react";
 import { CreateClassModal, JoinClassModal } from "../classroom/ClassModals";
-import { createClassroom, getClassrooms, joinClassroom } from "../../services/classroom.service";
+import { createClassroom, getClassrooms, joinClassroom, leaveClassroom } from "../../services/classroom.service";
+import { getErrorMessage } from "../../utils/getErrorMessage";
 import { useToast } from "../../context/toast.context";
 import { plural } from "../../utils/plural";
 import { STACK_FORMATTER } from "../../constants/options";
 import type { ClassroomSummary, Project } from "../../types";
 
 /** Dashboard strip: classes the user teaches or is enrolled in, plus create / join. */
-const ClassroomSection = ({ ownProjects }: { ownProjects: Project[] }) => {
+const ClassroomSection = ({ ownProjects, onChanged }: { ownProjects: Project[]; onChanged?: () => void }) => {
   const navigate = useNavigate();
   const toast = useToast();
   const [classes, setClasses] = useState<ClassroomSummary[] | null>(null);
@@ -25,6 +26,18 @@ const ClassroomSection = ({ ownProjects }: { ownProjects: Project[] }) => {
       alive = false;
     };
   }, []);
+
+  const leave = async (c: ClassroomSummary) => {
+    if (!window.confirm(`Leave “${c.name}”? Your project stays yours as a personal project, and your teacher can no longer open it.`)) return;
+    try {
+      await leaveClassroom(c._id);
+      setClasses((list) => list?.filter((x) => x._id !== c._id) ?? null);
+      toast.success(`You left ${c.name}`);
+      onChanged?.();
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not leave the class"));
+    }
+  };
 
   const open = (c: ClassroomSummary) => {
     if (c.role === "student" && c.projectId) navigate(`/projects/${c.projectId}`);
@@ -66,10 +79,10 @@ const ClassroomSection = ({ ownProjects }: { ownProjects: Project[] }) => {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {classes.map((c) => (
+            <div key={c._id} className="group relative">
             <button
-              key={c._id}
               onClick={() => open(c)}
-              className="group flex items-center gap-3 rounded-xl border border-white/5 bg-zinc-900/50 p-4 text-left transition hover:border-teal-500/30 hover:bg-zinc-900"
+              className="flex w-full items-center gap-3 rounded-xl border border-white/5 bg-zinc-900/50 p-4 text-left transition hover:border-teal-500/30 hover:bg-zinc-900"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-500/10 text-teal-300">
                 <GraduationCap size={20} />
@@ -89,6 +102,17 @@ const ClassroomSection = ({ ownProjects }: { ownProjects: Project[] }) => {
               </div>
               <ArrowRight size={16} className="shrink-0 text-zinc-600 transition group-hover:translate-x-0.5 group-hover:text-teal-300" />
             </button>
+            {c.role === "student" && (
+              <button
+                onClick={() => leave(c)}
+                title={`Leave ${c.name}`}
+                aria-label={`Leave ${c.name}`}
+                className="absolute right-10 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-600 opacity-100 hover:bg-white/5 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+              >
+                <LogOut size={14} />
+              </button>
+            )}
+            </div>
           ))}
         </div>
       )}

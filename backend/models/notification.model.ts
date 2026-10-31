@@ -9,6 +9,9 @@ export const NOTIFICATION_TYPES = [
     "mention",
     "class-join",
     "class-ai",
+    "class-leave",
+    "class-removed",
+    "report-update",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

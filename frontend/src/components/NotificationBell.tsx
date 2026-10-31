@@ -16,6 +16,7 @@ import {
   UserPlus,
   UserX,
   type LucideIcon,
+  Flag,
 } from "lucide-react";
 import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../context/toast.context";
@@ -33,6 +34,9 @@ const ICONS: Record<NotificationType, { icon: LucideIcon; tone: string }> = {
   mention: { icon: AtSign, tone: "bg-sky-500/15 text-sky-300" },
   "class-join": { icon: GraduationCap, tone: "bg-violet-500/15 text-violet-300" },
   "class-ai": { icon: Bot, tone: "bg-teal-500/15 text-teal-300" },
+  "class-leave": { icon: UserMinus, tone: "bg-zinc-500/15 text-zinc-300" },
+  "class-removed": { icon: UserMinus, tone: "bg-red-500/15 text-red-300" },
+  "report-update": { icon: Flag, tone: "bg-amber-500/15 text-amber-300" },
 };
 
 const INVITE_STATUS_LABEL: Record<Exclude<InviteStatus, "pending">, string> = {

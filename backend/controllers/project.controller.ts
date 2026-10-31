@@ -1,4 +1,5 @@
 import { validationResult } from "express-validator";
+import * as reportService from "../services/report.service.js";
 import catchAsync from "../utils/catchAsync.js";
 import * as projectService from "../services/project.service.js";
 import AppError from "../errors/AppError.js";
@@ -242,11 +243,7 @@ export const reportIssueController = catchAsync(async (req, res) => {
 
     const userId = req.user!._id;
 
-    const issue = await projectService.reportIssueInProject({
-        projectId,
-        report,
-        userId,
-    });
+    const issue = await reportService.createIssue({ projectId, report, userId });
 
     res.status(201).json({
         message: "Report sent successfully",

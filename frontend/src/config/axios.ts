@@ -22,6 +22,13 @@ axiosInstance.interceptors.request.use((config) => {
 // password on the login form is still shown as an error.
 axiosInstance.interceptors.response.use(undefined, (error) => {
     const hadToken = Boolean(error.config?.headers?.Authorization);
+    // An admin suspended this account: sign out and say why
+    if (error.response?.status === 403 && error.response?.data?.code === 'ACCOUNT_SUSPENDED') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.assign('/login?suspended=1');
+        return Promise.reject(error);
+    }
     const isLogout = String(error.config?.url ?? '').includes('/users/logout');
     if (error.response?.status === 401 && hadToken && !isLogout && localStorage.getItem('token')) {
         localStorage.removeItem('token');

@@ -134,11 +134,15 @@ export const friendlyAiError = (err: unknown): string => {
     if (status === 503 || status === 500) {
         return "Vex AI is busy right now. Please try again in a moment.";
     }
-    if (status === 400 || status === 403) {
-        return "Vex AI couldn't process this request (check the server's Gemini API key).";
-    }
-    return "AI failed to generate response";
+    // Configuration problems (bad key, model access) are logged for us, not shown to users
+    return "Vex AI is unavailable right now. Please try again later.";
 };
+
+/**
+ * Replies that are errors, not answers: they don't cost a question and are
+ * left out of the AI's chat history. Also matches older wordings saved in chats.
+ */
+export const AI_ERROR_REPLY = /^(AI failed|AI returned an empty|Vex AI (has reached|is busy|is unavailable|couldn't))/;
 
 const isRetryable = (err: unknown) => [500, 503].includes((err as { status?: number }).status ?? 0);
 
@@ -217,7 +221,7 @@ export const generate = async ({
         }
 
         const raw = response.text ?? "";
-        if (!raw) return { text: "AI returned an empty response" };
+        if (!raw) return { text: "Vex AI couldn't answer that. Please try again." };
 
         return parseJsonResponse(raw);
     } catch (err) {

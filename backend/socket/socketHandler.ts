@@ -2,7 +2,7 @@ import type { Server, Socket } from "socket.io";
 import * as ai from "../controllers/ai.controller.js";
 import * as chatService from "../services/chats.service.js";
 import * as projectService from "../services/project.service.js";
-import type { EditorFocus } from "../services/ai.service.js";
+import { AI_ERROR_REPLY, type EditorFocus } from "../services/ai.service.js";
 import type { AiResponse, SocketData } from "../types/index.js";
 import { flattenFileTree } from "../utils/flattenFileTree.js";
 import { fromStoredFiles } from "../utils/fileStore.js";
@@ -258,8 +258,6 @@ const handleProjectMessage = async (
 };
 
 
-/** Replies that carry no information for the next request (errors, quota). */
-const AI_ERROR_REPLY = /^(AI failed|AI returned an empty|Vex AI (has reached|is busy|couldn't))/;
 
 /**
  * Only the conversation with the AI is useful context: drop members'
@@ -316,7 +314,7 @@ const handleAiMessage = async (
         hintsOnly,
         task: assignment ? `${assignment.title}\n${assignment.instructions}` : undefined,
     })) ?? {
-        text: "AI failed to generate response",
+        text: "Vex AI is unavailable right now. Please try again later.",
     };
     // Enforced here, whatever the model answered
     if (hintsOnly) {

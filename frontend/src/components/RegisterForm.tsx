@@ -135,7 +135,7 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <OAuthButtons theme={theme} next={target} />
 
       {/* Honeypot: off-screen and skipped by keyboards and password managers */}
@@ -150,25 +150,28 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
         className="absolute -left-[9999px] h-0 w-0 opacity-0"
       />
 
-      <InputField
-        theme={theme}
-        icon={<User size={20} />}
-        type="text"
-        placeholder="Full Name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        required
-      />
+      {/* Name and username side by side where there is room */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <InputField
+          theme={theme}
+          icon={<User size={20} />}
+          type="text"
+          placeholder="Full Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
 
-      <InputField
-        theme={theme}
-        icon={<AtSign size={20} />}
-        type="text"
-        placeholder="Username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        required
-      />
+        <InputField
+          theme={theme}
+          icon={<AtSign size={20} />}
+          type="text"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          required
+        />
+      </div>
 
       <InputField
         theme={theme}
@@ -203,7 +206,7 @@ const RegisterForm = ({ theme }: { theme: "dark" | "light" }) => {
         }
       />
 
-      <Button variant="primary" loading={loading} className="w-full">
+      <Button variant="primary" loading={loading} className="w-full !mt-5">
         Create Account
       </Button>
 

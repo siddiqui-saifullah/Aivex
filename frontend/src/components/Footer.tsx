@@ -18,7 +18,7 @@ const Footer = () => {
           <h4 className="font-bold mb-4">Product</h4>
           <ul className="space-y-2 text-sm text-zinc-400">
             <li>
-              <a href="/#features" className="hover:text-white">
+              <a href="/features" className="hover:text-white">
                 Features
               </a>
             </li>
@@ -91,6 +91,7 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto px-6 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
         <p className="text-zinc-600 text-sm">
           © 2026 Aivex AI Inc. All rights reserved.
+          <span className="ml-2 text-xs text-zinc-700">· A Grawity product</span>
         </p>
         <div className="flex gap-4">
           <a

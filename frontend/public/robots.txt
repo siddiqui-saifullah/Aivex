@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /projects/
+Disallow: /classes/
+Disallow: /settings
+Disallow: /admin
+Disallow: /join
+Disallow: /auth/
+
+Sitemap: https://aivex.in/sitemap.xml

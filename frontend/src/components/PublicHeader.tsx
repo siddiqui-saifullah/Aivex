@@ -34,12 +34,12 @@ const PublicHeader = () => {
 
         {/* Nav links */}
         <div className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-400">
-          <a
-            href="/#features"
+          <Link
+            to="/features"
             className="hover:text-white transition-colors hover:bg-white/5 px-3 py-1.5 rounded-full"
           >
             Features
-          </a>
+          </Link>
           <a
             href="/docs"
             className="hover:text-white transition-colors hover:bg-white/5 px-3 py-1.5 rounded-full"

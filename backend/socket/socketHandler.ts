@@ -12,6 +12,7 @@ import * as Y from "yjs";
 import * as collab from "./collab.js";
 import { AI_DISABLED_MESSAGE, aiPolicyInProject } from "../services/aiPolicy.service.js";
 import Assignment from "../models/assignment.model.js";
+import { quotaMessage, quotaStatus, takeQuota, type QuotaStatus } from "../services/aiQuota.service.js";
 import { notify } from "../services/notification.service.js";
 import userModel from "../models/user.model.js";
 
@@ -43,6 +44,8 @@ interface ServerToClientEvents {
     "collab:awareness": (update: Uint8Array) => void;
     "collab:left": (data: { clientId: number }) => void;
     "collab:saved": (data: { userId: string; username: string }) => void;
+    /** The user's daily Vex allowance, after each question. */
+    "ai-usage": (data: QuotaStatus) => void;
 }
 
 type Ack<T> = (response: T) => void;
@@ -235,10 +238,22 @@ const handleProjectMessage = async (
         return;
     }
 
+    // Daily Vex allowance (checked before the message is posted)
+    const refund = asksAi ? await takeQuota(socket.data.user.id, "vex") : null;
+    if (asksAi && !refund) {
+        const status = await quotaStatus(socket.data.user.id, "vex");
+        socket.emit("ai-usage", status);
+        ack?.({ ok: false, error: quotaMessage("vex", status) });
+        return;
+    }
+
     await handleUserMessage(socket, text, io, roomId, ack);
 
     if (asksAi) {
-        await handleAiMessage(socket, text, io, roomId, parseAiContext(data?.context), aiPolicy === "hints");
+        const ok = await handleAiMessage(socket, text, io, roomId, parseAiContext(data?.context), aiPolicy === "hints");
+        // A failed answer doesn't cost the user a question
+        if (!ok) refund?.();
+        socket.emit("ai-usage", await quotaStatus(socket.data.user.id, "vex"));
     }
 };
 
@@ -267,7 +282,7 @@ const handleAiMessage = async (
     { focus, activeFileContent }: AiRequestContext,
     /** Assignment rule "hints": Vex teaches, and never writes code into the project. */
     hintsOnly = false,
-) => {
+): Promise<boolean> => {
     const prompt = message.replace(/^@vex/i, "").trim();
     const projectId = socket.data.project._id;
 
@@ -372,6 +387,8 @@ const handleAiMessage = async (
         // Lets open panels show the refreshed memory
         io.to(roomId).emit("project-updated", { projectId: String(projectId), reason: "memory" });
     }
+
+    return !AI_ERROR_REPLY.test(response.text ?? "");
 };
 
 

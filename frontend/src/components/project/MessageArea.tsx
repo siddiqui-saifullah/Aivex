@@ -1,4 +1,5 @@
 import { Bot, BotOff, Lightbulb, MessageSquare } from "lucide-react";
+import type { AiUsage } from "../../services/ai.service";
 import MessageGroup from "../shared/MessageGroup";
 import ChatInput from "../shared/ChatTextarea";
 import { useEffect, useRef, useMemo, type ComponentProps } from "react";
@@ -20,6 +21,8 @@ interface MessageAreaProps {
   aiDisabled?: boolean;
   /** Assignment rule: Vex explains and hints, but doesn't write code. */
   aiHintsOnly?: boolean;
+  /** Today's Vex allowance; nothing is shown when unlimited. */
+  aiUsage?: AiUsage | null;
   /** Mentions, AI mode and prompt enhancer for the input. */
   inputProps?: Pick<
     ComponentProps<typeof ChatInput>,
@@ -56,6 +59,7 @@ const MessageArea = ({
   onApplyFiles,
   aiDisabled = false,
   aiHintsOnly = false,
+  aiUsage = null,
   inputProps,
 }: MessageAreaProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -149,6 +153,16 @@ const MessageArea = ({
         <div className="mx-3 flex items-center gap-2 rounded-lg border border-teal-500/15 bg-teal-500/5 px-3 py-1.5 text-xs text-teal-200/80">
           <Lightbulb size={13} className="shrink-0" /> Hints only: Vex explains and guides, but won't write the code for you
         </div>
+      )}
+      {!aiDisabled && aiUsage?.limit != null && (
+        <p
+          className={`mx-3 -mb-1 text-[11px] ${aiUsage.remaining === 0 ? "text-amber-300" : "text-zinc-500"}`}
+          title={`Resets at ${new Date(aiUsage.resetsAt).toLocaleString()}`}
+        >
+          {aiUsage.remaining === 0
+            ? `Daily Vex limit reached · resets at ${new Date(aiUsage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+            : `${aiUsage.remaining} of ${aiUsage.limit} Vex questions left today`}
+        </p>
       )}
       <div className="shrink-0 flex items-end gap-2 p-3">
         <ChatInput

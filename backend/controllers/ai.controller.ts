@@ -20,7 +20,7 @@ export const getResultPoint = async (req: Request, res: Response) => {
             return;
         }
         const response = await ai.generate({ prompt });
-        if (/^(AI failed|AI returned an empty|Vex AI (has reached|is busy|couldn't))/.test(response.text ?? "")) refund();
+        if (ai.AI_ERROR_REPLY.test(response.text ?? "")) refund();
         res.send(response)
     } catch (error) {
         console.log(error);

@@ -2,6 +2,7 @@ import mongoose, { type Types } from "mongoose";
 import Assignment, { AI_POLICIES, type AiPolicy } from "../models/assignment.model.js";
 import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
+import Submission from "../models/submission.model.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
@@ -43,6 +44,14 @@ const parseDueAt = (value: unknown) => {
     const date = new Date(typeof value === "string" || typeof value === "number" ? value : NaN);
     if (Number.isNaN(date.getTime())) throw new AppError("Invalid due date", 400);
     return date;
+};
+
+/** Optional whole number 1-1000, or null/"" for ungraded. */
+const parseMaxMarks = (value: unknown) => {
+    if (value === undefined || value === null || value === "") return null;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1 || n > 1000) throw new AppError("Marks must be a whole number from 1 to 1000", 400);
+    return n;
 };
 
 const parseAiPolicy = (value: unknown): AiPolicy => {
@@ -89,6 +98,7 @@ const summary = (a: {
     stack: string;
     dueAt: Date | null;
     aiPolicy: AiPolicy;
+    maxMarks?: number | null;
     createdAt: Date;
 }) => ({
     _id: a._id,
@@ -98,8 +108,19 @@ const summary = (a: {
     stack: a.stack,
     dueAt: a.dueAt,
     aiPolicy: a.aiPolicy,
+    maxMarks: a.maxMarks ?? null,
     createdAt: a.createdAt,
 });
+
+/** Each student's latest submission (highest version). */
+const latestByStudent = <T extends { student: Types.ObjectId; version: number }>(rows: T[]) => {
+    const latest = new Map<string, T>();
+    for (const row of rows) {
+        const key = String(row.student);
+        if (!latest.has(key) || latest.get(key)!.version < row.version) latest.set(key, row);
+    }
+    return latest;
+};
 
 /* -------------------------------------------------------------------------- */
 /* CREATE                                                                     */
@@ -116,6 +137,7 @@ export const createAssignment = async ({ classroomId, teacherId, input }: {
     const instructions = parseInstructions(input.instructions);
     const dueAt = parseDueAt(input.dueAt);
     const aiPolicy = parseAiPolicy(input.aiPolicy);
+    const maxMarks = parseMaxMarks(input.maxMarks);
 
     // Starter code: one of the teacher's own projects, or the class's starter files
     let stack = classroom.stack;
@@ -138,6 +160,7 @@ export const createAssignment = async ({ classroomId, teacherId, input }: {
         starterFiles,
         dueAt,
         aiPolicy,
+        maxMarks,
         createdBy: teacherId,
     });
 
@@ -166,21 +189,34 @@ export const listAssignments = async ({ classroomId, userId }: { classroomId: st
         .select("-starterFiles")
         .sort({ createdAt: -1 })
         .lean();
-    const work = await Project.find({
-        assignment: { $in: assignments.map((a) => a._id) },
-        classroom: classroom._id,
-        ...(role === "student" ? { owner: userId } : {}),
-    })
-        .select("assignment owner updatedAt")
-        .lean();
+    const ids = assignments.map((a) => a._id);
+    const mineOnly = role === "student" ? { owner: userId } : {};
+    const [work, submissions] = await Promise.all([
+        Project.find({ assignment: { $in: ids }, classroom: classroom._id, ...mineOnly })
+            .select("assignment owner updatedAt")
+            .lean(),
+        Submission.find({ assignment: { $in: ids }, ...(role === "student" ? { student: userId } : {}) })
+            .select("assignment student version status")
+            .lean(),
+    ]);
 
     return assignments.map((a) => {
         const mine = work.filter((p) => String(p.assignment) === String(a._id));
+        const latest = latestByStudent(submissions.filter((x) => String(x.assignment) === String(a._id)));
         return {
             ...summary(a),
             ...(role === "teacher"
-                ? { started: new Set(mine.map((p) => String(p.owner))).size, studentCount: classroom.students.length }
-                : { projectId: mine[0]?._id ?? null, lastActive: mine[0]?.updatedAt ?? null }),
+                ? {
+                    started: new Set(mine.map((p) => String(p.owner))).size,
+                    studentCount: classroom.students.length,
+                    submitted: latest.size,
+                    toReview: [...latest.values()].filter((x) => x.status === "submitted").length,
+                }
+                : {
+                    projectId: mine[0]?._id ?? null,
+                    lastActive: mine[0]?.updatedAt ?? null,
+                    submission: latest.get(String(userId)) ?? null,
+                }),
         };
     });
 };
@@ -193,16 +229,27 @@ export const getAssignment = async ({ assignmentId, userId }: { assignmentId: st
     const base = { ...summary(assignment), role, classroomName: classroom.name };
 
     if (role === "student") {
-        const mine = await Project.findOne({ assignment: assignment._id, owner: userId, classroom: classroom._id })
-            .select("updatedAt")
-            .lean();
-        return { ...base, projectId: mine?._id ?? null, lastActive: mine?.updatedAt ?? null };
+        const [mine, submissions] = await Promise.all([
+            Project.findOne({ assignment: assignment._id, owner: userId, classroom: classroom._id }).select("updatedAt").lean(),
+            Submission.find({ assignment: assignment._id, student: userId }).select("-files").sort({ version: -1 }).lean(),
+        ]);
+        return {
+            ...base,
+            projectId: mine?._id ?? null,
+            lastActive: mine?.updatedAt ?? null,
+            submissions: submissions.map((x) => ({
+                _id: x._id, version: x.version, status: x.status, note: x.note,
+                feedback: x.feedback, marks: x.marks, reviewedAt: x.reviewedAt, createdAt: x.createdAt,
+            })),
+        };
     }
 
-    const [projects, students] = await Promise.all([
+    const [projects, students, submissions] = await Promise.all([
         Project.find({ assignment: assignment._id, classroom: classroom._id }).select("owner updatedAt").lean(),
         userModel.find({ _id: { $in: classroom.students.map((s) => s.user) } }).select("name username").lean(),
+        Submission.find({ assignment: assignment._id }).select("student version status marks createdAt").lean(),
     ]);
+    const latest = latestByStudent(submissions);
     const projectByOwner = new Map(projects.map((p) => [String(p.owner), p]));
     const online = await onlineUsersByProject(projects.map((p) => String(p._id)));
 
@@ -217,6 +264,10 @@ export const getAssignment = async ({ assignmentId, userId }: { assignmentId: st
                 projectId: project?._id ?? null,
                 lastActive: project?.updatedAt ?? null,
                 online: project ? online.get(String(project._id))?.has(String(u._id)) ?? false : false,
+                submission: (() => {
+                    const x = latest.get(String(u._id));
+                    return x ? { _id: x._id, version: x.version, status: x.status, marks: x.marks, createdAt: x.createdAt } : null;
+                })(),
             };
         }),
     };
@@ -276,11 +327,12 @@ export const updateAssignment = async ({ assignmentId, userId, input }: {
     const { assignment, role } = await loadAssignment(assignmentId, userId);
     teacherOnly(role, "edit assignments");
 
-    const changes: Partial<{ title: string; instructions: string; dueAt: Date | null; aiPolicy: AiPolicy }> = {};
+    const changes: Partial<{ title: string; instructions: string; dueAt: Date | null; aiPolicy: AiPolicy; maxMarks: number | null }> = {};
     if (input.title !== undefined) changes.title = parseTitle(input.title);
     if (input.instructions !== undefined) changes.instructions = parseInstructions(input.instructions);
     if (input.dueAt !== undefined) changes.dueAt = parseDueAt(input.dueAt);
     if (input.aiPolicy !== undefined) changes.aiPolicy = parseAiPolicy(input.aiPolicy);
+    if (input.maxMarks !== undefined) changes.maxMarks = parseMaxMarks(input.maxMarks);
     if (Object.keys(changes).length === 0) throw new AppError("Nothing to update", 400);
 
     await Assignment.updateOne({ _id: assignment._id }, { $set: changes });
@@ -298,5 +350,6 @@ export const deleteAssignment = async ({ assignmentId, userId }: { assignmentId:
     teacherOnly(role, "delete assignments");
     const projects = await Project.find({ assignment: assignment._id }).select("_id").lean();
     await detachStudentProjects(projects.map((p) => p._id), classroom.teacher);
+    await Submission.deleteMany({ assignment: assignment._id });
     await Assignment.deleteOne({ _id: assignment._id });
 };

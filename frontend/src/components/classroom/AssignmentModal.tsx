@@ -16,7 +16,7 @@ const inputClass =
 
 /** Create an assignment, or edit one (`initial`). Starter code is chosen on create only. */
 const AssignmentModal = ({ initial, onClose, onSave }: {
-  initial?: ProjectAssignment;
+  initial?: ProjectAssignment & { maxMarks?: number | null };
   onClose: () => void;
   onSave: (input: AssignmentInput) => Promise<void>;
 }) => {
@@ -25,6 +25,7 @@ const AssignmentModal = ({ initial, onClose, onSave }: {
   const [instructions, setInstructions] = useState(initial?.instructions ?? "");
   const [due, setDue] = useState(toLocalInput(initial?.dueAt));
   const [aiPolicy, setAiPolicy] = useState<AiPolicy>(initial?.aiPolicy ?? "hints");
+  const [maxMarks, setMaxMarks] = useState(initial?.maxMarks ? String(initial.maxMarks) : "");
   const [templateId, setTemplateId] = useState("");
   const [templates, setTemplates] = useState<Project[]>([]);
   const [error, setError] = useState("");
@@ -51,10 +52,16 @@ const AssignmentModal = ({ initial, onClose, onSave }: {
       setError("Give the assignment a title (e.g. “Loops: print 1 to 10”)");
       return;
     }
+    const marks = maxMarks.trim() ? Number(maxMarks) : null;
+    if (marks !== null && (!Number.isInteger(marks) || marks < 1 || marks > 1000)) {
+      setError("Marks must be a whole number from 1 to 1000, or empty");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       await onSave({
+        maxMarks: marks,
         title: title.trim(),
         instructions,
         dueAt: due ? new Date(due).toISOString() : null,
@@ -113,6 +120,21 @@ const AssignmentModal = ({ initial, onClose, onSave }: {
             value={due}
             onChange={(e) => setDue(e.target.value)}
             className={`${inputClass} [color-scheme:dark]`}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="assignment-marks" className={labelClass}>Marks (optional)</label>
+          <input
+            id="assignment-marks"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={1000}
+            value={maxMarks}
+            onChange={(e) => setMaxMarks(e.target.value)}
+            placeholder="e.g. 10. Leave empty for feedback only"
+            className={inputClass}
           />
         </div>
 

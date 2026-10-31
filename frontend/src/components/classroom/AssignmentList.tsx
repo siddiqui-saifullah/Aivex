@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, ClipboardList, Loader2, Plus } from "lucide-react";
 import AssignmentModal from "./AssignmentModal";
+import SubmissionBadge from "./SubmissionBadge";
 import { createAssignment, startAssignment } from "../../services/assignment.service";
 import { useToast } from "../../context/toast.context";
 import { getErrorMessage } from "../../utils/getErrorMessage";
@@ -75,6 +76,9 @@ const AssignmentList = ({ classroomId, role, assignments, now, onChanged }: {
                 )}
                 <span title={AI_POLICY_LABELS[a.aiPolicy].hint}>{AI_POLICY_LABELS[a.aiPolicy].label}</span>
                 {role === "teacher" && <span>{a.started ?? 0}/{a.studentCount ?? 0} started</span>}
+                {role === "teacher" && (a.submitted ?? 0) > 0 && <span>{a.submitted} submitted</span>}
+                {role === "teacher" && (a.toReview ?? 0) > 0 && <span className="font-medium text-sky-300">{a.toReview} to review</span>}
+                {role === "student" && a.submission && <SubmissionBadge status={a.submission.status} version={a.submission.version} />}
               </div>
             );
 

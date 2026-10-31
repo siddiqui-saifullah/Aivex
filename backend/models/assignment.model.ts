@@ -24,6 +24,8 @@ export interface IAssignment {
     starterFiles: StoredFile[];
     dueAt: Date | null;
     aiPolicy: AiPolicy;
+    /** Optional: marks the teacher grades out of. */
+    maxMarks: number | null;
     createdBy: Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
@@ -38,6 +40,7 @@ const assignmentSchema = new mongoose.Schema<IAssignment>(
         starterFiles: { type: mongoose.Schema.Types.Mixed, default: () => [] },
         dueAt: { type: Date, default: null },
         aiPolicy: { type: String, enum: AI_POLICIES, default: "allowed" },
+        maxMarks: { type: Number, default: null, min: 1, max: 1000 },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     },
     { timestamps: true },

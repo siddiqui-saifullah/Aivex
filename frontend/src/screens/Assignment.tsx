@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CalendarClock, ClipboardList, ExternalLink, Loader2, Pencil, Search, Trash2 } from "lucide-react";
 import AssignmentModal from "../components/classroom/AssignmentModal";
+import SubmissionBadge from "../components/classroom/SubmissionBadge";
 import { deleteAssignment, getAssignment, startAssignment, updateAssignment } from "../services/assignment.service";
 import { useToast } from "../context/toast.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
@@ -112,6 +113,8 @@ const Assignment = () => {
   const due = describeDue(data.dueAt, now);
   const rule = AI_POLICY_LABELS[data.aiPolicy];
   const startedCount = data.students?.filter((s) => s.projectId).length ?? 0;
+  const submittedCount = data.students?.filter((s) => s.submission).length ?? 0;
+  const toReview = data.students?.filter((s) => s.submission?.status === "submitted").length ?? 0;
 
   return (
     <div className="min-h-dvh bg-black text-zinc-100">
@@ -136,7 +139,9 @@ const Assignment = () => {
                   <span>No due date</span>
                 )}
                 <span title={rule.hint}>{rule.label}</span>
+                {data.maxMarks ? <span>{data.maxMarks} marks</span> : null}
                 {data.role === "teacher" && <span>{startedCount}/{data.students?.length ?? 0} started</span>}
+                {data.role === "teacher" && <span>{submittedCount} submitted{toReview ? ` · ${toReview} to review` : ""}</span>}
               </p>
             </div>
           </div>
@@ -180,6 +185,31 @@ const Assignment = () => {
           <p className="mt-4 text-xs text-zinc-500">{rule.hint}</p>
         </section>
 
+        {data.role === "student" && (data.submissions?.length ?? 0) > 0 && (
+          <section>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-300">Your submissions</h2>
+            <ul className="space-y-2">
+              {data.submissions!.map((sub) => (
+                <li key={sub._id}>
+                  <Link
+                    to={`/classes/${classroomId}/assignments/${data._id}/submissions/${sub._id}`}
+                    className="flex flex-col gap-2 rounded-xl border border-white/5 bg-zinc-900/50 p-4 hover:border-teal-500/30 sm:flex-row sm:items-center"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-2 text-sm text-zinc-200">
+                        Version {sub.version}
+                        <SubmissionBadge status={sub.status} marks={sub.marks} maxMarks={data.maxMarks} />
+                      </p>
+                      {sub.feedback && <p className="mt-1 line-clamp-2 text-sm text-zinc-400">“{sub.feedback}”</p>}
+                    </div>
+                    <span className="shrink-0 text-xs text-zinc-500">{timeAgo(sub.createdAt, now)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {data.role === "teacher" && (
           <section>
             <div className="mb-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -205,7 +235,7 @@ const Assignment = () => {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {students.map((s) => (
-                  <WorkCard key={s.userId} student={s} now={now} />
+                  <WorkCard key={s.userId} student={s} now={now} base={`/classes/${classroomId}/assignments/${data._id}`} maxMarks={data.maxMarks ?? null} />
                 ))}
                 {students.length === 0 && <p className="text-sm text-zinc-500">No students match “{query}”.</p>}
               </div>
@@ -229,7 +259,12 @@ const Assignment = () => {
   );
 };
 
-const WorkCard = ({ student: s, now }: { student: AssignmentStudent; now: number }) => {
+const WorkCard = ({ student: s, now, base, maxMarks }: {
+  student: AssignmentStudent;
+  now: number;
+  base: string;
+  maxMarks: number | null;
+}) => {
   const name = s.name || s.username || "Student";
   return (
     <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-zinc-900/50 p-4">
@@ -257,7 +292,22 @@ const WorkCard = ({ student: s, now }: { student: AssignmentStudent; now: number
           )}
           {s.username && <> · @{s.username}</>}
         </p>
+        {s.submission && (
+          <div className="mt-1.5">
+            <SubmissionBadge status={s.submission.status} version={s.submission.version} marks={s.submission.marks} maxMarks={maxMarks} />
+          </div>
+        )}
       </div>
+      {s.submission && (
+        <Link
+          to={`${base}/submissions/${s.submission._id}`}
+          className={`flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+            s.submission.status === "submitted" ? "bg-white text-black hover:bg-zinc-200" : "border border-white/10 text-zinc-300 hover:border-teal-500/40"
+          }`}
+        >
+          {s.submission.status === "submitted" ? "Review" : "View"}
+        </Link>
+      )}
       {s.projectId && (
         <Link
           to={`/projects/${s.projectId}`}

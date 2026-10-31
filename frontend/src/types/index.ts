@@ -72,16 +72,46 @@ export interface ProjectAssignment {
   aiPolicy: AiPolicy;
 }
 
+export type SubmissionStatus = "submitted" | "reviewed" | "revision-requested";
+
+/** A hand-in as lists show it (no files). */
+export interface SubmissionSummary {
+  _id: string;
+  version: number;
+  status: SubmissionStatus;
+  note?: string;
+  feedback?: string;
+  marks: number | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+}
+
+/** One hand-in with its frozen files. */
+export interface SubmissionDetails extends SubmissionSummary {
+  assignment: string;
+  files: FlatFileTree;
+  role: ClassroomRole;
+  classroom: { _id: string; name: string };
+  assignmentTitle: string;
+  maxMarks: number | null;
+  studentInfo: { _id: string; name?: string; username?: string };
+  versions: { _id: string; version: number; status: SubmissionStatus; createdAt: string }[];
+}
+
 /** An assignment as listed on the class page. */
 export interface AssignmentSummary extends ProjectAssignment {
   stack: string;
   createdAt: string;
-  /** Teacher: how many students started it, out of how many. */
+  maxMarks?: number | null;
+  /** Teacher: how many students started / handed it in, and how many hand-ins wait for review. */
   started?: number;
   studentCount?: number;
-  /** Student: their work, once started. */
+  submitted?: number;
+  toReview?: number;
+  /** Student: their work, once started, and their latest hand-in. */
   projectId?: string | null;
   lastActive?: string | null;
+  submission?: Pick<SubmissionSummary, "_id" | "version" | "status"> | null;
 }
 
 export interface AssignmentStudent {
@@ -91,6 +121,8 @@ export interface AssignmentStudent {
   projectId: string | null;
   lastActive: string | null;
   online: boolean;
+  /** Their latest hand-in. */
+  submission?: Pick<SubmissionSummary, "_id" | "version" | "status" | "marks" | "createdAt"> | null;
 }
 
 export interface AssignmentDetails extends AssignmentSummary {
@@ -98,6 +130,8 @@ export interface AssignmentDetails extends AssignmentSummary {
   classroomName: string;
   /** Teacher only. */
   students?: AssignmentStudent[];
+  /** Student only: every version they handed in, newest first. */
+  submissions?: SubmissionSummary[];
 }
 
 /** A class as listed on the dashboard. */
@@ -217,6 +251,8 @@ export type NotificationType =
   | "class-removed"
   | "report-update"
   | "assignment"
+  | "submission"
+  | "submission-review"
   | "class-ai";
 
 export interface AppNotification {

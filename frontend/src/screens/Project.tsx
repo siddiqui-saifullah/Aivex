@@ -19,6 +19,7 @@ import {
   normalizeSocketMessage,
 } from "../services/message.service";
 import { useTypingIndicator } from "../hooks/useTypingIndicator";
+import { submitAssignment } from "../services/assignment.service";
 import AssignmentCard from "../components/project/AssignmentCard";
 import ProjectHeader from "../components/project/ProjectHeader";
 import ChatRail from "../components/project/ChatRail";
@@ -896,6 +897,20 @@ const Project = () => {
     }
   };
 
+  /** Save first so the hand-in matches what the student sees, then submit. */
+  const handleSubmitAssignment = async (note: string) => {
+    if (!project?.assignment) return false;
+    if (!isSaved && !(await saveFiles("Saving before submitting…"))) return false;
+    try {
+      const sub = await submitAssignment(project.assignment._id, note);
+      toast.success(sub.version > 1 ? `Version ${sub.version} submitted` : "Assignment submitted");
+      return true;
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not submit"));
+      return false;
+    }
+  };
+
   // Tab title: project name, with a dot while there are unsaved changes
   useEffect(() => {
     if (project?.name) document.title = `${isSaved ? "" : "● "}${project.name} · Aivex`;
@@ -1455,7 +1470,13 @@ const Project = () => {
           onCollapse={collapseChat}
         />
 
-        {project.assignment && <AssignmentCard assignment={project.assignment} isTeacher={!project.isOwner} />}
+        {project.assignment && (
+          <AssignmentCard
+            assignment={project.assignment}
+            isTeacher={!project.isOwner}
+            onSubmit={project.isOwner ? handleSubmitAssignment : undefined}
+          />
+        )}
 
         {/* Message Area */}
         <MessageArea

@@ -15,6 +15,7 @@ export const NOTIFICATION_TYPES = [
     "assignment",
     "submission",
     "submission-review",
+    "help-request",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

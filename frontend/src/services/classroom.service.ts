@@ -1,5 +1,5 @@
 import axios from "../config/axios";
-import type { ClassroomDetails, ClassroomSummary } from "../types";
+import type { ClassroomDetails, ClassroomSummary, HelpRequestItem } from "../types";
 
 export const getClassrooms = async (): Promise<ClassroomSummary[]> => {
   const { data } = await axios.get<ClassroomSummary[]>("/classrooms");
@@ -51,3 +51,20 @@ export const removeStudent = async (id: string, studentId: string) => {
 
 /** Shareable invite link for a class code. */
 export const classInviteLink = (code: string) => `${window.location.origin}/join/${code}`;
+
+/** Student: ask the class teacher for help with this class project. */
+export const requestHelp = async (projectId: string, message: string) => {
+  const { data } = await axios.post<{ _id: string; createdAt: string; alreadyOpen: boolean }>("/classrooms/help", { projectId, message });
+  return data;
+};
+
+/** Teacher: students waiting for help, oldest first. */
+export const getHelpRequests = async (classroomId: string): Promise<HelpRequestItem[]> => {
+  const { data } = await axios.get<HelpRequestItem[]>(`/classrooms/${classroomId}/help`);
+  return Array.isArray(data) ? data : [];
+};
+
+/** Teacher after helping, or the student withdrawing the request. */
+export const resolveHelpRequest = async (requestId: string) => {
+  await axios.patch(`/classrooms/help/${requestId}/resolve`);
+};

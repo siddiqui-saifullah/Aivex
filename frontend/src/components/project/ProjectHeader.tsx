@@ -1,6 +1,7 @@
 import { GraduationCap, PanelLeftClose, Users, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ProjectDetails } from "../../types";
+import HelpButton from "./HelpButton";
 import { plural } from "../../utils/plural";
 
 interface ProjectHeaderProps {
@@ -9,6 +10,8 @@ interface ProjectHeaderProps {
   onToggleSidePanel: () => void;
   /** Collapse the chat to a rail (desktop). */
   onCollapse?: () => void;
+  /** Reload the project after the student's help request changes. */
+  onHelpChanged?: () => void;
 }
 
 const ProjectHeader = ({
@@ -16,6 +19,7 @@ const ProjectHeader = ({
   isSidePanelOpen,
   onToggleSidePanel,
   onCollapse,
+  onHelpChanged,
 }: ProjectHeaderProps) => {
   return (
     <header className="h-14 shrink-0 px-3 flex items-center justify-between border-b border-white/10">
@@ -51,6 +55,9 @@ const ProjectHeader = ({
 
       {/* Right: Actions */}
       <div className="flex shrink-0 items-center">
+        {project?.classroom && project.isOwner && onHelpChanged && (
+          <HelpButton projectId={project._id} request={project.helpRequest} onChanged={onHelpChanged} />
+        )}
         <button
           onClick={onToggleSidePanel}
           data-sidepanel-toggle

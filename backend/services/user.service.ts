@@ -123,7 +123,7 @@ export const loginUser = async ({ email, password }: { email: string; password: 
 /* -------------------------------------------------------------------------- */
 export const userProfiler = async ({ userID }: { userID: Types.ObjectId | string }) => {
     return userModel.findById(userID)
-        .select("name username email bio hasPassword createdAt updatedAt")
+        .select("name username email bio teachingMode hasPassword createdAt updatedAt")
         .lean();
 };
 
@@ -170,16 +170,21 @@ export const userProfileStats = async ({ userID }: { userID: Types.ObjectId | st
 /* -------------------------------------------------------------------------- */
 /* UPDATE PROFILE                                                             */
 /* -------------------------------------------------------------------------- */
-export const updateProfile = async ({ userID, name, username, bio }: {
+export const updateProfile = async ({ userID, name, username, bio, teachingMode }: {
     userID: Types.ObjectId | string;
     name?: string;
     username?: string;
     bio?: string;
+    teachingMode?: unknown;
 }) => {
-    const updates: { name?: string; username?: string; bio?: string } = {};
+    const updates: { name?: string; username?: string; bio?: string; teachingMode?: boolean } = {};
     if (name !== undefined) updates.name = name;
     if (username !== undefined) updates.username = username;
     if (bio !== undefined) updates.bio = bio;
+    if (teachingMode !== undefined) {
+        if (typeof teachingMode !== "boolean") throw new AppError("teachingMode must be true or false", 400);
+        updates.teachingMode = teachingMode;
+    }
 
     if (Object.keys(updates).length === 0) {
         throw new AppError("Nothing to update", 400);
@@ -191,11 +196,10 @@ export const updateProfile = async ({ userID, name, username, bio }: {
     if (updates.name !== undefined && updates.name !== current?.name) assertNameAllowed(updates.name);
 
     try {
-        const user = await userModel.findByIdAndUpdate(userID, updates, {
-            new: true,
-            runValidators: true,
-        })
-            .select("name username email bio createdAt updatedAt")
+        // Update, then read back (FerretDB, used locally, can't project in findAndModify)
+        await userModel.updateOne({ _id: userID }, updates, { runValidators: true });
+        const user = await userModel.findById(userID)
+            .select("name username email bio teachingMode hasPassword createdAt updatedAt")
             .lean();
 
         if (!user) throw new AppError("User not found", 404);

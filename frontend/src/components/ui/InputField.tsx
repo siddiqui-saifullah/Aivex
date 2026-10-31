@@ -20,7 +20,7 @@ function InputField({ theme, icon, rightElement, ...props }: InputFieldProps) {
       </div>
       <input
         {...props}
-        className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none transition-all duration-300 ${
+        className={`w-full pl-10 pr-4 py-2.5 rounded-xl border outline-none transition-all duration-300 ${
           theme === "dark"
             ? "bg-white/5 border-white/10 text-white placeholder-zinc-500 focus:border-teal-500 focus:bg-black/50 focus:ring-1 focus:ring-teal-500"
             : "bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"

@@ -19,8 +19,8 @@ const GitHubIcon = () => (
 );
 
 const LABELS: Record<OAuthProvider, { label: string; icon: () => React.JSX.Element }> = {
-  google: { label: "Continue with Google", icon: GoogleIcon },
-  github: { label: "Continue with GitHub", icon: GitHubIcon },
+  google: { label: "Google", icon: GoogleIcon },
+  github: { label: "GitHub", icon: GitHubIcon },
 };
 
 /** "Continue with Google / GitHub", for the providers the server has set up. */
@@ -45,13 +45,15 @@ const OAuthButtons = ({ theme, next }: { theme: "dark" | "light"; next: string }
 
   return (
     <div className="space-y-3">
+      <div className={`grid gap-2 ${providers.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
       {providers.map((provider) => {
         const { label, icon: Icon } = LABELS[provider];
         return (
           <a
             key={provider}
             href={oauthStartUrl(provider, next)}
-            className={`flex w-full items-center justify-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition ${
+            aria-label={`Continue with ${label}`}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
               theme === "dark"
                 ? "border-zinc-800 bg-zinc-900/60 text-zinc-200 hover:border-zinc-700 hover:bg-zinc-800"
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -62,6 +64,7 @@ const OAuthButtons = ({ theme, next }: { theme: "dark" | "light"; next: string }
           </a>
         );
       })}
+      </div>
       <div className="flex items-center gap-3">
         <span className={`h-px flex-1 ${line}`} />
         <span className={`text-xs ${muted}`}>or use email</span>

@@ -6,7 +6,7 @@ const Register = () => {
 
   return (
     <>
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <h1
           className={`text-3xl font-bold bg-clip-text text-transparent mb-2 ${
             theme === "dark"

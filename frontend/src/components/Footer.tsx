@@ -89,24 +89,10 @@ const Footer = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex flex-col items-center gap-3 md:flex-row md:gap-5">
-          <a
-            href="mailto:mail.grawity@gmail.com"
-            className="group flex items-center gap-2 text-sm text-zinc-400 hover:text-white"
-            aria-label="A Grawity product"
-          >
-            <span
-              className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-[13px] font-black text-black"
-              aria-hidden
-            >
-              G
-            </span>
-            <span>
-              A <span className="font-semibold text-zinc-200 group-hover:text-white">Grawity</span> product
-            </span>
-          </a>
-          <p className="text-zinc-600 text-sm">© 2026 Aivex AI Inc. All rights reserved.</p>
-        </div>
+        <p className="text-zinc-600 text-sm">
+          © 2026 Aivex AI Inc. All rights reserved.
+          <span className="ml-2 text-xs text-zinc-700">· A Grawity product</span>
+        </p>
         <div className="flex gap-4">
           <a
             href="https://github.com/siddiqui-saifullah/aivex"

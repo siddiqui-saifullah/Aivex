@@ -22,7 +22,7 @@ const JoinClass = () => {
     try {
       const joined = await joinClassroom(value);
       toast.success(joined.alreadyJoined ? "Opening your class project" : "Joined! Here is your project");
-      navigate(`/projects/${joined.projectId}`, { replace: true });
+      navigate(`/classes/${joined.classroomId}`, { replace: true });
     } catch (err) {
       setError(getErrorMessage(err, "Could not join the class"));
       setLoading(false);

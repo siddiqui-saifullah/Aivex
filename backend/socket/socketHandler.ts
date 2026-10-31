@@ -10,7 +10,8 @@ import Project from "../models/project.model.js";
 import ChatMessage from "../models/chat.model.js";
 import * as Y from "yjs";
 import * as collab from "./collab.js";
-import { AI_DISABLED_MESSAGE, isAiDisabledInProject } from "../services/aiPolicy.service.js";
+import { AI_DISABLED_MESSAGE, aiPolicyInProject } from "../services/aiPolicy.service.js";
+import Assignment from "../models/assignment.model.js";
 import { notify } from "../services/notification.service.js";
 import userModel from "../models/user.model.js";
 
@@ -227,8 +228,9 @@ const handleProjectMessage = async (
     const text = message.trim();
     const asksAi = text.toLowerCase().startsWith("@vex");
 
-    // Checked on every request, so turning AI off applies immediately
-    if (asksAi && await isAiDisabledInProject(socket.data.project._id, socket.data.user.id)) {
+    // Checked on every request, so the teacher's changes apply immediately
+    const aiPolicy = asksAi ? await aiPolicyInProject(socket.data.project._id, socket.data.user.id) : "allowed";
+    if (aiPolicy === "disabled") {
         ack?.({ ok: false, error: AI_DISABLED_MESSAGE });
         return;
     }
@@ -236,7 +238,7 @@ const handleProjectMessage = async (
     await handleUserMessage(socket, text, io, roomId, ack);
 
     if (asksAi) {
-        await handleAiMessage(socket, text, io, roomId, parseAiContext(data?.context));
+        await handleAiMessage(socket, text, io, roomId, parseAiContext(data?.context), aiPolicy === "hints");
     }
 };
 
@@ -263,6 +265,8 @@ const handleAiMessage = async (
     io: AppServer,
     roomId: string,
     { focus, activeFileContent }: AiRequestContext,
+    /** Assignment rule "hints": Vex teaches, and never writes code into the project. */
+    hintsOnly = false,
 ) => {
     const prompt = message.replace(/^@vex/i, "").trim();
     const projectId = socket.data.project._id;
@@ -270,7 +274,7 @@ const handleAiMessage = async (
     // Give the AI the current project and the recent conversation so it edits
     // what exists instead of starting from scratch
     const [project, recentChats] = await Promise.all([
-        Project.findById(projectId).select("files aiMemory").lean(),
+        Project.findById(projectId).select("files aiMemory assignment").lean(),
         ChatMessage.find({ project: projectId })
             .sort({ createdAt: -1 })
             .limit(12)
@@ -284,15 +288,26 @@ const handleAiMessage = async (
         files[focus.activeFile] = activeFileContent;
     }
 
+    const assignment = hintsOnly && project?.assignment
+        ? await Assignment.findById(project.assignment).select("title instructions").lean()
+        : null;
+
     const response: AiResponse = (await ai.getResult({
         prompt,
         files,
         memory: project?.aiMemory ?? "",
         focus,
         history: toAiHistory(recentChats.reverse().slice(0, -1)), // last = this request
+        hintsOnly,
+        task: assignment ? `${assignment.title}\n${assignment.instructions}` : undefined,
     })) ?? {
         text: "AI failed to generate response",
     };
+    // Enforced here, whatever the model answered
+    if (hintsOnly) {
+        delete response.fileTree;
+        delete response.deletedFiles;
+    }
 
     const changedFiles = flattenFileTree(response.fileTree);
     const deletedFiles = Array.isArray(response.deletedFiles)

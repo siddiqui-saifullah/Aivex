@@ -40,8 +40,7 @@ const ClassroomSection = ({ ownProjects, onChanged }: { ownProjects: Project[]; 
   };
 
   const open = (c: ClassroomSummary) => {
-    if (c.role === "student" && c.projectId) navigate(`/projects/${c.projectId}`);
-    else navigate(`/classes/${c._id}`);
+    navigate(`/classes/${c._id}`);
   };
 
   return (
@@ -134,7 +133,7 @@ const ClassroomSection = ({ ownProjects, onChanged }: { ownProjects: Project[]; 
           onJoin={async (code) => {
             const joined = await joinClassroom(code);
             toast.success(joined.alreadyJoined ? "Opening your class project" : "Joined! Here is your project");
-            navigate(`/projects/${joined.projectId}`);
+            navigate(`/classes/${joined.classroomId}`);
           }}
         />
       )}

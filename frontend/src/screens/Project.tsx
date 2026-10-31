@@ -19,6 +19,7 @@ import {
   normalizeSocketMessage,
 } from "../services/message.service";
 import { useTypingIndicator } from "../hooks/useTypingIndicator";
+import AssignmentCard from "../components/project/AssignmentCard";
 import ProjectHeader from "../components/project/ProjectHeader";
 import ChatRail from "../components/project/ChatRail";
 import ExplorerRail from "../components/project/ExplorerRail";
@@ -122,7 +123,7 @@ interface UserJoinedEvent {
 
 interface ProjectUpdatedEvent {
   projectId: string;
-  reason: "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy";
+  reason: "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy" | "assignment";
 }
 
 type SendAck =
@@ -608,10 +609,11 @@ const Project = () => {
         const updated = await getProjectById(projectId);
         if (!isMounted) return;
         applyProject(updated);
-        if (reason === "ai-policy") {
+        if (reason === "ai-policy" && updated.isOwner) {
           if (updated.aiDisabled) toast.info("Your teacher turned off Vex AI for this class");
           else toast.success("Your teacher turned Vex AI back on");
         }
+        if (reason === "assignment" && updated.isOwner) toast.info("Your teacher updated this assignment");
       } catch {
         // No longer a member (removed by the owner)
         if (!isMounted) return;
@@ -1439,6 +1441,8 @@ const Project = () => {
           onCollapse={collapseChat}
         />
 
+        {project.assignment && <AssignmentCard assignment={project.assignment} isTeacher={!project.isOwner} />}
+
         {/* Message Area */}
         <MessageArea
           messages={messages}
@@ -1451,6 +1455,7 @@ const Project = () => {
           onDeleteMessage={handleDeleteMessage}
           onApplyFiles={handleApplyFiles}
           aiDisabled={aiDisabled}
+          aiHintsOnly={project.aiPolicy === "hints"}
           inputProps={{
             mentionables,
             aiMode: aiMode && !aiDisabled,

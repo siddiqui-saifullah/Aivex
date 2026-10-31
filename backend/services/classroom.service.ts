@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import mongoose, { type Types } from "mongoose";
 import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
+import Assignment from "../models/assignment.model.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
@@ -283,19 +284,25 @@ export const pullStudent = async (classroomId: Id, match: { user?: Id; project?:
 };
 
 /**
- * A student who is no longer in the class keeps the project as a personal
- * one, and the teacher loses access to it.
+ * A student who is no longer in the class keeps their class work as personal
+ * projects, and the teacher loses access to it.
  */
-const detachStudentProjects = async (projectIds: Id[], teacherId: Id) => {
+export const detachStudentProjects = async (projectIds: Id[], teacherId: Id) => {
     if (projectIds.length === 0) return;
     await Project.updateMany(
         { _id: { $in: projectIds } },
-        { $set: { classroom: null }, $pull: { users: teacherId, invites: { user: teacherId } } },
+        { $set: { classroom: null, assignment: null }, $pull: { users: teacherId, invites: { user: teacherId } } },
     );
     for (const id of projectIds) {
         notifyProjectUpdated(String(id), "members");
         void disconnectUserFromProject(String(id), String(teacherId));
     }
+};
+
+/** A student's class project and their work on every assignment of the class. */
+const classProjectsOf = async (classroomId: Id, studentId: Id, classProject: Id) => {
+    const work = await Project.find({ classroom: classroomId, owner: studentId }).select("_id").lean();
+    return [...new Set([String(classProject), ...work.map((p) => String(p._id))])];
 };
 
 /** A student leaves a class. */
@@ -307,7 +314,7 @@ export const leaveClassroom = async ({ classroomId, userId }: { classroomId: str
     if (!mine) throw new AppError("You are not a student in this class", 400);
 
     await pullStudent(classroomId, { user: mine.user });
-    await detachStudentProjects([mine.project], classroom.teacher);
+    await detachStudentProjects(await classProjectsOf(classroomId, mine.user, mine.project), classroom.teacher);
     void notify({
         users: [classroom.teacher],
         type: "class-leave",
@@ -334,7 +341,7 @@ export const removeStudent = async ({ classroomId, teacherId, studentId }: {
     if (!student) throw new AppError("This student is not in the class", 404);
 
     await pullStudent(classroomId, { user: student.user });
-    await detachStudentProjects([student.project], classroom.teacher);
+    await detachStudentProjects(await classProjectsOf(classroomId, student.user, student.project), classroom.teacher);
     void notify({
         users: [studentId],
         type: "class-removed",
@@ -353,5 +360,6 @@ export const deleteClassroom = async ({ classroomId, userId }: { classroomId: st
     if (String(classroom.teacher) !== String(userId)) throw new AppError("Only the teacher can delete the class", 403);
     const projects = await Project.find({ classroom: classroomId }).select("_id").lean();
     await detachStudentProjects(projects.map((p) => p._id), classroom.teacher);
+    await Assignment.deleteMany({ classroom: classroomId });
     await Classroom.deleteOne({ _id: classroomId });
 };

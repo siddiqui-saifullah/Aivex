@@ -1,4 +1,4 @@
-import { Bot, BotOff, MessageSquare } from "lucide-react";
+import { Bot, BotOff, Lightbulb, MessageSquare } from "lucide-react";
 import MessageGroup from "../shared/MessageGroup";
 import ChatInput from "../shared/ChatTextarea";
 import { useEffect, useRef, useMemo, type ComponentProps } from "react";
@@ -18,6 +18,8 @@ interface MessageAreaProps {
   onApplyFiles?: (files: FlatFileTree) => void;
   /** The class teacher turned the AI off: plain team chat only. */
   aiDisabled?: boolean;
+  /** Assignment rule: Vex explains and hints, but doesn't write code. */
+  aiHintsOnly?: boolean;
   /** Mentions, AI mode and prompt enhancer for the input. */
   inputProps?: Pick<
     ComponentProps<typeof ChatInput>,
@@ -35,6 +37,13 @@ const STARTER_PROMPTS = [
   "Find and fix bugs in the open file",
 ];
 
+/** On a hints-only assignment: ways to ask for help without asking for the answer. */
+const HINT_PROMPTS = [
+  "Explain what this assignment is asking",
+  "Give me a hint for the next step",
+  "Why doesn't my code work?",
+];
+
 const MessageArea = ({
   messages = [],
   message,
@@ -46,6 +55,7 @@ const MessageArea = ({
   onDeleteMessage,
   onApplyFiles,
   aiDisabled = false,
+  aiHintsOnly = false,
   inputProps,
 }: MessageAreaProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -83,7 +93,7 @@ const MessageArea = ({
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-zinc-200">Chat with your class</p>
-              <p className="text-xs text-zinc-500">Vex AI is turned off for this class by your teacher.</p>
+              <p className="text-xs text-zinc-500">Your teacher turned off Vex AI here.</p>
             </div>
           </div>
         ) : (
@@ -92,11 +102,13 @@ const MessageArea = ({
               <Bot size={22} />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-200">Ask Vex AI or chat with your team</p>
+              <p className="text-sm font-medium text-zinc-200">
+                {aiHintsOnly ? "Stuck? Ask Vex for a hint" : "Ask Vex AI or chat with your team"}
+              </p>
               <p className="text-xs text-zinc-500">Start with @Vex, or turn on AI mode with the bot button.</p>
             </div>
             <div className="flex w-full max-w-xs flex-col gap-2">
-              {STARTER_PROMPTS.map((prompt) => (
+              {(aiHintsOnly ? HINT_PROMPTS : STARTER_PROMPTS).map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => onMessageChange(`@Vex ${prompt}`)}
@@ -130,7 +142,12 @@ const MessageArea = ({
       {/* -------------------- INPUT AREA -------------------- */}
       {aiDisabled && groupedMessages.length > 0 && (
         <div className="mx-3 flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400">
-          <BotOff size={13} className="shrink-0" /> Vex AI is turned off for this class by your teacher
+          <BotOff size={13} className="shrink-0" /> Your teacher turned off Vex AI here
+        </div>
+      )}
+      {aiHintsOnly && !aiDisabled && (
+        <div className="mx-3 flex items-center gap-2 rounded-lg border border-teal-500/15 bg-teal-500/5 px-3 py-1.5 text-xs text-teal-200/80">
+          <Lightbulb size={13} className="shrink-0" /> Hints only: Vex explains and guides, but won't write the code for you
         </div>
       )}
       <div className="shrink-0 flex items-end gap-2 p-3">
@@ -139,7 +156,7 @@ const MessageArea = ({
           onChange={onMessageChange}
           onSend={onSend}
           onTyping={onTyping}
-          placeholder={aiDisabled ? "Message your class…" : "Message, or type @ to mention Vex AI"}
+          placeholder={aiDisabled ? "Message your class…" : aiHintsOnly ? "Ask @Vex for a hint…" : "Message, or type @ to mention Vex AI"}
           {...inputProps}
         />
       </div>

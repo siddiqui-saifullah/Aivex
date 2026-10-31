@@ -17,20 +17,25 @@ import {
 } from "lucide-react";
 import { classInviteLink, deleteClassroom, getClassroom, removeStudent, updateClassroom } from "../services/classroom.service";
 import AiToggle from "../components/classroom/AiToggle";
+import AssignmentList from "../components/classroom/AssignmentList";
+import { getAssignments } from "../services/assignment.service";
 import { useToast } from "../context/toast.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { plural } from "../utils/plural";
 import { STACK_FORMATTER } from "../constants/options";
 import { colorFor } from "../utils/userColor";
 import { timeAgo } from "../utils/timeAgo";
-import type { ClassroomDetails, ClassroomStudent } from "../types";
+import type { AssignmentSummary, ClassroomDetails, ClassroomStudent } from "../types";
 
 const REFRESH_MS = 5000;
 
 const initials = (name: string) =>
   name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
-/** Teacher view of a class: join code, and every student's project with live presence. */
+/**
+ * A class. Teacher: join code, assignments and every student's project with
+ * live presence. Student: the class's assignments and their class project.
+ */
 const Classroom = () => {
   const { classroomId = "" } = useParams();
   const navigate = useNavigate();
@@ -42,20 +47,18 @@ const Classroom = () => {
   const [presenting, setPresenting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [savingAi, setSavingAi] = useState(false);
+  const [assignments, setAssignments] = useState<AssignmentSummary[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // Live roster: refresh while the tab is visible
+  // Live roster and assignments: refresh while the tab is visible
   useEffect(() => {
     let alive = true;
     const load = () =>
-      getClassroom(classroomId)
-        .then((details) => {
+      Promise.all([getClassroom(classroomId), getAssignments(classroomId)])
+        .then(([details, list]) => {
           if (!alive) return;
-          // Students have nothing to manage here: go straight to their project
-          if (details.role === "student" && details.projectId) {
-            navigate(`/projects/${details.projectId}`, { replace: true });
-            return;
-          }
           setData(details);
+          setAssignments(list);
           setNow(Date.now());
         })
         .catch((err) => alive && setError(getErrorMessage(err, "Could not load the class")));
@@ -67,7 +70,7 @@ const Classroom = () => {
       alive = false;
       clearInterval(id);
     };
-  }, [classroomId, navigate]);
+  }, [classroomId, reloadKey]);
 
   useEffect(() => {
     if (data) document.title = `${data.name} · Aivex`;
@@ -151,6 +154,47 @@ const Classroom = () => {
     );
   }
 
+  if (data.role === "student") {
+    return (
+      <div className="min-h-dvh bg-black text-zinc-100">
+        <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
+          <Link to="/dashboard" className="mb-6 inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300">
+            <ArrowLeft size={15} /> Dashboard
+          </Link>
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-teal-500/10 text-teal-300">
+                <GraduationCap size={24} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">{data.name}</h1>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Teacher: {data.teacher.name || data.teacher.username}
+                  {data.aiEnabled === false && " · Vex AI is off in this class"}
+                </p>
+              </div>
+            </div>
+            {data.projectId && (
+              <Link
+                to={`/projects/${data.projectId}`}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:border-teal-500/40"
+              >
+                My class project <ExternalLink size={14} />
+              </Link>
+            )}
+          </div>
+          <AssignmentList
+            classroomId={data._id}
+            role="student"
+            assignments={assignments}
+            now={now}
+            onChanged={() => setReloadKey((k) => k + 1)}
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh bg-black text-zinc-100">
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
@@ -203,6 +247,14 @@ const Classroom = () => {
         <div className="mb-8 max-w-xl">
           <AiToggle enabled={data.aiEnabled !== false} onChange={handleToggleAi} busy={savingAi} />
         </div>
+
+        <AssignmentList
+          classroomId={data._id}
+          role="teacher"
+          assignments={assignments}
+          now={now}
+          onChanged={() => setReloadKey((k) => k + 1)}
+        />
 
         {/* Roster */}
         <div className="mb-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">

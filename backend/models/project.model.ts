@@ -21,8 +21,10 @@ export interface IProject {
         entry: string;
         port: number;
     };
-    /** Set on a student's copy of a classroom assignment. */
+    /** Set on a student's class projects (their class project and assignment work). */
     classroom: Types.ObjectId | null;
+    /** Set on a student's work for one assignment of the class. */
+    assignment: Types.ObjectId | null;
     /** People invited but who haven't accepted yet (not members). */
     invites: { user: Types.ObjectId; invitedBy: Types.ObjectId; createdAt: Date }[];
     /** Usage tracking (admin dashboard). */
@@ -90,6 +92,12 @@ const projectSchema = new mongoose.Schema<IProject>(
             default: null,
         },
 
+        assignment: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Assignment",
+            default: null,
+        },
+
         lastOpenedAt: { type: Date, default: null },
         lastOpenedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
         openCount: { type: Number, default: 0 },
@@ -109,6 +117,7 @@ const projectSchema = new mongoose.Schema<IProject>(
 
 projectSchema.index({ users: 1 });
 projectSchema.index({ "invites.user": 1 });
+projectSchema.index({ assignment: 1, owner: 1 });
 
 const Project = mongoose.model<IProject>("Project", projectSchema);
 export default Project;

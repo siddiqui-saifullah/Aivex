@@ -28,15 +28,19 @@ const ProjectHeader = ({
           {project?.classroom ? (
             project.isOwner ? (
               <span className="flex items-center gap-1 text-teal-300/80">
-                <GraduationCap size={12} /> Class project
+                <GraduationCap size={12} /> {project.assignment ? "Assignment" : "Class project"}
               </span>
             ) : (
               // The teacher is viewing a student's work
               <Link
-                to={`/classes/${project.classroom}`}
+                to={
+                  project.assignment
+                    ? `/classes/${project.classroom}/assignments/${project.assignment._id}`
+                    : `/classes/${project.classroom}`
+                }
                 className="flex items-center gap-1 text-teal-300 hover:underline"
               >
-                <GraduationCap size={12} /> Student work · back to class
+                <GraduationCap size={12} /> Student work · back to {project.assignment ? "assignment" : "class"}
               </Link>
             )
           ) : (

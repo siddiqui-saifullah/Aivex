@@ -176,15 +176,15 @@ export const signInWithProvider = async (provider: Provider, code: string, redir
 const STATE_TTL = 10 * 60;
 
 /** Remember where to go after sign-in; the state also guards against forged callbacks. */
-export const createState = async (provider: Provider, next: string) => {
+export const createState = async (provider: Provider, next: string, site?: string) => {
     const state = crypto.randomBytes(24).toString("base64url");
-    await redisClient.set(`oauth:state:${state}`, JSON.stringify({ provider, next }), "EX", STATE_TTL);
+    await redisClient.set(`oauth:state:${state}`, JSON.stringify({ provider, next, site }), "EX", STATE_TTL);
     return state;
 };
 
 export const consumeState = async (state: string, provider: Provider) => {
     const raw = await redisClient.getdel(`oauth:state:${state}`);
-    const data = raw ? (JSON.parse(raw) as { provider: Provider; next: string }) : null;
+    const data = raw ? (JSON.parse(raw) as { provider: Provider; next: string; site?: string }) : null;
     if (!data || data.provider !== provider) throw new AppError("Sign-in expired. Try again", 400);
     return data;
 };

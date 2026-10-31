@@ -43,7 +43,7 @@ import {
   warmCRunner,
   type CRunHandle,
 } from "../services/cRunner.service";
-import { enhancePrompt } from "../services/ai.service";
+import { aiLimitMessage, enhancePrompt, getAiUsage, type AiUsage } from "../services/ai.service";
 import type { Mentionable } from "../components/shared/ChatTextarea";
 import { downloadProjectZip } from "../utils/downloadZip";
 import { toTerminalLines } from "../utils/terminalText";
@@ -180,6 +180,8 @@ const Project = () => {
   // Project state
   const [project, setProject] = useState<ProjectDetails | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  // Daily Vex allowance (free Gemini tier)
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   // Socket handlers are registered once per project; read members through a ref
   const projectUsersRef = useRef<User[]>([]);
 
@@ -627,6 +629,8 @@ const Project = () => {
     receiveMessage("user-typing", handleUserTypingEvent);
     receiveMessage("message-deleted", handleMessageDeleted);
     receiveMessage("project-updated", handleProjectUpdated);
+    receiveMessage("ai-usage", setAiUsage);
+    getAiUsage().then((u) => isMounted && setAiUsage(u)).catch(() => undefined);
 
     /* ---------- CLEANUP ---------- */
     return () => {
@@ -637,6 +641,7 @@ const Project = () => {
       removeMessageListener("user-typing", handleUserTypingEvent);
       removeMessageListener("message-deleted", handleMessageDeleted);
       removeMessageListener("project-updated", handleProjectUpdated);
+      removeMessageListener("ai-usage", setAiUsage);
 
       session.destroy();
       collabRef.current = null;
@@ -660,6 +665,10 @@ const Project = () => {
       toast.info("Your teacher has turned off Vex AI for this class");
       return;
     }
+    if (aiUsage?.remaining === 0 && /^\s*@vex\b/i.test(text)) {
+      toast.info(aiLimitMessage(aiUsage));
+      return;
+    }
     const userMessage = formatUserMessage(text, user);
     setMessages((prev) => [...prev, userMessage]);
     setMessage("");
@@ -679,9 +688,14 @@ const Project = () => {
         : undefined;
     if (asksAi) setAiContextDismissed(false);
 
+    // Why the server refused the message (AI off, daily limit...)
+    let serverError: string | undefined;
     try {
       const ack = await sendWithAck<SendAck>("project-message", { message: text, context });
-      if (!ack.ok) throw new Error(ack.error);
+      if (!ack.ok) {
+        serverError = ack.error;
+        throw new Error(ack.error);
+      }
 
       // Attach the stored id so the message can be deleted later
       setMessages((prev) =>
@@ -701,7 +715,7 @@ const Project = () => {
         ),
       );
       if (asksAi) setIsAiThinking(false);
-      toast.error("Message failed to send");
+      toast.error(serverError || "Message failed to send");
     }
   };
 
@@ -1456,6 +1470,7 @@ const Project = () => {
           onApplyFiles={handleApplyFiles}
           aiDisabled={aiDisabled}
           aiHintsOnly={project.aiPolicy === "hints"}
+          aiUsage={aiUsage}
           inputProps={{
             mentionables,
             aiMode: aiMode && !aiDisabled,

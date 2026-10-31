@@ -5,6 +5,7 @@ import catchAsync from "../utils/catchAsync.js";
 import AppError from "../errors/AppError.js";
 import type { AiResponse } from "../types/index.js";
 import { AI_DISABLED_MESSAGE, isAiDisabledInProject } from "../services/aiPolicy.service.js";
+import { quotaMessage, quotaStatus, takeQuota } from "../services/aiQuota.service.js";
 
 export const getResultPoint = async (req: Request, res: Response) => {
     try {
@@ -13,7 +14,13 @@ export const getResultPoint = async (req: Request, res: Response) => {
             res.status(400).send({ message: "prompt query parameter is required" });
             return;
         }
+        const refund = await takeQuota(req.user!._id, "vex");
+        if (!refund) {
+            res.status(429).send({ message: quotaMessage("vex", await quotaStatus(req.user!._id, "vex")) });
+            return;
+        }
         const response = await ai.generate({ prompt });
+        if (/^(AI failed|AI returned an empty|Vex AI (has reached|is busy|couldn't))/.test(response.text ?? "")) refund();
         res.send(response)
     } catch (error) {
         console.log(error);
@@ -47,7 +54,11 @@ export const enhancePromptController = catchAsync(async (req, res) => {
         throw new AppError("prompt is too long to enhance", 413);
     }
 
+    const refund = await takeQuota(req.user!._id, "enhance");
+    if (!refund) throw new AppError(quotaMessage("enhance", await quotaStatus(req.user!._id, "enhance")), 429);
+
     const enhanced = await ai.enhancePrompt(prompt.trim()).catch((err) => {
+        refund();
         console.error("Enhance failed:", err);
         const status = (err as { status?: number }).status === 429 ? 429 : 502;
         throw new AppError(
@@ -57,4 +68,11 @@ export const enhancePromptController = catchAsync(async (req, res) => {
     });
 
     res.status(200).json({ prompt: enhanced || prompt.trim() });
+});
+
+/* -------------------------------------------------------------------------- */
+/* DAILY ALLOWANCE                                                            */
+/* -------------------------------------------------------------------------- */
+export const usageController = catchAsync(async (req, res) => {
+    res.status(200).json(await quotaStatus(req.user!._id, "vex"));
 });

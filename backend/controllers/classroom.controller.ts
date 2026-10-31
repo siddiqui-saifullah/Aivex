@@ -1,5 +1,6 @@
 import catchAsync from "../utils/catchAsync.js";
 import * as classroomService from "../services/classroom.service.js";
+import * as helpService from "../services/help.service.js";
 
 export const createClassroom = catchAsync(async (req, res) => {
     const { name, stack, templateProjectId, aiEnabled } = req.body ?? {};
@@ -59,4 +60,29 @@ export const removeStudent = catchAsync(async (req, res) => {
         studentId: req.params.studentId as string,
     });
     res.status(204).end();
+});
+
+/* -------------------------------------------------------------------------- */
+/* HELP REQUESTS                                                              */
+/* -------------------------------------------------------------------------- */
+export const requestHelp = catchAsync(async (req, res) => {
+    res.status(201).json(await helpService.requestHelp({
+        projectId: String(req.body?.projectId ?? ""),
+        userId: req.user!._id,
+        message: req.body?.message,
+    }));
+});
+
+export const listHelpRequests = catchAsync(async (req, res) => {
+    res.status(200).json(await helpService.listHelpRequests({
+        classroomId: req.params.classroomId as string,
+        userId: req.user!._id,
+    }));
+});
+
+export const resolveHelpRequest = catchAsync(async (req, res) => {
+    res.status(200).json(await helpService.resolveHelpRequest({
+        requestId: req.params.requestId as string,
+        userId: req.user!._id,
+    }));
 });

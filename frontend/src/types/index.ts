@@ -51,6 +51,8 @@ export interface Project {
   aiPolicy?: AiPolicy;
   /** The assignment this project is a student's work for. */
   assignment?: ProjectAssignment | null;
+  /** The student's open "I need help" request on this class project. */
+  helpRequest?: { _id: string; createdAt: string } | null;
   /** Invited but not yet accepted (populated on the project page). */
   invites?: { user: User; createdAt: string }[];
   createdAt?: string;
@@ -70,6 +72,16 @@ export interface ProjectAssignment {
   instructions: string;
   dueAt: string | null;
   aiPolicy: AiPolicy;
+}
+
+/** A student waiting for their teacher's help (teacher view). */
+export interface HelpRequestItem {
+  _id: string;
+  projectId: string;
+  message: string;
+  createdAt: string;
+  student: { _id: string; name?: string; username?: string };
+  assignmentTitle: string | null;
 }
 
 export type SubmissionStatus = "submitted" | "reviewed" | "revision-requested";
@@ -253,6 +265,7 @@ export type NotificationType =
   | "assignment"
   | "submission"
   | "submission-review"
+  | "help-request"
   | "class-ai";
 
 export interface AppNotification {

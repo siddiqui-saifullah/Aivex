@@ -4,6 +4,7 @@ import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
 import Assignment from "../models/assignment.model.js";
 import Submission from "../models/submission.model.js";
+import HelpRequest from "../models/helpRequest.model.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
@@ -290,6 +291,7 @@ export const pullStudent = async (classroomId: Id, match: { user?: Id; project?:
  */
 export const detachStudentProjects = async (projectIds: Id[], teacherId: Id) => {
     if (projectIds.length === 0) return;
+    await HelpRequest.deleteMany({ project: { $in: projectIds }, status: "open" });
     await Project.updateMany(
         { _id: { $in: projectIds } },
         { $set: { classroom: null, assignment: null }, $pull: { users: teacherId, invites: { user: teacherId } } },
@@ -362,6 +364,7 @@ export const deleteClassroom = async ({ classroomId, userId }: { classroomId: st
     const projects = await Project.find({ classroom: classroomId }).select("_id").lean();
     await detachStudentProjects(projects.map((p) => p._id), classroom.teacher);
     await Submission.deleteMany({ classroom: classroomId });
+    await HelpRequest.deleteMany({ classroom: classroomId });
     await Assignment.deleteMany({ classroom: classroomId });
     await Classroom.deleteOne({ _id: classroomId });
 };

@@ -124,7 +124,7 @@ interface UserJoinedEvent {
 
 interface ProjectUpdatedEvent {
   projectId: string;
-  reason: "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy" | "assignment";
+  reason: "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy" | "assignment" | "help";
 }
 
 type SendAck =
@@ -897,6 +897,10 @@ const Project = () => {
     }
   };
 
+  const reloadProject = () => {
+    getProjectById(projectId).then(applyProject).catch(() => undefined);
+  };
+
   /** Save first so the hand-in matches what the student sees, then submit. */
   const handleSubmitAssignment = async (note: string) => {
     if (!project?.assignment) return false;
@@ -1468,6 +1472,7 @@ const Project = () => {
           isSidePanelOpen={isSidePanelOpen}
           onToggleSidePanel={() => setIsSidePanelOpen((prev) => !prev)}
           onCollapse={collapseChat}
+          onHelpChanged={reloadProject}
         />
 
         {project.assignment && (

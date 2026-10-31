@@ -15,9 +15,18 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { classInviteLink, deleteClassroom, getClassroom, removeStudent, updateClassroom } from "../services/classroom.service";
+import {
+  classInviteLink,
+  deleteClassroom,
+  getClassroom,
+  getHelpRequests,
+  removeStudent,
+  resolveHelpRequest,
+  updateClassroom,
+} from "../services/classroom.service";
 import AiToggle from "../components/classroom/AiToggle";
 import AssignmentList from "../components/classroom/AssignmentList";
+import NeedsAttention from "../components/classroom/NeedsAttention";
 import { getAssignments } from "../services/assignment.service";
 import { useToast } from "../context/toast.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
@@ -25,7 +34,7 @@ import { plural } from "../utils/plural";
 import { STACK_FORMATTER } from "../constants/options";
 import { colorFor } from "../utils/userColor";
 import { timeAgo } from "../utils/timeAgo";
-import type { AssignmentSummary, ClassroomDetails, ClassroomStudent } from "../types";
+import type { AssignmentSummary, ClassroomDetails, ClassroomStudent, HelpRequestItem } from "../types";
 
 const REFRESH_MS = 5000;
 
@@ -48,6 +57,7 @@ const Classroom = () => {
   const [now, setNow] = useState(() => Date.now());
   const [savingAi, setSavingAi] = useState(false);
   const [assignments, setAssignments] = useState<AssignmentSummary[]>([]);
+  const [help, setHelp] = useState<HelpRequestItem[]>([]);
   const [reloadKey, setReloadKey] = useState(0);
 
   // Live roster and assignments: refresh while the tab is visible
@@ -55,10 +65,13 @@ const Classroom = () => {
     let alive = true;
     const load = () =>
       Promise.all([getClassroom(classroomId), getAssignments(classroomId)])
-        .then(([details, list]) => {
+        .then(async ([details, list]) => {
+          // Teacher: students waiting for help
+          const requests = details.role === "teacher" ? await getHelpRequests(classroomId).catch(() => []) : [];
           if (!alive) return;
           setData(details);
           setAssignments(list);
+          setHelp(requests);
           setNow(Date.now());
         })
         .catch((err) => alive && setError(getErrorMessage(err, "Could not load the class")));
@@ -247,6 +260,22 @@ const Classroom = () => {
         <div className="mb-8 max-w-xl">
           <AiToggle enabled={data.aiEnabled !== false} onChange={handleToggleAi} busy={savingAi} />
         </div>
+
+        <NeedsAttention
+          classroomId={data._id}
+          help={help}
+          assignments={assignments}
+          now={now}
+          onResolve={async (r) => {
+            setHelp((list) => list.filter((x) => x._id !== r._id));
+            try {
+              await resolveHelpRequest(r._id);
+            } catch (err) {
+              toast.error(getErrorMessage(err, "Could not update the request"));
+              setReloadKey((k) => k + 1);
+            }
+          }}
+        />
 
         <AssignmentList
           classroomId={data._id}

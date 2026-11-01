@@ -441,7 +441,7 @@ const UsageTab = ({ stats }: { stats: ProfileStats | null }) => {
           <div className="max-w-md">
             <div className="mb-2 flex items-baseline justify-between text-sm">
               <span className="text-zinc-300">
-                <span className="font-semibold tabular-nums text-white">{usage.used}</span> of {usage.limit} used today
+                <span className="font-semibold tabular-nums text-white">{usage.used}</span> of {usage.limit} used {usage.period === "month" ? "this month" : "today"}
               </span>
               <span className={usage.remaining === 0 ? "text-amber-300" : "text-zinc-500"}>{usage.remaining} left</span>
             </div>

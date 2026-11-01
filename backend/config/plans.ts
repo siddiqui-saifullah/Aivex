@@ -1,3 +1,5 @@
+import type { ModelGroup } from "../services/ai.service.js";
+
 /**
  * Subscription plans. Prices are in rupees; yearly is about two months free.
  * Paying for a plan buys 30 or 365 days of it (no auto-renew), then the
@@ -15,16 +17,18 @@ export interface Plan {
     price: { monthly: number; yearly: number };
     /** Questions to Vex per day (null = unlimited). */
     vexPerDay: number | null;
+    /** Fair use: questions to Vex per calendar month (null = only the daily limit). */
+    vexPerMonth: number | null;
+    /** Questions a day answered by the "pro" model group (it costs the most). */
+    proPerDay: number;
     /** "Improve my prompt" uses per day. */
     enhancePerDay: number | null;
-    /** Gemini models to try, best first (falls back down the list). */
-    models: string[] | null;
+    /** Model groups to try, best first (see ai.service: free, lite, flash, pro). */
+    route: ModelGroup[];
     /** How much the model may think before answering (2.5 models). */
     thinkingBudget: number;
     features: string[];
 }
-
-const DEFAULT_MODELS = null; // ai.service's own order (or GEMINI_MODEL)
 
 export const PLANS: Record<PlanId, Plan> = {
     free: {
@@ -33,8 +37,10 @@ export const PLANS: Record<PlanId, Plan> = {
         tagline: "Try Vex and learn the basics",
         price: { monthly: 0, yearly: 0 },
         vexPerDay: 3,
+        vexPerMonth: null,
+        proPerDay: 0,
         enhancePerDay: 5,
-        models: DEFAULT_MODELS,
+        route: ["free", "lite"],
         thinkingBudget: 512,
         features: ["3 Vex questions a day", "Full IDE, live preview, Node.js and C/C++", "Classrooms and collaboration"],
     },
@@ -44,8 +50,10 @@ export const PLANS: Record<PlanId, Plan> = {
         tagline: "For daily practice and assignments",
         price: { monthly: 99, yearly: 990 },
         vexPerDay: 30,
+        vexPerMonth: null,
+        proPerDay: 0,
         enhancePerDay: 30,
-        models: DEFAULT_MODELS,
+        route: ["free", "lite"],
         thinkingBudget: 512,
         features: ["30 Vex questions a day", "Code, fixes and explanations", "Everything in Free"],
     },
@@ -54,22 +62,26 @@ export const PLANS: Record<PlanId, Plan> = {
         name: "Pro",
         tagline: "For building real projects",
         price: { monthly: 299, yearly: 2990 },
-        vexPerDay: 100,
-        enhancePerDay: 100,
-        models: DEFAULT_MODELS,
+        vexPerDay: 60,
+        vexPerMonth: 1200,
+        proPerDay: 0,
+        enhancePerDay: 60,
+        route: ["flash", "lite", "free"],
         thinkingBudget: 2048,
-        features: ["100 Vex questions a day", "Deeper thinking on hard tasks", "Everything in Student"],
+        features: ["60 Vex questions a day (1,200 a month)", "Gemini 2.5 Flash with deeper thinking", "Everything in Student"],
     },
     premium: {
         id: "premium",
         name: "Premium",
         tagline: "For power users and teachers",
         price: { monthly: 799, yearly: 7990 },
-        vexPerDay: 400,
-        enhancePerDay: 400,
-        models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"],
+        vexPerDay: 200,
+        vexPerMonth: 4000,
+        proPerDay: 30,
+        enhancePerDay: 200,
+        route: ["pro", "flash", "lite", "free"],
         thinkingBudget: 2048,
-        features: ["400 Vex questions a day", "Gemini 2.5 Pro, our best model", "Everything in Pro"],
+        features: ["200 Vex questions a day (4,000 a month)", "30 a day answered by Gemini 2.5 Pro, our best model", "Everything in Pro"],
     },
 };
 

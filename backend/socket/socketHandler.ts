@@ -12,8 +12,7 @@ import * as Y from "yjs";
 import * as collab from "./collab.js";
 import { AI_DISABLED_MESSAGE, aiPolicyInProject } from "../services/aiPolicy.service.js";
 import Assignment from "../models/assignment.model.js";
-import { quotaMessage, quotaStatus, takeQuota, type QuotaStatus } from "../services/aiQuota.service.js";
-import { aiOptionsFor } from "../services/billing.service.js";
+import { aiOptionsFor, quotaMessage, quotaStatus, recordModelUse, takeQuota, type QuotaStatus } from "../services/aiQuota.service.js";
 import { recordAiQuestion, recordSafely } from "../services/journey.service.js";
 import { notify } from "../services/notification.service.js";
 import userModel from "../models/user.model.js";
@@ -320,6 +319,7 @@ const handleAiMessage = async (
     })) ?? {
         text: "Vex AI is unavailable right now. Please try again later.",
     };
+    if (!AI_ERROR_REPLY.test(response.text ?? "")) void recordModelUse(socket.data.user.id, response.model).catch(() => undefined);
     // Enforced here, whatever the model answered
     if (hintsOnly) {
         delete response.fileTree;

@@ -12,7 +12,7 @@ const DESCRIPTION =
 const FAQ = [
   {
     q: "What counts as a Vex question?",
-    a: "Every message to @Vex: writing or changing code, fixing an error, or explaining something. \"Improve my prompt\" has its own daily allowance. If Vex fails to answer, the question isn't counted.",
+    a: "Every message to @Vex: writing or changing code, fixing an error, or explaining something. \"Improve my prompt\" has its own daily allowance. If Vex fails to answer, the question isn't counted. Pro and Premium also have a monthly fair-use limit (1,200 and 4,000 questions).",
   },
   {
     q: "When does my daily allowance reset?",
@@ -33,6 +33,10 @@ const FAQ = [
   {
     q: "Is the IDE itself free?",
     a: "Yes. The editor, live preview, Node.js and C/C++ runs, collaboration and classrooms are free on every plan. Plans only change how much you can use Vex AI each day and which model answers first.",
+  },
+  {
+    q: "Which AI models answer?",
+    a: "Free and Student questions are answered by free open models (through providers such as OpenRouter and Groq), with Google Gemini as a backup so you always get an answer. Pro uses Gemini 2.5 Flash with deeper thinking. Premium gets 30 answers a day from Gemini 2.5 Pro, then Gemini 2.5 Flash.",
   },
 ];
 

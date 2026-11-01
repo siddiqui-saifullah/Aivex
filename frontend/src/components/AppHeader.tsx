@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Settings,
   KeyRound,
+  CreditCard,
 } from "lucide-react";
 import { useUser } from "../context/user.context";
 import { logOut } from "../services/user.service";
@@ -70,6 +71,12 @@ const AppHeader = () => {
               >
                 <LayoutDashboard size={18} />
                 <span>Dashboard</span>
+              </Link>
+              <Link
+                to="/pricing"
+                className="text-zinc-400 hover:text-white transition-colors text-sm font-medium"
+              >
+                Pricing
               </Link>
             </nav>
 
@@ -148,6 +155,14 @@ const AppHeader = () => {
                       >
                         <Settings size={16} />
                         Settings
+                      </Link>
+                      <Link
+                        to="/settings/billing"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors"
+                      >
+                        <CreditCard size={16} />
+                        Plan & billing
                       </Link>
                       <Link
                         to="/join"

@@ -10,8 +10,10 @@ import { AI_POLICY_LABELS, describeDue } from "../../utils/dueDate";
 import type { AssignmentSummary, ClassroomRole } from "../../types";
 
 /** A class's assignments: the teacher creates them and sees progress; students start or continue them. */
-const AssignmentList = ({ classroomId, role, assignments, now, onChanged }: {
+const AssignmentList = ({ classroomId, stack, role, assignments, now, onChanged }: {
   classroomId: string;
+  /** The class's language (test cases are for C and C++). */
+  stack?: string;
   role: ClassroomRole;
   assignments: AssignmentSummary[];
   now: number;
@@ -123,6 +125,7 @@ const AssignmentList = ({ classroomId, role, assignments, now, onChanged }: {
 
       {creating && (
         <AssignmentModal
+          stack={stack}
           onClose={() => setCreating(false)}
           onSave={async (input) => {
             const created = await createAssignment(classroomId, input);

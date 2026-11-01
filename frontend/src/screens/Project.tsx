@@ -1488,6 +1488,7 @@ const Project = () => {
             assignment={project.assignment}
             isTeacher={!project.isOwner}
             onSubmit={project.isOwner ? handleSubmitAssignment : undefined}
+            files={flatFileTree}
           />
         )}
 

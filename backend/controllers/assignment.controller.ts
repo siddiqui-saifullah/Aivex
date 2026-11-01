@@ -1,3 +1,5 @@
+import * as gradingService from "../services/grading.service.js";
+import * as similarityService from "../services/similarity.service.js";
 import catchAsync from "../utils/catchAsync.js";
 import * as assignmentService from "../services/assignment.service.js";
 import * as submissionService from "../services/submission.service.js";
@@ -104,5 +106,32 @@ export const recordRun = catchAsync(async (req, res) => {
         userId: req.user!._id,
         ok: req.body?.ok,
         message: req.body?.message,
+    }));
+});
+
+/** Teacher: test results from running a submission in their browser. */
+export const recordTestRuns = catchAsync(async (req, res) => {
+    res.status(200).json(await gradingService.recordTestRuns({
+        submissionId: req.params.submissionId as string,
+        userId: req.user!._id,
+        runs: req.body?.runs,
+    }));
+});
+
+/** Teacher: which students' code is suspiciously similar. */
+export const getSimilarity = catchAsync(async (req, res) => {
+    res.status(200).json(await similarityService.similarityReport({
+        assignmentId: req.params.assignmentId as string,
+        userId: req.user!._id,
+    }));
+});
+
+/** Teacher: two submissions side by side with the matching lines. */
+export const compareSubmissions = catchAsync(async (req, res) => {
+    res.status(200).json(await similarityService.compareSubmissions({
+        assignmentId: req.params.assignmentId as string,
+        userId: req.user!._id,
+        a: String(req.query.a ?? ""),
+        b: String(req.query.b ?? ""),
     }));
 });

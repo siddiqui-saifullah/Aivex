@@ -7,7 +7,9 @@ import { useUser } from "../../context/user.context";
 import { getErrorMessage } from "../../utils/getErrorMessage";
 import { AI_POLICY_LABELS, toLocalInput } from "../../utils/dueDate";
 import type { AssignmentInput } from "../../services/assignment.service";
-import type { AiPolicy, Project, ProjectAssignment } from "../../types";
+import type { AiPolicy, Project, ProjectAssignment, TestCase } from "../../types";
+import TestsEditor from "./TestsEditor";
+import { draftTest, type DraftTest } from "./draftTest";
 
 const POLICIES: AiPolicy[] = ["allowed", "hints", "disabled"];
 
@@ -15,8 +17,10 @@ const inputClass =
   "w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-teal-500/50 focus:outline-none";
 
 /** Create an assignment, or edit one (`initial`). Starter code is chosen on create only. */
-const AssignmentModal = ({ initial, onClose, onSave }: {
-  initial?: ProjectAssignment & { maxMarks?: number | null };
+const AssignmentModal = ({ initial, stack, onClose, onSave }: {
+  initial?: ProjectAssignment & { maxMarks?: number | null; tests?: TestCase[] };
+  /** The class's (create) or the assignment's (edit) language. */
+  stack?: string;
   onClose: () => void;
   onSave: (input: AssignmentInput) => Promise<void>;
 }) => {
@@ -28,6 +32,10 @@ const AssignmentModal = ({ initial, onClose, onSave }: {
   const [maxMarks, setMaxMarks] = useState(initial?.maxMarks ? String(initial.maxMarks) : "");
   const [templateId, setTemplateId] = useState("");
   const [templates, setTemplates] = useState<Project[]>([]);
+  const [tests, setTests] = useState<DraftTest[]>(() => (initial?.tests ?? []).map((t) => draftTest(t)));
+  // A copied project brings its own language
+  const effectiveStack = templates.find((p) => p._id === templateId)?.stack ?? stack ?? "";
+  const testable = effectiveStack === "c" || effectiveStack === "cpp";
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -57,10 +65,16 @@ const AssignmentModal = ({ initial, onClose, onSave }: {
       setError("Marks must be a whole number from 1 to 1000, or empty");
       return;
     }
+    const incomplete = testable ? tests.findIndex((t) => !t.expected.trim()) : -1;
+    if (incomplete >= 0) {
+      setError(`Test ${incomplete + 1} needs an expected output`);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       await onSave({
+        ...(testable ? { tests: tests.map((t) => ({ _id: t._id, name: t.name, input: t.input, expected: t.expected, points: Number(t.points) || 1, hidden: t.hidden })) } : {}),
         maxMarks: marks,
         title: title.trim(),
         instructions,
@@ -164,6 +178,8 @@ const AssignmentModal = ({ initial, onClose, onSave }: {
             ))}
           </div>
         </fieldset>
+
+        {testable && <TestsEditor tests={tests} onChange={setTests} />}
 
         {!initial && (
           <div>

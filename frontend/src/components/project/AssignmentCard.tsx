@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarClock, ChevronDown, ClipboardList, Loader2, Send } from "lucide-react";
+import { CalendarClock, ChevronDown, ClipboardList, FlaskConical, Loader2, Send } from "lucide-react";
 import SubmissionBadge from "../classroom/SubmissionBadge";
+import TestResults, { type TestRow } from "../classroom/TestResults";
+import { outcomeOf, runTests } from "../../utils/testRunner";
 import { getAssignment } from "../../services/assignment.service";
-import type { ProjectAssignment, SubmissionSummary } from "../../types";
+import type { AssignmentTests, ProjectAssignment, SubmissionSummary } from "../../types";
 import { AI_POLICY_LABELS, describeDue } from "../../utils/dueDate";
 
 const storageKey = (id: string) => `assignment-card:${id}`;
@@ -12,9 +14,11 @@ const storageKey = (id: string) => `assignment-card:${id}`;
  * The assignment a student's project is for: title, due date, AI rule and
  * instructions. The student hands their work in from here.
  */
-const AssignmentCard = ({ assignment, isTeacher, onSubmit }: {
+const AssignmentCard = ({ assignment, isTeacher, onSubmit, files }: {
   assignment: ProjectAssignment;
   isTeacher: boolean;
+  /** The project's current files (tests run on what's in the editor). */
+  files?: Record<string, string>;
   /** Student: save and hand in the project. */
   onSubmit?: (note: string) => Promise<boolean>;
 }) => {
@@ -22,13 +26,36 @@ const AssignmentCard = ({ assignment, isTeacher, onSubmit }: {
   const [composing, setComposing] = useState(false);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
+  const [tests, setTests] = useState<(AssignmentTests & { stack: string }) | null>(null);
+  const [testRows, setTestRows] = useState<TestRow[] | null>(null);
+  const [testing, setTesting] = useState<{ done: number; total: number } | null>(null);
 
   const loadLatest = useCallback(() => {
-    if (isTeacher) return;
     getAssignment(assignment._id)
-      .then((a) => setLatest(a.submissions?.[0] ?? null))
+      .then((a) => {
+        if (!isTeacher) setLatest(a.submissions?.[0] ?? null);
+        if (a.tests?.length) setTests({ tests: a.tests, totalPoints: a.totalPoints ?? 0, hiddenCount: a.hiddenCount ?? 0, stack: a.stack });
+      })
       .catch(() => undefined);
   }, [assignment._id, isTeacher]);
+
+  /** Run the visible tests on the code as it is in the editor (unsaved changes included). */
+  const checkTests = async () => {
+    if (!tests || !files || testing) return;
+    setTesting({ done: 0, total: tests.tests.length });
+    const runs = await runTests(files, tests.stack, tests.tests, (done, total) => setTesting({ done, total }));
+    setTestRows(tests.tests.map((t) => {
+      const run = runs.find((r) => r.test === t._id);
+      return {
+        key: t._id, name: t.name, points: t.points, hidden: false,
+        outcome: run ? outcomeOf(run, t.expected) : "error",
+        input: t.input, expected: t.expected, output: run?.output ?? "",
+      };
+    }));
+    setTesting(null);
+  };
+  const passedPoints = testRows?.reduce((n, r) => n + (r.outcome === "passed" ? r.points : 0), 0) ?? 0;
+  const visiblePoints = tests?.tests.reduce((n, t) => n + t.points, 0) ?? 0;
   useEffect(loadLatest, [loadLatest]);
 
   const submit = async () => {
@@ -96,6 +123,35 @@ const AssignmentCard = ({ assignment, isTeacher, onSubmit }: {
               {isTeacher ? "All students' work" : "All assignments"}
             </Link>
           </div>
+          {tests && files && (
+            <div className="rounded-lg border border-white/10 bg-black/40 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-xs text-zinc-300">
+                  <FlaskConical size={13} className="text-teal-300" />
+                  {tests.tests.length} test{tests.tests.length === 1 ? "" : "s"}
+                  {tests.hiddenCount > 0 && <span className="text-zinc-500">+ {tests.hiddenCount} hidden</span>}
+                  <span className="text-zinc-500">· {tests.totalPoints} pts</span>
+                </p>
+                <button
+                  onClick={checkTests}
+                  disabled={!!testing}
+                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-teal-500/40 px-2 py-1 text-xs font-medium text-teal-200 hover:bg-teal-500/10 disabled:opacity-60"
+                >
+                  {testing ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />}
+                  {testing ? `Running ${Math.min(testing.done + 1, testing.total)}/${testing.total}` : "Run tests"}
+                </button>
+              </div>
+              {testRows && (
+                <div className="mt-2 space-y-1.5">
+                  <p className={`text-xs font-medium ${passedPoints === visiblePoints ? "text-teal-300" : "text-amber-300"}`}>
+                    {testRows.filter((r) => r.outcome === "passed").length} of {testRows.length} passed · {passedPoints}/{visiblePoints} pts
+                  </p>
+                  <TestResults rows={testRows} compact />
+                  {tests.hiddenCount > 0 && <p className="text-[10px] text-zinc-500">Hidden tests run when your teacher grades your submission.</p>}
+                </div>
+              )}
+            </div>
+          )}
           {!isTeacher && (
             <div className="rounded-lg border border-white/10 bg-black/40 p-2.5">
               {latest && (

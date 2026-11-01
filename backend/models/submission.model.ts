@@ -14,6 +14,28 @@ export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
  * at that moment. The files never change after submitting; each resubmission
  * is a new version. Only the teacher's review fields are updated.
  */
+/** One test case's result on this submission. */
+export interface ITestResult {
+    test: Types.ObjectId;
+    name: string;
+    points: number;
+    hidden: boolean;
+    passed: boolean;
+    /** passed / wrong output / didn't compile / crashed / too slow */
+    outcome: "passed" | "failed" | "compile-error" | "error" | "timeout";
+    /** What the program printed (cut short). */
+    output: string;
+}
+
+export interface ISubmissionTests {
+    results: ITestResult[];
+    score: number;
+    total: number;
+    ranAt: Date;
+    /** Run on the server's code runner, or in the teacher's browser. */
+    by: "server" | "teacher";
+}
+
 export interface ISubmission {
     assignment: Types.ObjectId;
     classroom: Types.ObjectId;
@@ -27,6 +49,8 @@ export interface ISubmission {
     marks: number | null;
     reviewedBy: Types.ObjectId | null;
     reviewedAt: Date | null;
+    /** Auto-grading result (assignments with test cases). */
+    tests: ISubmissionTests | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -45,6 +69,7 @@ const submissionSchema = new mongoose.Schema<ISubmission>(
         marks: { type: Number, default: null },
         reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
         reviewedAt: { type: Date, default: null },
+        tests: { type: mongoose.Schema.Types.Mixed, default: null },
     },
     { timestamps: true },
 );

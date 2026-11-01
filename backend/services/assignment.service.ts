@@ -1,5 +1,6 @@
 import mongoose, { type Types } from "mongoose";
-import Assignment, { AI_POLICIES, type AiPolicy } from "../models/assignment.model.js";
+import Assignment, { AI_POLICIES, type AiPolicy, type ITestCase } from "../models/assignment.model.js";
+import { isTestableStack } from "../utils/grading.js";
 import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
 import Submission from "../models/submission.model.js";
@@ -59,6 +60,42 @@ const parseAiPolicy = (value: unknown): AiPolicy => {
     if (value === undefined) return "allowed";
     if (!AI_POLICIES.includes(value as AiPolicy)) throw new AppError("AI rule must be allowed, hints or disabled", 400);
     return value as AiPolicy;
+};
+
+const MAX_TESTS = 30;
+const MAX_TEST_TEXT = 10_000;
+
+/** Test cases from the teacher's form (C and C++ assignments only). */
+const parseTests = (value: unknown, stack: string) => {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new AppError("Tests must be a list", 400);
+    if (value.length && !isTestableStack(stack)) throw new AppError("Test cases work on C and C++ assignments", 400);
+    if (value.length > MAX_TESTS) throw new AppError(`Up to ${MAX_TESTS} test cases`, 400);
+    return value.map((t, i) => {
+        const raw = (t ?? {}) as Record<string, unknown>;
+        const input = typeof raw.input === "string" ? raw.input : "";
+        const expected = typeof raw.expected === "string" ? raw.expected : "";
+        if (input.length > MAX_TEST_TEXT || expected.length > MAX_TEST_TEXT) throw new AppError(`Test ${i + 1} is too long`, 400);
+        if (!expected.trim()) throw new AppError(`Test ${i + 1} needs an expected output`, 400);
+        const points = raw.points === undefined || raw.points === "" ? 1 : Number(raw.points);
+        if (!Number.isInteger(points) || points < 1 || points > 100) throw new AppError(`Test ${i + 1}: points must be 1 to 100`, 400);
+        const name = (typeof raw.name === "string" ? raw.name.trim() : "").slice(0, 80) || `Test ${i + 1}`;
+        // Keep ids of tests that already exist, so results stay linked
+        const id = typeof raw._id === "string" && mongoose.Types.ObjectId.isValid(raw._id) ? new mongoose.Types.ObjectId(raw._id) : new mongoose.Types.ObjectId();
+        return { _id: id, name, input, expected, points, hidden: raw.hidden === true };
+    });
+};
+
+/** What a student may see of the tests: visible ones in full, hidden ones only counted. */
+export const testsFor = (tests: ITestCase[] | undefined, role: "teacher" | "student") => {
+    const all = tests ?? [];
+    const totalPoints = all.reduce((n, t) => n + t.points, 0);
+    if (role === "teacher") return { tests: all, totalPoints, hiddenCount: all.filter((t) => t.hidden).length };
+    return {
+        tests: all.filter((t) => !t.hidden),
+        totalPoints,
+        hiddenCount: all.filter((t) => t.hidden).length,
+    };
 };
 
 /* -------------------------------------------------------------------------- */
@@ -153,6 +190,8 @@ export const createAssignment = async ({ classroomId, teacherId, input }: {
         starterFiles = toStoredFiles(fromStoredFiles(template.files));
     }
 
+    const tests = parseTests(input.tests, stack);
+
     const assignment = await Assignment.create({
         classroom: classroom._id,
         title,
@@ -162,6 +201,7 @@ export const createAssignment = async ({ classroomId, teacherId, input }: {
         dueAt,
         aiPolicy,
         maxMarks,
+        tests,
         createdBy: teacherId,
     });
 
@@ -176,7 +216,7 @@ export const createAssignment = async ({ classroomId, teacherId, input }: {
         });
     }
 
-    return summary(assignment.toObject());
+    return { ...summary(assignment.toObject()), ...testsFor(assignment.toObject().tests, "teacher") };
 };
 
 /* -------------------------------------------------------------------------- */
@@ -227,7 +267,7 @@ export const listAssignments = async ({ classroomId, userId }: { classroomId: st
 /* -------------------------------------------------------------------------- */
 export const getAssignment = async ({ assignmentId, userId }: { assignmentId: string; userId: Id }) => {
     const { assignment, classroom, role } = await loadAssignment(assignmentId, userId);
-    const base = { ...summary(assignment), role, classroomName: classroom.name };
+    const base = { ...summary(assignment), role, classroomName: classroom.name, ...testsFor(assignment.tests, role) };
 
     if (role === "student") {
         const [mine, submissions] = await Promise.all([
@@ -248,7 +288,7 @@ export const getAssignment = async ({ assignmentId, userId }: { assignmentId: st
     const [projects, students, submissions] = await Promise.all([
         Project.find({ assignment: assignment._id, classroom: classroom._id }).select("owner updatedAt").lean(),
         userModel.find({ _id: { $in: classroom.students.map((s) => s.user) } }).select("name username").lean(),
-        Submission.find({ assignment: assignment._id }).select("student version status marks createdAt").lean(),
+        Submission.find({ assignment: assignment._id }).select("student version status marks createdAt tests.score tests.total").lean(),
     ]);
     const latest = latestByStudent(submissions);
     const projectByOwner = new Map(projects.map((p) => [String(p.owner), p]));
@@ -267,7 +307,10 @@ export const getAssignment = async ({ assignmentId, userId }: { assignmentId: st
                 online: project ? online.get(String(project._id))?.has(String(u._id)) ?? false : false,
                 submission: (() => {
                     const x = latest.get(String(u._id));
-                    return x ? { _id: x._id, version: x.version, status: x.status, marks: x.marks, createdAt: x.createdAt } : null;
+                    return x ? {
+                        _id: x._id, version: x.version, status: x.status, marks: x.marks, createdAt: x.createdAt,
+                        tests: x.tests ? { score: x.tests.score, total: x.tests.total } : null,
+                    } : null;
                 })(),
             };
         }),
@@ -328,12 +371,13 @@ export const updateAssignment = async ({ assignmentId, userId, input }: {
     const { assignment, role } = await loadAssignment(assignmentId, userId);
     teacherOnly(role, "edit assignments");
 
-    const changes: Partial<{ title: string; instructions: string; dueAt: Date | null; aiPolicy: AiPolicy; maxMarks: number | null }> = {};
+    const changes: Partial<{ title: string; instructions: string; dueAt: Date | null; aiPolicy: AiPolicy; maxMarks: number | null; tests: ITestCase[] }> = {};
     if (input.title !== undefined) changes.title = parseTitle(input.title);
     if (input.instructions !== undefined) changes.instructions = parseInstructions(input.instructions);
     if (input.dueAt !== undefined) changes.dueAt = parseDueAt(input.dueAt);
     if (input.aiPolicy !== undefined) changes.aiPolicy = parseAiPolicy(input.aiPolicy);
     if (input.maxMarks !== undefined) changes.maxMarks = parseMaxMarks(input.maxMarks);
+    if (input.tests !== undefined) changes.tests = parseTests(input.tests, assignment.stack);
     if (Object.keys(changes).length === 0) throw new AppError("Nothing to update", 400);
 
     await Assignment.updateOne({ _id: assignment._id }, { $set: changes });
@@ -342,7 +386,8 @@ export const updateAssignment = async ({ assignmentId, userId, input }: {
     const projects = await Project.find({ assignment: assignment._id }).select("_id").lean();
     for (const p of projects) notifyProjectUpdated(String(p._id), "assignment");
 
-    return summary({ ...assignment, ...changes });
+    const updated = { ...assignment, ...changes };
+    return { ...summary(updated), ...testsFor(updated.tests, "teacher") };
 };
 
 /** Students keep their work as personal projects; the teacher loses access to it. */

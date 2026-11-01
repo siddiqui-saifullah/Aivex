@@ -8,6 +8,7 @@ const router: ExpressRouter = Router();
 router.use(authMiddleware.authUser);
 
 router.get("/:submissionId", assignmentController.getSubmission);
+router.post("/:submissionId/tests", rateLimit({ windowMs: 60_000, max: 120 }), assignmentController.recordTestRuns);
 router.patch("/:submissionId/review", rateLimit({ windowMs: 60_000, max: 60 }), assignmentController.reviewSubmission);
 
 export default router;

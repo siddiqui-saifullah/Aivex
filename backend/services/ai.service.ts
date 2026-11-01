@@ -1,7 +1,47 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AiResponse } from "../types/index.js";
 
-const MODEL = "gemini-2.5-flash";
+/**
+ * Models to try, in order (GEMINI_MODEL: one name or a comma list). On the
+ * free tier each model has its own quota, so when one is rate limited,
+ * missing or overloaded the next one answers instead.
+ */
+const MODELS = (process.env.GEMINI_MODEL || "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+
+/** Rate-limited models are skipped for a minute. */
+const coolingUntil = new Map<string, number>();
+
+/** Errors where another model may still work (quota, missing model, overload). */
+const tryNextModel = (err: unknown) => {
+    const status = (err as { status?: number }).status;
+    const message = String((err as { message?: string }).message ?? "");
+    return status === 429 || status === 404 || status === 500 || status === 503
+        || (status === 400 && /model|not (found|supported)|thinking/i.test(message));
+};
+
+/** Run a Gemini call on the first model that works. */
+const withModels = async <T>(call: (model: string) => Promise<T>): Promise<T> => {
+    const now = Date.now();
+    const usable = MODELS.filter((m) => (coolingUntil.get(m) ?? 0) <= now);
+    let lastError: unknown;
+    for (const model of usable.length ? usable : MODELS) {
+        try {
+            return await call(model);
+        } catch (err) {
+            lastError = err;
+            if ((err as { status?: number }).status === 429) coolingUntil.set(model, Date.now() + 60_000);
+            if (!tryNextModel(err)) throw err;
+            console.warn(`Gemini ${model} failed (${(err as { status?: number }).status ?? "error"}), trying the next model`);
+        }
+    }
+    throw lastError;
+};
+
+/** Only 2.5 models take a thinking budget. */
+const thinking = (model: string, budget: number) => (/2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: budget } } : {});
 
 /**
  * System instruction, kept compact on purpose: it is sent with every request,
@@ -197,28 +237,29 @@ export const generate = async ({
         `REQUEST:\n${prompt}`,
     ].filter(Boolean).join("\n\n");
 
-    const request = () => ai.models.generateContent({
-        model: MODEL,
+    const request = (model: string) => ai.models.generateContent({
+        model,
         contents: [{ role: "user", parts: [{ text: context }] }],
         config: {
             systemInstruction: hintsOnly ? SYSTEM_INSTRUCTION + HINTS_INSTRUCTION : SYSTEM_INSTRUCTION,
             responseMimeType: "application/json",
             // A small thinking budget keeps answers fast (and within free-tier
             // token limits) while still planning multi-file changes
-            thinkingConfig: { thinkingBudget: 512 },
+            ...thinking(model, 512),
         },
     });
 
     try {
-        let response;
-        try {
-            response = await request();
-        } catch (err) {
-            // One retry for transient overloads
-            if (!isRetryable(err)) throw err;
-            await new Promise((r) => setTimeout(r, 1500));
-            response = await request();
-        }
+        const response = await withModels(async (model) => {
+            try {
+                return await request(model);
+            } catch (err) {
+                // One retry for transient overloads
+                if (!isRetryable(err)) throw err;
+                await new Promise((r) => setTimeout(r, 1500));
+                return request(model);
+            }
+        });
 
         const raw = response.text ?? "";
         if (!raw) return { text: "Vex AI couldn't answer that. Please try again." };
@@ -232,15 +273,15 @@ export const generate = async ({
 
 /** Turn a rough idea into a precise prompt (no thinking: this must feel instant). */
 export const enhancePrompt = async (prompt: string): Promise<string> => {
-    const response = await ai.models.generateContent({
-        model: MODEL,
+    const response = await withModels((model) => ai.models.generateContent({
+        model,
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         config: {
             systemInstruction: ENHANCE_INSTRUCTION,
-            thinkingConfig: { thinkingBudget: 0 },
+            ...thinking(model, 0),
             maxOutputTokens: 300,
         },
-    });
+    }));
 
     return (response.text ?? "").trim().replace(/^["']|["']$/g, "");
 };

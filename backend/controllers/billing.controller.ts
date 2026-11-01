@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import catchAsync from "../utils/catchAsync.js";
 import * as billing from "../services/billing.service.js";
 import { quotaStatus } from "../services/aiQuota.service.js";
+import * as institute from "../services/institute.service.js";
 
 export const getPlans = (_req: Request, res: Response) => {
     res.status(200).json(billing.publicPlans());
@@ -28,4 +29,20 @@ export const webhook = catchAsync(async (req, res) => {
     const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
     await billing.handleWebhook(body, req.get("x-razorpay-signature"));
     res.status(200).json({ ok: true });
+});
+
+/* -------------------------------------------------------------------------- */
+/* INSTITUTE                                                                  */
+/* -------------------------------------------------------------------------- */
+export const getInstitute = catchAsync(async (req, res) => {
+    res.status(200).json(await institute.instituteSummary(req.user!._id));
+});
+
+export const instituteCheckout = catchAsync(async (req, res) => {
+    res.status(201).json(await institute.createSeatCheckout(req.user!._id, req.body ?? {}));
+});
+
+/** Public: a college asks for a quote (signed-in or not). */
+export const instituteInquiry = catchAsync(async (req, res) => {
+    res.status(201).json(await institute.createInquiry(req.body ?? {}, req.user?._id));
 });

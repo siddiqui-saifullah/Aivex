@@ -4,7 +4,8 @@ import AppError from "../errors/AppError.js";
 import userModel from "../models/user.model.js";
 import Payment from "../models/payment.model.js";
 import { isAdminEmail } from "../middleware/admin.middleware.js";
-import { PERIOD_DAYS, PLANS, isPaidPlan, isPeriod, type PlanId } from "../config/plans.js";
+import { PERIOD_DAYS, PLANS, isPaidPlan, isPeriod, type BillingPeriod, type PaidPlanId, type PlanId } from "../config/plans.js";
+import { applySeatPayment, seatCoverage } from "./institute.service.js";
 
 type Id = Types.ObjectId | string;
 const DAY = 86_400_000;
@@ -27,18 +28,28 @@ export interface ActivePlan {
     plan: PlanId;
     expiresAt: Date | null;
     admin: boolean;
+    /** Set when the plan comes from a teacher's institute seats. */
+    institute: { institute: string; teacher: string; expiresAt: Date } | null;
 }
 
-/** The plan in force right now (an expired plan is Free). */
+const rank = (plan: PlanId) => ["free", "student", "pro", "premium"].indexOf(plan);
+
+/**
+ * The plan in force right now: the user's own (an expired one is Free), or
+ * the Student plan through a teacher's institute seats, whichever is better.
+ */
 export const activePlan = async (userId: Id): Promise<ActivePlan> => {
     const user = await userModel.findById(userId).select("email plan planExpiresAt").lean();
-    if (!user) return { plan: "free", expiresAt: null, admin: false };
+    if (!user) return { plan: "free", expiresAt: null, admin: false, institute: null };
     const admin = isAdminEmail(user.email);
     const paid = isPaidPlan(user.plan) && user.planExpiresAt && user.planExpiresAt.getTime() > Date.now();
-    return paid ? { plan: user.plan, expiresAt: user.planExpiresAt, admin } : { plan: "free", expiresAt: null, admin };
+    const own: ActivePlan = paid
+        ? { plan: user.plan, expiresAt: user.planExpiresAt, admin, institute: null }
+        : { plan: "free", expiresAt: null, admin, institute: null };
+    if (rank(own.plan) >= rank("student")) return own;
+    const seat = await seatCoverage(userId);
+    return seat ? { plan: "student", expiresAt: null, admin, institute: seat } : own;
 };
-
-const rank = (plan: PlanId) => ["free", "student", "pro", "premium"].indexOf(plan);
 
 const razorpay = async <T>(path: string, body: object): Promise<T> => {
     const res = await fetch(`${apiBase()}${path}`, {
@@ -71,23 +82,35 @@ export const createCheckout = async (userId: Id, planId: unknown, period: unknow
     }
 
     const plan = PLANS[planId];
-    const amount = plan.price[period] * 100;
+    return createPaymentLink(userId, {
+        amount: plan.price[period] * 100,
+        description: `Aivex ${plan.name} (${period === "yearly" ? "1 year" : "1 month"})`,
+        payment: { kind: "plan", plan: planId, period },
+    });
+};
+
+/** A Razorpay payment link for `amount` paise, recorded as a Payment. */
+export const createPaymentLink = async (userId: Id, { amount, description, payment }: {
+    amount: number;
+    description: string;
+    payment: { kind: "plan" | "seats"; plan: PaidPlanId; period: BillingPeriod; seats?: number; institute?: string };
+}) => {
     const reference = `aivex_${crypto.randomBytes(9).toString("hex")}`;
     const user = await userModel.findById(userId).select("name email").lean();
     const link = await razorpay<{ id: string; short_url: string }>("/v1/payment_links", {
         amount,
         currency: "INR",
         reference_id: reference,
-        description: `Aivex ${plan.name} (${period === "yearly" ? "1 year" : "1 month"})`,
+        description,
         customer: { name: user?.name ?? "", email: user?.email ?? "" },
         notify: { sms: false, email: false },
         reminder_enable: false,
         expire_by: Math.floor(Date.now() / 1000) + 24 * 3600,
         callback_url: `${frontendUrl()}/settings/billing`,
         callback_method: "get",
-        notes: { userId: String(userId), plan: planId, period },
+        notes: { userId: String(userId), kind: payment.kind, plan: payment.plan, period: payment.period, seats: String(payment.seats ?? 0) },
     });
-    await Payment.create({ user: userId, plan: planId, period, amount, currency: "INR", linkId: link.id, reference });
+    await Payment.create({ user: userId, ...payment, amount, currency: "INR", linkId: link.id, reference });
     return { url: link.short_url };
 };
 
@@ -111,6 +134,12 @@ const applyPayment = async (linkId: string, paymentId: string) => {
         { new: true },
     );
     if (!payment) return null; // unknown, or already applied
+
+    if (payment.kind === "seats") {
+        payment.validUntil = await applySeatPayment(payment);
+        await payment.save();
+        return payment;
+    }
 
     const user = await userModel.findById(payment.user).select("plan planExpiresAt");
     if (!user) return payment;
@@ -151,7 +180,8 @@ export const verifyPayment = async (userId: Id, body: Record<string, unknown>) =
     }
     if (status !== "paid") throw new AppError("The payment wasn't completed. You haven't been charged.", 400);
     await applyPayment(linkId as string, paymentId as string);
-    return billingSummary(userId);
+    const applied = await Payment.findOne({ linkId }).select("kind seats validUntil").lean();
+    return { ...await billingSummary(userId), paid: applied ? { kind: applied.kind, seats: applied.seats, validUntil: applied.validUntil } : null };
 };
 
 /** Razorpay webhook (raw body, signed with the webhook secret). */
@@ -183,10 +213,10 @@ export const billingSummary = async (userId: Id) => {
         Payment.find({ user: userId, status: "paid" })
             .sort({ paidAt: -1 })
             .limit(50)
-            .select("plan period amount currency paymentId paidAt validUntil")
+            .select("kind seats institute plan period amount currency paymentId paidAt validUntil")
             .lean(),
     ]);
-    return { plan: current.plan, expiresAt: current.expiresAt, admin: current.admin, payments };
+    return { plan: current.plan, expiresAt: current.expiresAt, admin: current.admin, institute: current.institute, payments };
 };
 
 /** Public plan list for the pricing page. */

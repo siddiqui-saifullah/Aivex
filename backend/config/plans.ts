@@ -89,3 +89,17 @@ export const PERIOD_DAYS: Record<BillingPeriod, number> = { monthly: 30, yearly:
 
 export const isPaidPlan = (id: unknown): id is PaidPlanId => id === "student" || id === "pro" || id === "premium";
 export const isPeriod = (p: unknown): p is BillingPeriod => p === "monthly" || p === "yearly";
+
+/**
+ * Institute plan: a teacher (or college) buys seats; students in their
+ * classes get the Student plan's AI, in the order they joined, up to the
+ * number of seats.
+ */
+export const INSTITUTE = {
+    /** Rupees per seat. */
+    pricePerSeat: { monthly: 49, yearly: 399 },
+    minSeats: 20,
+    maxSeats: 2000,
+    /** The plan a covered student gets. */
+    plan: "student" as PaidPlanId,
+};

@@ -10,6 +10,9 @@ router.use(authMiddleware.authUser, requireAdmin);
 
 router.get("/me", adminController.me);
 router.get("/overview", adminController.overview);
+router.get("/institutes", adminController.institutes);
+router.post("/seat-packs", adminController.grantSeats);
+router.patch("/inquiries/:inquiryId", adminController.updateInquiry);
 router.get("/users", adminController.users);
 router.get("/projects", adminController.projects);
 

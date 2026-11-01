@@ -543,7 +543,7 @@ const Settings = () => {
             ) : tab === "teaching" ? (
               <TeachingTab user={user} onSaved={handleSaved} />
             ) : tab === "billing" ? (
-              <BillingTab />
+              <BillingTab teachingMode={Boolean(user.teachingMode)} />
             ) : (
               <UsageTab stats={stats} />
             )}

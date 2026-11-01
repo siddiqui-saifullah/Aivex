@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import PlanCards, { PeriodToggle } from "./PlanCards";
+import InstituteManager from "./InstituteManager";
 import {
   formatInr,
   getBilling,
@@ -33,7 +34,7 @@ const Section = ({ title, description, children }: { title: string; description?
 );
 
 /** Settings → Plan & billing: the current plan, upgrades and receipts. */
-const BillingTab = () => {
+const BillingTab = ({ teachingMode = false }: { teachingMode?: boolean }) => {
   const toast = useToast();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -64,6 +65,10 @@ const BillingTab = () => {
     }
     verifyPayment(back)
       .then((summary) => {
+        if (summary.paid?.kind === "seats") {
+          toast.success(`Payment received. ${summary.paid.seats} seats are active${summary.paid.validUntil ? ` until ${formatDate(summary.paid.validUntil)}` : ""}.`, 8000);
+          return;
+        }
         const name = summary.plan[0].toUpperCase() + summary.plan.slice(1);
         toast.success(
           summary.expiresAt ? `Payment received. You're on ${name} until ${formatDate(summary.expiresAt)}.` : "Payment received.",
@@ -103,6 +108,8 @@ const BillingTab = () => {
             <p className="mt-1 text-sm text-zinc-400">
               {billing.admin
                 ? "Admin account: no daily limits."
+                : billing.institute
+                  ? `Provided by ${billing.institute.institute || "your institute"}${billing.institute.teacher ? ` through ${billing.institute.teacher}'s class` : ""}, until ${formatDate(billing.institute.expiresAt)}.`
                 : billing.expiresAt
                   ? `Active until ${formatDate(billing.expiresAt)}. It doesn't renew on its own.`
                   : "Free forever. Upgrade any time for more Vex AI help."}
@@ -132,6 +139,8 @@ const BillingTab = () => {
         {!billing.enabled && <p className="mt-4 text-xs text-amber-300/80">Paid plans open soon.</p>}
       </Section>
 
+      {(teachingMode || billing.payments.some((p) => p.kind === "seats")) && <InstituteManager />}
+
       <Section title="Payment history" description="Your receipts are also emailed by Razorpay.">
         {billing.payments.length === 0 ? (
           <p className="text-sm text-zinc-500">No payments yet.</p>
@@ -150,7 +159,7 @@ const BillingTab = () => {
                 {billing.payments.map((p) => (
                   <tr key={p._id}>
                     <td className="px-5 py-2.5 sm:px-0">{formatDate(p.paidAt)}</td>
-                    <td className="py-2.5 capitalize">{p.plan} · {p.period}</td>
+                    <td className="py-2.5">{p.kind === "seats" ? `${p.seats} seats` : p.plan[0].toUpperCase() + p.plan.slice(1)} · {p.period}</td>
                     <td className="py-2.5 tabular-nums">{formatInr(p.amount / 100)}</td>
                     <td className="py-2.5 pr-5 sm:pr-0">{p.validUntil ? formatDate(p.validUntil) : "—"}</td>
                   </tr>

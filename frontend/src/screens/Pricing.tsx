@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import PlanCards, { PeriodToggle } from "../components/billing/PlanCards";
+import InstituteSection from "../components/billing/InstituteSection";
 import { getBilling, getPlans, type BillingPeriod, type Plan, type PlanId } from "../services/billing.service";
 import { useUser } from "../context/user.context";
 import { usePageMeta } from "../hooks/usePageMeta";
@@ -53,6 +54,7 @@ const JSON_LD = {
         { "@type": "Offer", name: "Student", price: "99", priceCurrency: "INR" },
         { "@type": "Offer", name: "Pro", price: "299", priceCurrency: "INR" },
         { "@type": "Offer", name: "Premium", price: "799", priceCurrency: "INR" },
+        { "@type": "Offer", name: "Institute (per student, yearly)", price: "399", priceCurrency: "INR" },
       ],
     },
     {
@@ -140,6 +142,8 @@ const Pricing = () => {
             <p className="mt-2 text-center text-xs text-amber-300/80">Paid plans open soon. Everything on Free works today.</p>
           )}
         </section>
+
+        <InstituteSection />
 
         <section className="border-t border-white/5 py-20" aria-labelledby="pricing-faq">
           <div className="mx-auto max-w-3xl px-4 sm:px-6">

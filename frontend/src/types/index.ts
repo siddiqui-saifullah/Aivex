@@ -227,6 +227,8 @@ export interface ClassroomDetails extends Omit<ClassroomSummary, "createdAt"> {
 /** A project loaded on the project page, where `users` is populated. */
 export interface ProjectDetails extends Project {
   users: User[];
+  /** The GitHub repository the project syncs with. */
+  github?: { repo: string; branch: string; lastCommit: string; syncedAt: string } | null;
 }
 
 export type MessageType = "incoming" | "outgoing" | "system";

@@ -13,6 +13,7 @@ import reportRoutes from './routes/report.routes.js';
 import assignmentRoutes from './routes/assignment.routes.js';
 import submissionRoutes from './routes/submission.routes.js';
 import billingRoutes from './routes/billing.routes.js';
+import integrationRoutes from './routes/integration.routes.js';
 import { webhook as razorpayWebhook } from './controllers/billing.controller.js';
 import compression from 'compression';
 import helmet from 'helmet';
@@ -23,7 +24,7 @@ import { errorHandler } from "./middleware/error.middleware.js"
 connect();
 
 /** Bump when the frontend starts depending on new endpoints/socket events. */
-export const API_VERSION = 4;
+export const API_VERSION = 5;
 
 const app: Express = express();
 
@@ -58,6 +59,7 @@ app.use('/reports', reportRoutes);
 app.use('/assignments', assignmentRoutes);
 app.use('/submissions', submissionRoutes);
 app.use('/billing', billingRoutes);
+app.use('/integrations', integrationRoutes);
 app.use('/projects', projectRoutes);
 app.use('/ai', aiRoutes);
 app.use('/run', runnerRoutes);

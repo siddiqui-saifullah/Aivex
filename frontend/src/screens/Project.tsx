@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense, type CSSProperties } from "react";
 import { Code2, FolderTree, Loader2, MessageSquare } from "lucide-react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { WebContainer } from "@webcontainer/api";
 import {
   getProjectById,
@@ -83,6 +83,7 @@ import {
   type PreviewMessage,
 } from "../utils/staticSite";
 import ProjectSkeleton from "../components/Loders/ProjectSkeleton";
+const GitHubDialog = lazy(() => import("../components/github/GitHubDialog"));
 import type {
   ChatMessage,
   CreateFilePayload,
@@ -229,6 +230,14 @@ const Project = () => {
   const [runProgress, setRunProgress] = useState("");
   const [originalIsRunning, setOriginalIsRunning] = useState(false);
   const [isSaved, setIsSaved] = useState(true);
+  // GitHub push/pull (opens by itself after connecting GitHub)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showGitHub, setShowGitHub] = useState(() => ["open", "connected"].includes(searchParams.get("github") ?? ""));
+  useEffect(() => {
+    if (!searchParams.get("github")) return;
+    if (searchParams.get("github") === "connected") toast.success("GitHub connected");
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams, toast]);
   const [isSaving, setIsSaving] = useState(false);
 
   const [showPreview, setShowPreview] = useState(false);
@@ -1481,7 +1490,24 @@ const Project = () => {
           onToggleSidePanel={() => setIsSidePanelOpen((prev) => !prev)}
           onCollapse={collapseChat}
           onHelpChanged={reloadProject}
+          onGitHub={project.isOwner ? () => setShowGitHub(true) : undefined}
         />
+        {showGitHub && (
+          <Suspense fallback={null}>
+            <GitHubDialog
+              projectId={project._id}
+              projectName={project.name}
+              onClose={() => setShowGitHub(false)}
+              beforePush={async () => isSaved || saveFiles("Saving before push…")}
+              onPulled={(files) => {
+                // Live editing gets the new files through the shared document
+                if (!collabRef.current?.ready) setFlatFileTree(files);
+                setSavedTree(files);
+                setIsSaved(true);
+              }}
+            />
+          </Suspense>
+        )}
 
         {project.assignment && (
           <AssignmentCard

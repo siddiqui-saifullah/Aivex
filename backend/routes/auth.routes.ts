@@ -8,6 +8,9 @@ const limit = rateLimit({ windowMs: 15 * 60_000, max: 30, key: (req) => `oauth:$
 
 router.get("/providers", authController.providers);
 router.post("/exchange", limit, authController.exchange);
+// Connecting GitHub for pushes (before the generic provider routes)
+router.get("/github/connect", limit, authController.githubConnectStart);
+router.get("/github/callback/connect", authController.githubConnectCallback);
 router.get("/:provider", limit, authController.start);
 router.get("/:provider/callback", authController.callback);
 

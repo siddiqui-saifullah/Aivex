@@ -142,6 +142,12 @@ these languages shows "Code runner is not configured".
   `https://<backend>/auth/google/callback`.
 - **GitHub**: Settings → Developer settings → OAuth Apps → New. Callback URL:
   `https://<backend>/auth/github/callback`.
+- **GitHub sync** (push, pull, import) uses the same GitHub OAuth app; it asks
+  for the `repo` scope at `https://<backend>/auth/github/callback/connect`
+  (a subpath of the callback URL above, so nothing else to register). Set
+  `BACKEND_URL` to the backend's public URL. Tokens are stored encrypted with
+  `GITHUB_TOKEN_SECRET` (falls back to `JWT_SECRET`; changing it means users
+  connect GitHub again).
 - Google/GitHub sign-in uses the verified email: it signs in to the existing
   account with that email, or creates one (with a username picked from the
   profile). Such accounts can add a password from their profile.

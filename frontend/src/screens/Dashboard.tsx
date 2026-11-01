@@ -6,6 +6,8 @@ import ProjectList from "../components/dashboard/ProjectList";
 import ProjectFilter, { type ProjectFilterId } from "../components/dashboard/ProjectFilter";
 import ClassroomSection from "../components/dashboard/ClassroomSection";
 import InvitationsSection from "../components/dashboard/InvitationsSection";
+import { GithubIcon } from "../assets/fileIcons";
+const ImportRepoModal = lazy(() => import("../components/github/ImportRepoModal"));
 
 // Lazy load modals - they're only shown on specific user actions
 const CreateProjectModal = lazy(() =>
@@ -52,6 +54,8 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  // "Import from GitHub" (also reopens after connecting GitHub)
+  const [importOpen, setImportOpen] = useState(() => new URLSearchParams(window.location.search).get("import") === "github");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -186,16 +190,26 @@ export default function Dashboard() {
             </p>
           </div>
 
-          {state !== "empty" && state !== "loading" && (
-            <Button
-              variant="primary"
-              size="sm"
-              icon={Plus}
-              onClick={() => setCreateModalOpen(true)}
-              className="shadow-lg shadow-teal-500/20"
-            >
-              New Project
-            </Button>
+          {state !== "loading" && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setImportOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-zinc-200 hover:border-white/25"
+              >
+                <GithubIcon size={15} /> Import
+              </button>
+              {state !== "empty" && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Plus}
+                  onClick={() => setCreateModalOpen(true)}
+                  className="shadow-lg shadow-teal-500/20"
+                >
+                  New Project
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
@@ -238,6 +252,11 @@ export default function Dashboard() {
         />
 
         {/* Modals */}
+        {importOpen && (
+          <Suspense fallback={null}>
+            <ImportRepoModal onClose={() => setImportOpen(false)} />
+          </Suspense>
+        )}
         <Suspense fallback={null}>
           <CreateProjectModal
             isOpen={createModalOpen}

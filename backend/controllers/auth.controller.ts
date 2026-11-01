@@ -1,3 +1,4 @@
+import * as github from "../services/github.service.js";
 import type { Request, Response } from "express";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import catchAsync from "../utils/catchAsync.js";
@@ -95,3 +96,34 @@ export const exchange = catchAsync(async (req, res) => {
     if (!user) throw new AppError("Account not found", 404);
     res.json({ token, user });
 });
+
+/* -------------------------------------------------------------------------- */
+/* CONNECT GITHUB (push projects): same OAuth app, with the `repo` scope       */
+/* -------------------------------------------------------------------------- */
+const CONNECT_COOKIE = "gh_connect";
+/** A subpath of the registered callback, which GitHub accepts. */
+const connectRedirectUri = (req: Request) => `${redirectUri(req, "github")}/connect`;
+
+/** The browser arrives with a one-time ticket from /integrations/github/ticket. */
+export const githubConnectStart = catchAsync(async (req, res) => {
+    const { state, url } = await github.startConnect(String(req.query.ticket ?? ""), connectRedirectUri(req));
+    res.cookie(CONNECT_COOKIE, state, { httpOnly: true, secure: req.secure, sameSite: "lax", maxAge: 10 * 60_000, path: "/auth" });
+    res.redirect(url);
+});
+
+export const githubConnectCallback = async (req: Request, res: Response) => {
+    const site = frontendUrl();
+    try {
+        const state = String(req.query.state ?? "");
+        if (req.query.error) return res.redirect(`${site}/settings/account?github=cancelled`);
+        // Only the browser that started connecting can finish it
+        if (!state || req.cookies?.[CONNECT_COOKIE] !== state) throw new AppError("Connecting expired. Try again.", 400);
+        res.clearCookie(CONNECT_COOKIE, { path: "/auth" });
+        const { next } = await github.finishConnect(state, String(req.query.code ?? ""), connectRedirectUri(req));
+        res.redirect(`${site}${next}${next.includes("?") ? "&" : "?"}github=connected`);
+    } catch (err) {
+        if (!(err instanceof AppError)) console.error("GitHub connect failed:", err);
+        const message = err instanceof AppError ? err.message : "GitHub didn't connect. Try again.";
+        res.redirect(`${site}/settings/account?${new URLSearchParams({ github: "error", message })}`);
+    }
+};

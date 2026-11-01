@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { BarChart3, GraduationCap, Loader2, LogOut, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { BarChart3, CreditCard, GraduationCap, Loader2, LogOut, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import BillingTab from "../components/billing/BillingTab";
 import Button from "../components/ui/Button";
 import { DeleteAccountModal } from "../components/profile/AccountModals";
 import {
@@ -17,13 +18,14 @@ import { getErrorMessage } from "../utils/getErrorMessage";
 import { colorFor } from "../utils/userColor";
 import type { User } from "../types";
 
-type Tab = "profile" | "account" | "teaching" | "usage";
+type Tab = "profile" | "account" | "teaching" | "usage" | "billing";
 
 const TABS: { id: Tab; label: string; icon: typeof UserRound }[] = [
   { id: "profile", label: "Profile", icon: UserRound },
   { id: "account", label: "Account", icon: ShieldCheck },
   { id: "teaching", label: "Teaching", icon: GraduationCap },
   { id: "usage", label: "Usage", icon: BarChart3 },
+  { id: "billing", label: "Plan & billing", icon: CreditCard },
 ];
 
 const inputClass =
@@ -425,8 +427,11 @@ const UsageTab = ({ stats }: { stats: ProfileStats | null }) => {
     <div className="space-y-6">
       <Card
         title="Vex AI"
-        description="Questions you can ask Vex each day on the free plan."
+        description="Questions you can ask Vex each day on your plan."
         hint={usage ? (usage.limit == null ? "Your account has no daily limit." : `Resets every day at ${resets}.`) : " "}
+        action={usage && usage.limit != null && usage.plan !== "premium" ? (
+          <Link to="/settings/billing" className="text-sm font-medium text-teal-300 hover:underline">Get more questions</Link>
+        ) : undefined}
       >
         {!usage ? (
           <div className="h-10 animate-pulse rounded-lg bg-zinc-900" />
@@ -464,8 +469,11 @@ const UsageTab = ({ stats }: { stats: ProfileStats | null }) => {
 /* PAGE                                                                       */
 /* -------------------------------------------------------------------------- */
 const Settings = () => {
-  const [params, setParams] = useSearchParams();
-  const tab = (TABS.some((t) => t.id === params.get("tab")) ? params.get("tab") : "profile") as Tab;
+  const [params] = useSearchParams();
+  const { section } = useParams();
+  const navigate = useNavigate();
+  const wanted = section ?? params.get("tab");
+  const tab = (TABS.some((t) => t.id === wanted) ? wanted : "profile") as Tab;
   const { setUser: setSessionUser } = useUser();
   const [user, setUser] = useState<User | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
@@ -494,7 +502,7 @@ const Settings = () => {
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
         <header className="mb-8">
           <h1 className="text-2xl font-bold text-white sm:text-3xl">Settings</h1>
-          <p className="mt-1 text-sm text-zinc-400">Manage your profile, account and how you use Aivex.</p>
+          <p className="mt-1 text-sm text-zinc-400">Manage your profile, account, plan and how you use Aivex.</p>
         </header>
 
         <div className="flex flex-col gap-6 md:flex-row md:gap-10">
@@ -503,7 +511,7 @@ const Settings = () => {
               {TABS.map(({ id, label, icon: Icon }) => (
                 <li key={id}>
                   <button
-                    onClick={() => setParams(id === "profile" ? {} : { tab: id }, { replace: true })}
+                    onClick={() => navigate(id === "profile" ? "/settings" : `/settings/${id}`, { replace: true })}
                     aria-current={tab === id ? "page" : undefined}
                     className={`flex w-full items-center gap-2 whitespace-nowrap px-3 py-2 text-sm transition md:rounded-lg ${
                       tab === id
@@ -534,6 +542,8 @@ const Settings = () => {
               <AccountTab user={user} onPasswordSet={() => setUser({ ...user, hasPassword: true })} />
             ) : tab === "teaching" ? (
               <TeachingTab user={user} onSaved={handleSaved} />
+            ) : tab === "billing" ? (
+              <BillingTab />
             ) : (
               <UsageTab stats={stats} />
             )}

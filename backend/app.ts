@@ -12,6 +12,8 @@ import authRoutes from './routes/auth.routes.js';
 import reportRoutes from './routes/report.routes.js';
 import assignmentRoutes from './routes/assignment.routes.js';
 import submissionRoutes from './routes/submission.routes.js';
+import billingRoutes from './routes/billing.routes.js';
+import { webhook as razorpayWebhook } from './controllers/billing.controller.js';
 import compression from 'compression';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -21,7 +23,7 @@ import { errorHandler } from "./middleware/error.middleware.js"
 connect();
 
 /** Bump when the frontend starts depending on new endpoints/socket events. */
-export const API_VERSION = 3;
+export const API_VERSION = 4;
 
 const app: Express = express();
 
@@ -35,6 +37,8 @@ app.use(corsMiddleware);
 // gzip JSON responses (project files, chat history)
 app.use(compression());
 app.use(morgan('dev'));
+// Razorpay signs the exact request bytes, so this one reads the raw body
+app.post('/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), razorpayWebhook);
 // Project file trees are sent as JSON, so allow more than the 100kb default
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -53,6 +57,7 @@ app.use('/auth', authRoutes);
 app.use('/reports', reportRoutes);
 app.use('/assignments', assignmentRoutes);
 app.use('/submissions', submissionRoutes);
+app.use('/billing', billingRoutes);
 app.use('/projects', projectRoutes);
 app.use('/ai', aiRoutes);
 app.use('/run', runnerRoutes);

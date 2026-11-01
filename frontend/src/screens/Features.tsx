@@ -46,7 +46,7 @@ const FAQ = [
   },
   {
     q: "What can Vex AI do?",
-    a: "Vex reads your project, your open file and your selection, then writes or edits the files for you, explains code and fixes bugs. It remembers what your project is about, so you don't repeat yourself. On the free plan you get 3 questions a day.",
+    a: "Vex reads your project, your open file and your selection, then writes or edits the files for you, explains code and fixes bugs. It remembers what your project is about, so you don't repeat yourself. Free accounts get 3 questions a day; Student, Pro and Premium plans give 30 to 400.",
   },
   {
     q: "Can I use Aivex to teach a class?",
@@ -62,7 +62,7 @@ const FAQ = [
   },
   {
     q: "Is Aivex free?",
-    a: "Yes, Aivex is free to use during the beta, including Vex AI with a daily limit and the classroom features.",
+    a: "Yes. The IDE, live preview, collaboration and classrooms are free, and Vex AI is included with 3 questions a day. Paid plans from ₹99 a month give you more Vex questions a day and deeper answers.",
   },
 ];
 
@@ -383,7 +383,7 @@ const Features = () => {
           <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-transparent to-teal-900/10" aria-hidden />
           <div className="relative mx-auto max-w-3xl px-6 text-center">
             <h2 className="text-3xl font-bold text-white md:text-5xl">Start building in 30 seconds</h2>
-            <p className="mt-4 text-lg text-zinc-400">Free during the beta. No credit card, no installs.</p>
+            <p className="mt-4 text-lg text-zinc-400">Free to start. No credit card, no installs. <Link to="/pricing" className="text-teal-300 hover:underline">See plans</Link></p>
             <Link
               to={cta.to}
               className="mt-10 inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-lg font-semibold text-black transition hover:bg-zinc-200"

@@ -40,6 +40,12 @@ const PublicHeader = () => {
           >
             Features
           </Link>
+          <Link
+            to="/pricing"
+            className="hover:text-white transition-colors hover:bg-white/5 px-3 py-1.5 rounded-full"
+          >
+            Pricing
+          </Link>
           <a
             href="/docs"
             className="hover:text-white transition-colors hover:bg-white/5 px-3 py-1.5 rounded-full"

@@ -6,6 +6,7 @@ import AppError from "../errors/AppError.js";
 import type { AiResponse } from "../types/index.js";
 import { AI_DISABLED_MESSAGE, isAiDisabledInProject } from "../services/aiPolicy.service.js";
 import { quotaMessage, quotaStatus, takeQuota } from "../services/aiQuota.service.js";
+import { aiOptionsFor } from "../services/billing.service.js";
 
 export const getResultPoint = async (req: Request, res: Response) => {
     try {
@@ -19,7 +20,7 @@ export const getResultPoint = async (req: Request, res: Response) => {
             res.status(429).send({ message: quotaMessage("vex", await quotaStatus(req.user!._id, "vex")) });
             return;
         }
-        const response = await ai.generate({ prompt });
+        const response = await ai.generate({ prompt, ...await aiOptionsFor(req.user!._id) });
         if (ai.AI_ERROR_REPLY.test(response.text ?? "")) refund();
         res.send(response)
     } catch (error) {
@@ -57,7 +58,7 @@ export const enhancePromptController = catchAsync(async (req, res) => {
     const refund = await takeQuota(req.user!._id, "enhance");
     if (!refund) throw new AppError(quotaMessage("enhance", await quotaStatus(req.user!._id, "enhance")), 429);
 
-    const enhanced = await ai.enhancePrompt(prompt.trim()).catch((err) => {
+    const enhanced = await ai.enhancePrompt(prompt.trim(), (await aiOptionsFor(req.user!._id)).models).catch((err) => {
         refund();
         console.error("Enhance failed:", err);
         const status = (err as { status?: number }).status === 429 ? 429 : 502;

@@ -94,3 +94,25 @@ export const sendSignupCode = async ({ to, name, code }: { to: string; name: str
 </div>`,
     });
 };
+
+/** A college asked for a quote: tell the admins (ADMIN_EMAILS). */
+export const sendInstituteInquiry = async ({ to, name, email, institute, students, message }: {
+    to: string;
+    name: string;
+    email: string;
+    institute: string;
+    students: number;
+    message: string;
+}) => {
+    const lines = [`Name: ${name}`, `Email: ${email}`, `Institute: ${institute}`, `Students: ${students || "not given"}`, "", message || "(no message)"];
+    await send({
+        to,
+        subject: `Institute plan enquiry: ${institute}`,
+        text: lines.join("\n"),
+        html: `<div style="font-family:Arial,sans-serif;max-width:560px;padding:16px;color:#18181b">
+  <h2 style="margin:0 0 12px">Institute plan enquiry</h2>
+  ${lines.slice(0, 4).map((l) => `<p style="margin:4px 0">${escapeHtml(l)}</p>`).join("")}
+  <p style="margin-top:16px;white-space:pre-wrap">${escapeHtml(message || "(no message)")}</p>
+</div>`,
+    });
+};

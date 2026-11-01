@@ -1,9 +1,13 @@
 import mongoose, { type Types } from "mongoose";
 import { PLAN_IDS, type BillingPeriod, type PaidPlanId } from "../config/plans.js";
 
-/** One Razorpay payment link for a plan, and whether it was paid. */
+/** One Razorpay payment link for a plan (or institute seats), and whether it was paid. */
 export interface IPayment {
     user: Types.ObjectId;
+    /** A personal plan, or seats for the payer's classes. */
+    kind: "plan" | "seats";
+    seats: number;
+    institute: string;
     plan: PaidPlanId;
     period: BillingPeriod;
     /** In paise. */
@@ -25,6 +29,9 @@ export interface IPayment {
 const paymentSchema = new mongoose.Schema<IPayment>(
     {
         user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+        kind: { type: String, enum: ["plan", "seats"], default: "plan" },
+        seats: { type: Number, default: 0 },
+        institute: { type: String, default: "" },
         plan: { type: String, enum: PLAN_IDS.filter((p) => p !== "free"), required: true },
         period: { type: String, enum: ["monthly", "yearly"], required: true },
         amount: { type: Number, required: true },

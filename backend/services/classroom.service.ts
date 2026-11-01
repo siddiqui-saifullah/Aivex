@@ -12,6 +12,7 @@ import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 import { normalizeStack, starterFilesFor } from "./project.service.js";
 import { disconnectUserFromProject, notifyProjectUpdated, onlineUsersByProject } from "../socket/io.js";
 import { notify } from "./notification.service.js";
+import { onStudentJoined, onStudentLeft } from "./institute.service.js";
 
 type Id = Types.ObjectId | string;
 
@@ -223,6 +224,7 @@ export const joinClassroom = async ({ code, userId }: { code: string; userId: Id
         return { classroomId: classroom._id, projectId: mine.project, alreadyJoined: true };
     }
 
+    void onStudentJoined(classroom.teacher, userId).catch((err) => console.error("Seat failed:", err));
     void notify({
         users: [classroom.teacher],
         type: "class-join",
@@ -321,6 +323,7 @@ export const leaveClassroom = async ({ classroomId, userId }: { classroomId: str
 
     await pullStudent(classroomId, { user: mine.user });
     await detachStudentProjects(await classProjectsOf(classroomId, mine.user, mine.project), classroom.teacher);
+    await onStudentLeft(classroom.teacher, mine.user);
     void notify({
         users: [classroom.teacher],
         type: "class-leave",
@@ -348,6 +351,7 @@ export const removeStudent = async ({ classroomId, teacherId, studentId }: {
 
     await pullStudent(classroomId, { user: student.user });
     await detachStudentProjects(await classProjectsOf(classroomId, student.user, student.project), classroom.teacher);
+    await onStudentLeft(classroom.teacher, student.user);
     void notify({
         users: [studentId],
         type: "class-removed",
@@ -361,7 +365,7 @@ export const removeStudent = async ({ classroomId, teacherId, studentId }: {
 /** Students keep their projects (as personal ones); the teacher loses access to them. */
 export const deleteClassroom = async ({ classroomId, userId }: { classroomId: string; userId: Id }) => {
     assertId(classroomId, "class id");
-    const classroom = await Classroom.findById(classroomId).select("teacher").lean();
+    const classroom = await Classroom.findById(classroomId).select("teacher students").lean();
     if (!classroom) throw new AppError("Class not found", 404);
     if (String(classroom.teacher) !== String(userId)) throw new AppError("Only the teacher can delete the class", 403);
     const projects = await Project.find({ classroom: classroomId }).select("_id").lean();
@@ -370,4 +374,6 @@ export const deleteClassroom = async ({ classroomId, userId }: { classroomId: st
     await HelpRequest.deleteMany({ classroom: classroomId });
     await Assignment.deleteMany({ classroom: classroomId });
     await Classroom.deleteOne({ _id: classroomId });
+    // Students not in another of this teacher's classes give their seats back
+    for (const s of classroom.students) await onStudentLeft(classroom.teacher, s.user);
 };

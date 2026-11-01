@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import ColumnChart from "../components/admin/ColumnChart";
 import ModerationPanel from "../components/admin/ModerationPanel";
+import InstitutesPanel from "../components/admin/InstitutesPanel";
 import { useToast } from "../context/toast.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import {
@@ -202,6 +203,7 @@ const Admin = () => {
         </div>
 
         <ModerationPanel onChanged={() => setReloadKey((k) => k + 1)} />
+        <InstitutesPanel />
 
         {/* Last 30 days */}
         <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wider text-zinc-300">Last 30 days</h2>

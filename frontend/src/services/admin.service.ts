@@ -139,3 +139,34 @@ export const updateAdminIssue = async (id: string, changes: { status?: AdminIssu
 
 export const setUserSuspension = async (userId: string, suspended: boolean, reason?: string) =>
   (await axios.patch(`/admin/users/${userId}/suspension`, { suspended, reason })).data;
+
+/* Institute plan */
+export interface InstituteInquiry {
+  _id: string;
+  name: string;
+  email: string;
+  institute: string;
+  students: number;
+  message: string;
+  status: "new" | "done";
+  createdAt: string;
+}
+
+export interface AdminSeatPack {
+  _id: string;
+  owner: { _id: string; name: string; email: string } | null;
+  institute: string;
+  seats: number;
+  validUntil: string;
+  source: "payment" | "admin";
+  createdAt: string;
+}
+
+export const getAdminInstitutes = async () =>
+  (await axios.get<{ inquiries: InstituteInquiry[]; packs: AdminSeatPack[] }>("/admin/institutes")).data;
+
+export const grantAdminSeats = async (body: { email: string; seats: number; days: number; institute: string }) =>
+  (await axios.post("/admin/seat-packs", body)).data;
+
+export const setInquiryStatus = async (id: string, status: InstituteInquiry["status"]) =>
+  axios.patch(`/admin/inquiries/${id}`, { status });

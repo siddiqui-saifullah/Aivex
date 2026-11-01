@@ -9,6 +9,8 @@ export const enhancePrompt = async (prompt: string, projectId?: string): Promise
 
 /** The user's daily Vex allowance (limit null = unlimited). */
 export interface AiUsage {
+  /** The user's plan ("free", "student", "pro", "premium"). */
+  plan?: string;
   limit: number | null;
   used: number;
   remaining: number | null;
@@ -21,4 +23,4 @@ export const getAiUsage = async (): Promise<AiUsage> => {
 };
 
 export const aiLimitMessage = (usage: AiUsage) =>
-  `You've used all ${usage.limit} Vex AI questions for today. They reset at ${new Date(usage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`;
+  `You've used all ${usage.limit} Vex AI questions for today. They reset at ${new Date(usage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${usage.plan === "premium" ? "" : " Upgrade your plan in Settings for more."}`;

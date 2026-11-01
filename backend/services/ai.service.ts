@@ -22,12 +22,16 @@ const tryNextModel = (err: unknown) => {
         || (status === 400 && /model|not (found|supported)|thinking/i.test(message));
 };
 
-/** Run a Gemini call on the first model that works. */
-const withModels = async <T>(call: (model: string) => Promise<T>): Promise<T> => {
+/**
+ * Run a Gemini call on the first model that works. Paid plans pass their own
+ * order (better models first); GEMINI_MODEL, when set, still wins.
+ */
+const withModels = async <T>(call: (model: string) => Promise<T>, preferred?: string[]): Promise<T> => {
+    const list = !process.env.GEMINI_MODEL && preferred?.length ? preferred : MODELS;
     const now = Date.now();
-    const usable = MODELS.filter((m) => (coolingUntil.get(m) ?? 0) <= now);
+    const usable = list.filter((m) => (coolingUntil.get(m) ?? 0) <= now);
     let lastError: unknown;
-    for (const model of usable.length ? usable : MODELS) {
+    for (const model of usable.length ? usable : list) {
         try {
             return await call(model);
         } catch (err) {
@@ -40,8 +44,11 @@ const withModels = async <T>(call: (model: string) => Promise<T>): Promise<T> =>
     throw lastError;
 };
 
-/** Only 2.5 models take a thinking budget. */
-const thinking = (model: string, budget: number) => (/2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: budget } } : {});
+/** Only 2.5 models take a thinking budget (Pro can't switch thinking off). */
+const thinking = (model: string, budget: number) => {
+    if (!/2\.5/.test(model)) return {};
+    return { thinkingConfig: { thinkingBudget: /pro/.test(model) ? Math.max(budget, 128) : budget } };
+};
 
 /**
  * System instruction, kept compact on purpose: it is sent with every request,
@@ -216,6 +223,8 @@ export const generate = async ({
     focus = {},
     hintsOnly = false,
     task,
+    models,
+    thinkingBudget = 512,
 }: {
     prompt: string;
     files?: Record<string, string>;
@@ -226,6 +235,10 @@ export const generate = async ({
     hintsOnly?: boolean;
     /** The assignment the student is working on. */
     task?: string;
+    /** Models to try first (from the user's plan). */
+    models?: string[];
+    /** Thinking tokens for 2.5 models (from the user's plan). */
+    thinkingBudget?: number;
 }): Promise<AiResponse> => {
     // Stable → variable order (helps prefix caching): task, memory, files, chat, focus, request
     const context = [
@@ -244,8 +257,9 @@ export const generate = async ({
             systemInstruction: hintsOnly ? SYSTEM_INSTRUCTION + HINTS_INSTRUCTION : SYSTEM_INSTRUCTION,
             responseMimeType: "application/json",
             // A small thinking budget keeps answers fast (and within free-tier
-            // token limits) while still planning multi-file changes
-            ...thinking(model, 512),
+            // token limits) while still planning multi-file changes; Pro and
+            // Premium think longer
+            ...thinking(model, thinkingBudget),
         },
     });
 
@@ -259,7 +273,7 @@ export const generate = async ({
                 await new Promise((r) => setTimeout(r, 1500));
                 return request(model);
             }
-        });
+        }, models);
 
         const raw = response.text ?? "";
         if (!raw) return { text: "Vex AI couldn't answer that. Please try again." };
@@ -272,7 +286,7 @@ export const generate = async ({
 };
 
 /** Turn a rough idea into a precise prompt (no thinking: this must feel instant). */
-export const enhancePrompt = async (prompt: string): Promise<string> => {
+export const enhancePrompt = async (prompt: string, models?: string[]): Promise<string> => {
     const response = await withModels((model) => ai.models.generateContent({
         model,
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -281,7 +295,7 @@ export const enhancePrompt = async (prompt: string): Promise<string> => {
             ...thinking(model, 0),
             maxOutputTokens: 300,
         },
-    }));
+    }), models);
 
     return (response.text ?? "").trim().replace(/^["']|["']$/g, "");
 };

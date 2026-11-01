@@ -11,6 +11,8 @@ const adminEmails = () =>
             .filter(Boolean),
     );
 
+export const isAdminEmail = (email: string) => adminEmails().has(email.toLowerCase());
+
 export const isAdminUser = async (userId: Types.ObjectId | string) => {
     const emails = adminEmails();
     if (emails.size === 0) return false;

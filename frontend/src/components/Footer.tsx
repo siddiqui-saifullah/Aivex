@@ -23,6 +23,11 @@ const Footer = () => {
               </a>
             </li>
             <li>
+              <a href="/pricing" className="hover:text-white">
+                Pricing
+              </a>
+            </li>
+            <li>
               <a href="/docs" className="hover:text-white">
                 Docs
               </a>
@@ -30,11 +35,6 @@ const Footer = () => {
             {/* <li>
               <a href="#" className="hover:text-white">
                 Integrations
-              </a>
-            </li> */}
-            {/* <li>
-              <a href="#" className="hover:text-white">
-                Pricing
               </a>
             </li> */}
             {/* <li>

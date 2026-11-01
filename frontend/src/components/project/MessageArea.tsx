@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Bot, BotOff, Lightbulb, MessageSquare } from "lucide-react";
 import type { AiUsage } from "../../services/ai.service";
 import MessageGroup from "../shared/MessageGroup";
@@ -162,6 +163,12 @@ const MessageArea = ({
           {aiUsage.remaining === 0
             ? `Daily Vex limit reached · resets at ${new Date(aiUsage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
             : `${aiUsage.remaining} of ${aiUsage.limit} Vex questions left today`}
+          {aiUsage.plan !== "premium" && (aiUsage.remaining ?? 0) <= 1 && (
+            <>
+              {" · "}
+              <Link to="/settings/billing" className="font-medium text-teal-300 hover:underline">Get more</Link>
+            </>
+          )}
         </p>
       )}
       <div className="shrink-0 flex items-end gap-2 p-3">

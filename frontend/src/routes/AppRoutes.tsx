@@ -18,6 +18,7 @@ const JoinClass = lazy(() => import("../screens/JoinClass"));
 const Admin = lazy(() => import("../screens/Admin"));
 const About = lazy(() => import("../screens/About"));
 const Features = lazy(() => import("../screens/Features"));
+const Pricing = lazy(() => import("../screens/Pricing"));
 const Privacy = lazy(() => import("../screens/Privacy"));
 const Terms = lazy(() => import("../screens/Terms"));
 const Contact = lazy(() => import("../screens/Contact"));
@@ -43,6 +44,7 @@ const AppRoutes = () => {
           <Route element={<PublicLayout />}>
             <Route path="/" element={<GuestOnly><Home /></GuestOnly>} />
             <Route path="/features" element={<Features />} />
+            <Route path="/pricing" element={<Pricing />} />
             <Route path="/about" element={<About />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
@@ -72,6 +74,7 @@ const AppRoutes = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/projects/:projectId" element={<Project />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/:section" element={<Settings />} />
             {/* Old links */}
             <Route path="/profile" element={<Navigate to="/settings" replace />} />
             <Route path="/classes/:classroomId" element={<Classroom />} />

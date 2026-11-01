@@ -1,5 +1,6 @@
 import mongoose, { type HydratedDocument, type Model, type Types } from "mongoose";
 import bcrypt from "bcrypt";
+import { PLAN_IDS, type PlanId } from "../config/plans.js";
 import jwt from "jsonwebtoken";
 
 export interface IUser {
@@ -19,6 +20,9 @@ export interface IUser {
     bio: string;
     /** Shows teaching tools (create classes, assignments) on the dashboard. */
     teachingMode: boolean;
+    /** Paid plan, active until planExpiresAt (then the account is on Free). */
+    plan: PlanId;
+    planExpiresAt: Date | null;
     /** Usage tracking (admin dashboard). */
     lastActiveAt: Date | null;
     lastLoginAt: Date | null;
@@ -76,6 +80,8 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
         suspendedReason: { type: String, default: "", maxlength: 300 },
         githubId: { type: String, index: { unique: true, sparse: true } },
         teachingMode: { type: Boolean, default: false },
+        plan: { type: String, enum: PLAN_IDS, default: "free" },
+        planExpiresAt: { type: Date, default: null },
         bio: {
             type: String,
             trim: true,

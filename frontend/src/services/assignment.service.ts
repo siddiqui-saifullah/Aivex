@@ -1,5 +1,5 @@
 import axios from "../config/axios";
-import type { AiPolicy, AssignmentDetails, AssignmentSummary, SubmissionDetails, SubmissionStatus, SubmissionSummary } from "../types";
+import type { AiPolicy, AssignmentDetails, AssignmentSummary, Journey, JourneySnapshot, SubmissionDetails, SubmissionStatus, SubmissionSummary } from "../types";
 
 export interface AssignmentInput {
   title: string;
@@ -64,4 +64,23 @@ export const reviewSubmission = async (
 ) => {
   const { data } = await axios.patch<SubmissionSummary>(`/submissions/${id}/review`, review);
   return data;
+};
+
+/* -------------------------------------------------------------------------- */
+/* CODING JOURNEY                                                             */
+/* -------------------------------------------------------------------------- */
+/** How a student worked on an assignment (the teacher, or the student themself). */
+export const getJourney = async (assignmentId: string, studentId: string): Promise<Journey> => {
+  const { data } = await axios.get<Journey>(`/assignments/${assignmentId}/journey/${studentId}`);
+  return data;
+};
+
+export const getJourneySnapshot = async (assignmentId: string, studentId: string, eventId: string): Promise<JourneySnapshot> => {
+  const { data } = await axios.get<JourneySnapshot>(`/assignments/${assignmentId}/journey/${studentId}/snapshots/${eventId}`);
+  return data;
+};
+
+/** Runs happen in the browser; assignment projects report how they went. Never blocks the run. */
+export const reportRun = (projectId: string, ok: boolean, message = "") => {
+  axios.post(`/projects/${projectId}/journey/run`, { ok, message }).catch(() => undefined);
 };

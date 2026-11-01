@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CalendarClock, ClipboardList, ExternalLink, Loader2, Pencil, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarClock, ClipboardList, ExternalLink, Loader2, Pencil, Route, Search, Trash2 } from "lucide-react";
 import AssignmentModal from "../components/classroom/AssignmentModal";
 import SubmissionBadge from "../components/classroom/SubmissionBadge";
 import { deleteAssignment, getAssignment, startAssignment, updateAssignment } from "../services/assignment.service";
 import { useToast } from "../context/toast.context";
+import { useUser } from "../context/user.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { AI_POLICY_LABELS, describeDue } from "../utils/dueDate";
 import { colorFor } from "../utils/userColor";
@@ -21,6 +22,7 @@ const Assignment = () => {
   const { classroomId = "", assignmentId = "" } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useUser();
   const [data, setData] = useState<AssignmentDetails | null>(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -185,6 +187,19 @@ const Assignment = () => {
           <p className="mt-4 text-xs text-zinc-500">{rule.hint}</p>
         </section>
 
+        {data.role === "student" && data.projectId && (
+          <Link
+            to={`/classes/${classroomId}/assignments/${data._id}/journey/${user?._id ?? ""}`}
+            className="mb-8 flex items-center gap-3 rounded-xl border border-white/5 bg-zinc-900/50 p-4 hover:border-teal-500/30"
+          >
+            <Route size={18} className="shrink-0 text-teal-300" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-zinc-100">Your coding journey</span>
+              <span className="block text-xs text-zinc-500">Your saves, runs and questions to Vex on this assignment. Your teacher can see it too.</span>
+            </span>
+          </Link>
+        )}
+
         {data.role === "student" && (data.submissions?.length ?? 0) > 0 && (
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-300">Your submissions</h2>
@@ -306,6 +321,16 @@ const WorkCard = ({ student: s, now, base, maxMarks }: {
           }`}
         >
           {s.submission.status === "submitted" ? "Review" : "View"}
+        </Link>
+      )}
+      {s.projectId && (
+        <Link
+          to={`${base}/journey/${s.userId}`}
+          title={`How ${name} worked on it`}
+          aria-label={`${name}'s coding journey`}
+          className="flex shrink-0 items-center rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:border-teal-500/40 hover:text-white"
+        >
+          <Route size={14} />
         </Link>
       )}
       {s.projectId && (

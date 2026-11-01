@@ -5,6 +5,7 @@ import Project from "../models/project.model.js";
 import Assignment from "../models/assignment.model.js";
 import Submission from "../models/submission.model.js";
 import HelpRequest from "../models/helpRequest.model.js";
+import { deleteJourneys } from "./journey.service.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
@@ -292,6 +293,8 @@ export const pullStudent = async (classroomId: Id, match: { user?: Id; project?:
 export const detachStudentProjects = async (projectIds: Id[], teacherId: Id) => {
     if (projectIds.length === 0) return;
     await HelpRequest.deleteMany({ project: { $in: projectIds }, status: "open" });
+    // The teacher's view of how the work was done goes with it
+    await deleteJourneys({ project: { $in: projectIds } });
     await Project.updateMany(
         { _id: { $in: projectIds } },
         { $set: { classroom: null, assignment: null }, $pull: { users: teacherId, invites: { user: teacherId } } },

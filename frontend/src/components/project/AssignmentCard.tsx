@@ -146,7 +146,11 @@ const AssignmentCard = ({ assignment, isTeacher, onSubmit }: {
                   <Send size={12} /> {latest ? "Submit a new version" : "Submit assignment"}
                 </button>
               )}
-              <p className="mt-1.5 text-[10px] text-zinc-500">Your teacher gets a copy of your files as they are now. You can keep working afterwards.</p>
+              <p className="mt-1.5 text-[10px] text-zinc-500">
+                Your teacher gets a copy of your files as they are now. You can keep working afterwards. Your teacher can also see your{" "}
+                <Link to={`/classes/${assignment.classroom}/assignments/${assignment._id}`} className="underline hover:text-zinc-300">coding journey</Link>
+                {" "}(saves, runs and questions to Vex).
+              </p>
             </div>
           )}
           {assignment.instructions ? (

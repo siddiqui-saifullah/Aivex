@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, FileCode2, Loader2, Lock } from "lucide-react";
+import { ArrowLeft, FileCode2, Loader2, Lock, Route } from "lucide-react";
 import SubmissionBadge from "../components/classroom/SubmissionBadge";
 import { getSubmission, reviewSubmission } from "../services/assignment.service";
 import { useToast } from "../context/toast.context";
@@ -145,6 +145,18 @@ const Submission = () => {
           </section>
 
           <aside className="space-y-4">
+            <Link
+              to={`${back}/journey/${data.studentInfo._id}`}
+              className="flex items-center gap-3 rounded-xl border border-teal-500/20 bg-teal-500/5 p-4 hover:border-teal-500/40"
+            >
+              <Route size={18} className="shrink-0 text-teal-300" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-zinc-100">
+                  {data.role === "teacher" ? `How ${studentName} got here` : "Your coding journey"}
+                </span>
+                <span className="block text-xs text-zinc-500">Saves, runs, errors and Vex help, step by step</span>
+              </span>
+            </Link>
             {data.note && (
               <div className="rounded-xl border border-white/10 bg-zinc-950 p-4">
                 <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Note from {data.role === "teacher" ? studentName : "you"}</h2>

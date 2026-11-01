@@ -317,6 +317,7 @@ const Features = () => {
             "Submissions are frozen snapshots, with every version kept",
             "Review code, give feedback and marks, or request changes",
             "Students ask for help and you jump into their project live",
+            "Coding Journey: replay how each student got there, with every save, run, error and AI hint",
           ]}
           media={<Clip src={classroomClip} poster={classroomPoster} label="A teacher reviewing a student's submission and giving marks" />}
         />

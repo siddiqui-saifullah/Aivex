@@ -19,7 +19,7 @@ import {
   normalizeSocketMessage,
 } from "../services/message.service";
 import { useTypingIndicator } from "../hooks/useTypingIndicator";
-import { submitAssignment } from "../services/assignment.service";
+import { reportRun, submitAssignment } from "../services/assignment.service";
 import AssignmentCard from "../components/project/AssignmentCard";
 import ProjectHeader from "../components/project/ProjectHeader";
 import ChatRail from "../components/project/ChatRail";
@@ -1114,6 +1114,14 @@ const Project = () => {
           if (streamOpenRef.current) appendStream("\n", "stdout");
           const timing = (compileMs: number, runMs: number) =>
             ` in ${(runMs / 1000).toFixed(2)}s (compiled in ${Math.max(1, Math.round(compileMs))} ms)`;
+          // Assignment work: the run goes on the student's Coding Journey
+          if (project?.assignment && result.kind !== "error" && !(result.kind === "stopped" && result.reason !== "timeout")) {
+            const firstError = (text: string) => text.split("\n").find((l) => /error/i.test(l)) ?? text.split("\n")[0] ?? "";
+            if (result.kind === "compile-error") reportRun(projectId, false, firstError(result.diagnostics));
+            else if (result.kind === "exit") reportRun(projectId, result.code === 0, result.code === 0 ? "" : describeExitCode(result.code));
+            else if (result.kind === "crash") reportRun(projectId, false, result.message);
+            else reportRun(projectId, false, "Time limit exceeded");
+          }
           switch (result.kind) {
             case "compile-error":
               appendOutput(result.diagnostics.replace(/\n$/, ""), "stderr");

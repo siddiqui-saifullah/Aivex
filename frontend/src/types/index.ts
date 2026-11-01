@@ -84,6 +84,52 @@ export interface HelpRequestItem {
   assignmentTitle: string | null;
 }
 
+export type JourneyStepType = "save" | "ai-edit" | "run" | "ai" | "submit" | "help";
+
+/** One step of a student's work on an assignment. */
+export interface JourneyStep {
+  _id: string;
+  type: JourneyStepType;
+  at: string;
+  /** Done by the teacher while helping in the project. */
+  byTeacher: boolean;
+  added: number;
+  removed: number;
+  files: string[];
+  ok: boolean | null;
+  message: string;
+  /** A copy of the files at this moment can be opened. */
+  hasSnapshot: boolean;
+}
+
+export interface Journey {
+  assignment: { _id: string; title: string };
+  classroom: { _id: string; name: string };
+  student: { _id: string; name?: string; username?: string };
+  viewer: "teacher" | "student";
+  summary: {
+    minutes: number;
+    saves: number;
+    linesWritten: number;
+    runs: number;
+    failedRuns: number;
+    aiQuestions: number;
+    aiLines: number;
+    helpRequests: number;
+    submissions: number;
+    firstAt: string | null;
+    lastAt: string | null;
+  };
+  timeline: JourneyStep[];
+}
+
+export interface JourneySnapshot {
+  _id: string;
+  at: string;
+  files: FlatFileTree;
+  previous: FlatFileTree | null;
+}
+
 export type SubmissionStatus = "submitted" | "reviewed" | "revision-requested";
 
 /** A hand-in as lists show it (no files). */

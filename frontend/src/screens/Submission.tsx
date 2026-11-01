@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileCode2, Loader2, Lock, Route } from "lucide-react";
 import SubmissionBadge from "../components/classroom/SubmissionBadge";
+import SubmissionTestsPanel from "../components/classroom/SubmissionTestsPanel";
 import { getSubmission, reviewSubmission } from "../services/assignment.service";
 import { useToast } from "../context/toast.context";
 import { getErrorMessage } from "../utils/getErrorMessage";
@@ -163,6 +164,7 @@ const Submission = () => {
                 <p className="whitespace-pre-wrap break-words text-sm text-zinc-200">{data.note}</p>
               </div>
             )}
+            <SubmissionTestsPanel data={data} onGraded={(tests) => setData({ ...data, tests })} />
             {data.role === "teacher" ? (
               <ReviewForm data={data} onSaved={(s) => setData({ ...data, ...s })} />
             ) : (
@@ -219,7 +221,8 @@ const ReviewForm = ({ data, onSaved }: { data: SubmissionDetails; onSaved: (s: P
     setSaving(status);
     setError("");
     try {
-      const saved = await reviewSubmission(data._id, { status, feedback: feedback.trim(), marks: data.maxMarks ? value : undefined });
+      // The review answer has only the score: keep the full test results
+      const { tests: _score, ...saved } = await reviewSubmission(data._id, { status, feedback: feedback.trim(), marks: data.maxMarks ? value : undefined });
       onSaved(saved);
       toast.success(status === "reviewed" ? "Review sent to the student" : "Asked the student for changes");
     } catch (err) {
@@ -245,6 +248,19 @@ const ReviewForm = ({ data, onSaved }: { data: SubmissionDetails; onSaved: (s: P
             aria-label="Marks"
             className="w-28 rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-white focus:border-teal-500/60 focus:outline-none"
           />
+          {data.tests && data.tests.total > 0 && (() => {
+            // The test score scaled to the assignment's marks, to half a mark
+            const suggested = Math.round((data.tests.score / data.tests.total) * data.maxMarks * 2) / 2;
+            return (
+              <button
+                type="button"
+                onClick={() => setMarks(String(suggested))}
+                className="ml-2 rounded-md border border-teal-500/30 px-2 py-1 text-xs text-teal-200 hover:bg-teal-500/10"
+              >
+                Use test score ({suggested})
+              </button>
+            );
+          })()}
         </label>
       )}
       <label className="block">

@@ -7,6 +7,8 @@ import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
 import { notify } from "./notification.service.js";
+import { autoGrade, testsForRole } from "./grading.service.js";
+import { testsFor } from "./assignment.service.js";
 
 type Id = Types.ObjectId | string;
 
@@ -43,6 +45,7 @@ const summary = (s: {
     marks: number | null;
     reviewedAt: Date | null;
     createdAt: Date;
+    tests?: { score: number; total: number } | null;
 }) => ({
     _id: s._id,
     assignment: s.assignment,
@@ -54,6 +57,7 @@ const summary = (s: {
     marks: s.marks,
     reviewedAt: s.reviewedAt,
     createdAt: s.createdAt,
+    tests: s.tests ? { score: s.tests.score, total: s.tests.total } : null,
 });
 
 /* -------------------------------------------------------------------------- */
@@ -102,6 +106,8 @@ export const submitAssignment = async ({ assignmentId, userId, note }: {
         }
     }
     if (!created) throw new AppError("Could not submit, please try again", 500);
+    // Graded in the background when the server has a code runner
+    void autoGrade(created._id).catch((err) => console.error("Auto-grading failed:", err));
 
     void notify({
         users: [classroom.teacher],
@@ -141,7 +147,7 @@ export const getSubmission = async ({ submissionId, userId }: { submissionId: st
     if (!submission) throw new AppError("Submission not found", 404);
 
     const [assignment, classroom] = await Promise.all([
-        Assignment.findById(submission.assignment).select("title maxMarks").lean(),
+        Assignment.findById(submission.assignment).select("title maxMarks stack tests").lean(),
         Classroom.findById(submission.classroom).select("name teacher").lean(),
     ]);
     if (!assignment || !classroom) throw new AppError("Submission not found", 404);
@@ -165,6 +171,10 @@ export const getSubmission = async ({ submissionId, userId }: { submissionId: st
         maxMarks: assignment.maxMarks ?? null,
         studentInfo: { _id: submission.student, name: student?.name, username: student?.username },
         versions: versions.map((v) => ({ _id: v._id, version: v.version, status: v.status, createdAt: v.createdAt })),
+        stack: assignment.stack,
+        // Test cases (the teacher can run them in the browser) and their results
+        testCases: testsFor(assignment.tests, isTeacher ? "teacher" : "student"),
+        tests: testsForRole(submission.tests, isTeacher ? "teacher" : "student"),
     };
 };
 

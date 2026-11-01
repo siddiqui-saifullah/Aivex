@@ -133,6 +133,44 @@ export interface JourneySnapshot {
 export type SubmissionStatus = "submitted" | "reviewed" | "revision-requested";
 
 /** A hand-in as lists show it (no files). */
+/** An auto-grading test case (C/C++ assignments). Students get visible ones only. */
+export interface TestCase {
+  _id: string;
+  name: string;
+  input: string;
+  expected: string;
+  points: number;
+  hidden: boolean;
+}
+
+export type TestOutcome = "passed" | "failed" | "compile-error" | "error" | "timeout";
+
+export interface TestResult {
+  test: string;
+  name: string;
+  points: number;
+  hidden: boolean;
+  passed: boolean;
+  outcome: TestOutcome;
+  output: string;
+}
+
+/** A submission's auto-grading result. */
+export interface SubmissionTests {
+  results: TestResult[];
+  score: number;
+  total: number;
+  ranAt: string;
+  by: "server" | "teacher";
+}
+
+/** The tests a role may see: all for the teacher, visible ones for students. */
+export interface AssignmentTests {
+  tests: TestCase[];
+  totalPoints: number;
+  hiddenCount: number;
+}
+
 export interface SubmissionSummary {
   _id: string;
   version: number;
@@ -142,10 +180,11 @@ export interface SubmissionSummary {
   marks: number | null;
   reviewedAt?: string | null;
   createdAt: string;
+  tests?: { score: number; total: number } | null;
 }
 
 /** One hand-in with its frozen files. */
-export interface SubmissionDetails extends SubmissionSummary {
+export interface SubmissionDetails extends Omit<SubmissionSummary, "tests"> {
   assignment: string;
   files: FlatFileTree;
   role: ClassroomRole;
@@ -154,10 +193,13 @@ export interface SubmissionDetails extends SubmissionSummary {
   maxMarks: number | null;
   studentInfo: { _id: string; name?: string; username?: string };
   versions: { _id: string; version: number; status: SubmissionStatus; createdAt: string }[];
+  stack: string;
+  testCases: AssignmentTests;
+  tests: SubmissionTests | null;
 }
 
 /** An assignment as listed on the class page. */
-export interface AssignmentSummary extends ProjectAssignment {
+export interface AssignmentSummary extends ProjectAssignment, Partial<AssignmentTests> {
   stack: string;
   createdAt: string;
   maxMarks?: number | null;
@@ -180,7 +222,7 @@ export interface AssignmentStudent {
   lastActive: string | null;
   online: boolean;
   /** Their latest hand-in. */
-  submission?: Pick<SubmissionSummary, "_id" | "version" | "status" | "marks" | "createdAt"> | null;
+  submission?: Pick<SubmissionSummary, "_id" | "version" | "status" | "marks" | "createdAt" | "tests"> | null;
 }
 
 export interface AssignmentDetails extends AssignmentSummary {

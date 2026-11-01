@@ -279,6 +279,7 @@ const Classroom = () => {
 
         <AssignmentList
           classroomId={data._id}
+          stack={data.stack}
           role="teacher"
           assignments={assignments}
           now={now}

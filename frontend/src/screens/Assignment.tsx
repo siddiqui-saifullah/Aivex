@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CalendarClock, ClipboardList, ExternalLink, Loader2, Pencil, Route, Search, Trash2 } from "lucide-react";
 import AssignmentModal from "../components/classroom/AssignmentModal";
 import SubmissionBadge from "../components/classroom/SubmissionBadge";
+import GradeAllBar from "../components/classroom/GradeAllBar";
+import CopyCheck from "../components/classroom/CopyCheck";
 import { deleteAssignment, getAssignment, startAssignment, updateAssignment } from "../services/assignment.service";
 import { useToast } from "../context/toast.context";
 import { useUser } from "../context/user.context";
@@ -243,6 +245,15 @@ const Assignment = () => {
                 </label>
               )}
             </div>
+            {(data.tests?.length ?? 0) > 0 && (
+              <GradeAllBar
+                testCount={data.tests!.length}
+                totalPoints={data.totalPoints ?? 0}
+                hiddenCount={data.hiddenCount ?? 0}
+                students={data.students ?? []}
+                onDone={() => setReloadKey((k) => k + 1)}
+              />
+            )}
             {(data.students?.length ?? 0) === 0 ? (
               <p className="rounded-2xl border border-dashed border-white/10 px-6 py-10 text-center text-sm text-zinc-500">
                 No students in the class yet.
@@ -255,6 +266,11 @@ const Assignment = () => {
                 {students.length === 0 && <p className="text-sm text-zinc-500">No students match “{query}”.</p>}
               </div>
             )}
+            <CopyCheck
+              assignmentId={data._id}
+              base={`/classes/${classroomId}/assignments/${data._id}`}
+              submitted={submittedCount}
+            />
           </section>
         )}
       </main>
@@ -262,6 +278,7 @@ const Assignment = () => {
       {editing && (
         <AssignmentModal
           initial={data}
+          stack={data.stack}
           onClose={() => setEditing(false)}
           onSave={async (input) => {
             await updateAssignment(data._id, input);
@@ -310,6 +327,14 @@ const WorkCard = ({ student: s, now, base, maxMarks }: {
         {s.submission && (
           <div className="mt-1.5">
             <SubmissionBadge status={s.submission.status} version={s.submission.version} marks={s.submission.marks} maxMarks={maxMarks} />
+            {s.submission.tests && (
+              <span
+                title="Auto-grading tests"
+                className={`rounded-full px-2 py-0.5 text-[11px] tabular-nums ${s.submission.tests.score === s.submission.tests.total ? "bg-teal-500/15 text-teal-200" : "bg-white/5 text-zinc-300"}`}
+              >
+                Tests {s.submission.tests.score}/{s.submission.tests.total}
+              </span>
+            )}
           </div>
         )}
       </div>

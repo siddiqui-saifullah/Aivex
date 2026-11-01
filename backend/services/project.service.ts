@@ -7,6 +7,7 @@ import Classroom from "../models/classroom.model.js";
 import { aiPolicyFor } from "./aiPolicy.service.js";
 import Assignment from "../models/assignment.model.js";
 import { openRequestFor } from "./help.service.js";
+import { recordChange, recordSafely } from "./journey.service.js";
 import { pullStudent } from "./classroom.service.js";
 import { notify, resolveInviteNotifications } from "./notification.service.js";
 import { notifyProjectUpdated } from "../socket/io.js";
@@ -282,8 +283,10 @@ export const updateProjectFiles = async ({ projectId, userId, fileTree }: {
         throw new AppError("Access denied or project not found", 403);
     }
 
+    const before = fromStoredFiles(project.files);
     project.files = toStoredFiles(fileTree);
     await project.save();
+    recordSafely(recordChange({ project, before, after: fileTree, actor: userId, type: "save" }));
 };
 
 /* -------------------------------------------------------------------------- */
@@ -589,13 +592,14 @@ export const applyAiChanges = async ({ projectId, changed, deleted = [], memory 
     deleted?: string[];
     memory?: string;
 }) => {
-    const project = await Project.findById(projectId).select("files aiMemory");
+    const project = await Project.findById(projectId).select("files aiMemory owner assignment classroom");
     if (!project) return false;
 
     const hasFileChanges = Object.keys(changed).length > 0 || deleted.length > 0;
+    const before = fromStoredFiles(project.files);
 
     if (hasFileChanges) {
-        const files = { ...fromStoredFiles(project.files), ...changed };
+        const files = { ...before, ...changed };
         for (const path of deleted) {
             if (path === ".aivex") continue;
             for (const key of Object.keys(files)) {
@@ -610,6 +614,9 @@ export const applyAiChanges = async ({ projectId, changed, deleted = [], memory 
     }
 
     await project.save();
+    if (hasFileChanges) {
+        recordSafely(recordChange({ project, before, after: fromStoredFiles(project.files), actor: null, type: "ai-edit" }));
+    }
     return hasFileChanges;
 };
 

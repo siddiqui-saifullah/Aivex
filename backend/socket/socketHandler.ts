@@ -13,6 +13,7 @@ import * as collab from "./collab.js";
 import { AI_DISABLED_MESSAGE, aiPolicyInProject } from "../services/aiPolicy.service.js";
 import Assignment from "../models/assignment.model.js";
 import { quotaMessage, quotaStatus, takeQuota, type QuotaStatus } from "../services/aiQuota.service.js";
+import { recordAiQuestion, recordSafely } from "../services/journey.service.js";
 import { notify } from "../services/notification.service.js";
 import userModel from "../models/user.model.js";
 
@@ -283,6 +284,7 @@ const handleAiMessage = async (
 ): Promise<boolean> => {
     const prompt = message.replace(/^@vex/i, "").trim();
     const projectId = socket.data.project._id;
+    recordSafely(recordAiQuestion({ projectId, userId: socket.data.user.id, prompt }));
 
     // Give the AI the current project and the recent conversation so it edits
     // what exists instead of starting from scratch

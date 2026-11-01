@@ -1,6 +1,7 @@
 import catchAsync from "../utils/catchAsync.js";
 import * as assignmentService from "../services/assignment.service.js";
 import * as submissionService from "../services/submission.service.js";
+import * as journeyService from "../services/journey.service.js";
 
 export const createAssignment = catchAsync(async (req, res) => {
     res.status(201).json(await assignmentService.createAssignment({
@@ -74,5 +75,34 @@ export const reviewSubmission = catchAsync(async (req, res) => {
         submissionId: req.params.submissionId as string,
         userId: req.user!._id,
         input: req.body ?? {},
+    }));
+});
+
+/* -------------------------------------------------------------------------- */
+/* CODING JOURNEY                                                             */
+/* -------------------------------------------------------------------------- */
+export const getJourney = catchAsync(async (req, res) => {
+    res.status(200).json(await journeyService.getJourney({
+        assignmentId: req.params.assignmentId as string,
+        studentId: req.params.studentId as string,
+        userId: req.user!._id,
+    }));
+});
+
+export const getJourneySnapshot = catchAsync(async (req, res) => {
+    res.status(200).json(await journeyService.getJourneySnapshot({
+        assignmentId: req.params.assignmentId as string,
+        studentId: req.params.studentId as string,
+        eventId: req.params.eventId as string,
+        userId: req.user!._id,
+    }));
+});
+
+export const recordRun = catchAsync(async (req, res) => {
+    res.status(200).json(await journeyService.recordRun({
+        projectId: req.params.projectId as string,
+        userId: req.user!._id,
+        ok: req.body?.ok,
+        message: req.body?.message,
     }));
 });

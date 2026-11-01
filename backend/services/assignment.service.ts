@@ -3,6 +3,7 @@ import Assignment, { AI_POLICIES, type AiPolicy } from "../models/assignment.mod
 import Classroom from "../models/classroom.model.js";
 import Project from "../models/project.model.js";
 import Submission from "../models/submission.model.js";
+import { deleteJourneys } from "./journey.service.js";
 import userModel from "../models/user.model.js";
 import AppError from "../errors/AppError.js";
 import { fromStoredFiles, toStoredFiles } from "../utils/fileStore.js";
@@ -351,5 +352,6 @@ export const deleteAssignment = async ({ assignmentId, userId }: { assignmentId:
     const projects = await Project.find({ assignment: assignment._id }).select("_id").lean();
     await detachStudentProjects(projects.map((p) => p._id), classroom.teacher);
     await Submission.deleteMany({ assignment: assignment._id });
+    await deleteJourneys({ assignment: assignment._id });
     await Assignment.deleteOne({ _id: assignment._id });
 };

@@ -13,5 +13,7 @@ router.patch("/:assignmentId", rateLimit({ windowMs: 60_000, max: 30 }), assignm
 router.delete("/:assignmentId", assignmentController.deleteAssignment);
 router.post("/:assignmentId/submit", rateLimit({ windowMs: 60_000, max: 10 }), assignmentController.submitAssignment);
 router.get("/:assignmentId/submissions", assignmentController.listSubmissions);
+router.get("/:assignmentId/journey/:studentId", assignmentController.getJourney);
+router.get("/:assignmentId/journey/:studentId/snapshots/:eventId", assignmentController.getJourneySnapshot);
 
 export default router;

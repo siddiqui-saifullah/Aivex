@@ -3,6 +3,7 @@ import { body } from "express-validator";
 
 import * as projectController from "../controllers/project.controller.js";
 import * as authMiddleware from "../middleware/auth.middleware.js";
+import { recordRun } from "../controllers/assignment.controller.js";
 import { rateLimit } from "../middleware/rateLimit.middleware.js";
 import {
     updateProjectFilesValidator,
@@ -41,6 +42,9 @@ router.get("/invites", projectController.listMyInvitesController);
 
 // Get project by id
 router.get("/:projectId", projectController.getProjectById);
+
+// Coding Journey: runs happen in the browser, so it reports them
+router.post("/:projectId/journey/run", rateLimit({ windowMs: 60_000, max: 60 }), recordRun);
 
 // Delete project
 router.delete("/:projectId", projectController.deleteProject);

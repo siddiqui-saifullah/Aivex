@@ -10,7 +10,12 @@ export const setIo = (io: AppServer) => {
     ioInstance = io;
 };
 
-export type ProjectUpdateReason = "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy" | "assignment" | "help";
+export type ProjectUpdateReason = "members" | "owner" | "renamed" | "deleted" | "memory" | "ai-policy" | "assignment" | "help" | "github";
+
+/** Send an event to everyone with the project open. */
+export const emitToProject = (projectId: string, event: string, payload: unknown) => {
+    (ioInstance as unknown as { to: (room: string) => { emit: (e: string, p: unknown) => void } } | null)?.to(String(projectId)).emit(event, payload);
+};
 
 /** Tell everyone in a project's room that its metadata changed. */
 export const notifyProjectUpdated = (projectId: string, reason: ProjectUpdateReason) => {

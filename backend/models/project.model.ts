@@ -27,6 +27,16 @@ export interface IProject {
     assignment: Types.ObjectId | null;
     /** People invited but who haven't accepted yet (not members). */
     invites: { user: Types.ObjectId; invitedBy: Types.ObjectId; createdAt: Date }[];
+    /** The GitHub repository this project syncs with. */
+    github: {
+        repo: string;
+        branch: string;
+        /** The last commit pushed or pulled. */
+        lastCommit: string;
+        /** Hash of the files at that moment, to spot local changes before a pull. */
+        syncedHash: string;
+        syncedAt: Date;
+    } | null;
     /** Usage tracking (admin dashboard). */
     lastOpenedAt: Date | null;
     lastOpenedBy: Types.ObjectId | null;
@@ -75,6 +85,18 @@ const projectSchema = new mongoose.Schema<IProject>(
             maxlength: 2000,
         },
 
+
+        github: {
+            type: {
+                repo: String,
+                branch: String,
+                lastCommit: String,
+                syncedHash: String,
+                syncedAt: Date,
+            },
+            default: null,
+            _id: false,
+        },
 
         files: {
             type: mongoose.Schema.Types.Mixed,

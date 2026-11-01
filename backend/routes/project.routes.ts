@@ -5,6 +5,7 @@ import * as projectController from "../controllers/project.controller.js";
 import * as authMiddleware from "../middleware/auth.middleware.js";
 import { recordRun } from "../controllers/assignment.controller.js";
 import { rateLimit } from "../middleware/rateLimit.middleware.js";
+import * as githubController from "../controllers/github.controller.js";
 import {
     updateProjectFilesValidator,
     validate,
@@ -42,6 +43,12 @@ router.get("/invites", projectController.listMyInvitesController);
 
 // Get project by id
 router.get("/:projectId", projectController.getProjectById);
+
+// GitHub sync (owner only)
+router.get("/:projectId/github", githubController.projectStatus);
+router.post("/:projectId/github/push", rateLimit({ windowMs: 60_000, max: 10, message: "Too many pushes, please wait a moment" }), githubController.push);
+router.post("/:projectId/github/pull", rateLimit({ windowMs: 60_000, max: 10, message: "Too many pulls, please wait a moment" }), githubController.pull);
+router.delete("/:projectId/github", githubController.unlink);
 
 // Coding Journey: runs happen in the browser, so it reports them
 router.post("/:projectId/journey/run", rateLimit({ windowMs: 60_000, max: 60 }), recordRun);

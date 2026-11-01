@@ -23,6 +23,10 @@ export interface IUser {
     /** Paid plan, active until planExpiresAt (then the account is on Free). */
     plan: PlanId;
     planExpiresAt: Date | null;
+    /** GitHub account connected for pushing projects (token encrypted, never sent out). */
+    githubToken: string;
+    githubLogin: string;
+    githubConnectedAt: Date | null;
     /** Usage tracking (admin dashboard). */
     lastActiveAt: Date | null;
     lastLoginAt: Date | null;
@@ -82,6 +86,9 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
         teachingMode: { type: Boolean, default: false },
         plan: { type: String, enum: PLAN_IDS, default: "free" },
         planExpiresAt: { type: Date, default: null },
+        githubToken: { type: String, default: "", select: false },
+        githubLogin: { type: String, default: "" },
+        githubConnectedAt: { type: Date, default: null },
         bio: {
             type: String,
             trim: true,

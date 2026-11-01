@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BarChart3, CreditCard, GraduationCap, Loader2, LogOut, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import BillingTab from "../components/billing/BillingTab";
+import GitHubSettingsCard from "../components/github/GitHubSettingsCard";
 import Button from "../components/ui/Button";
 import { DeleteAccountModal } from "../components/profile/AccountModals";
 import {
@@ -315,6 +316,7 @@ const AccountTab = ({ user, onPasswordSet }: { user: User; onPasswordSet: () => 
         <input value={user.email ?? ""} disabled aria-label="Email" className={`${inputClass} max-w-md`} />
       </Card>
       <PasswordCard hasPassword={user.hasPassword !== false} onChanged={onPasswordSet} />
+      <GitHubSettingsCard />
       <Card
         title="Sign out"
         description="Sign out of Aivex on this device."

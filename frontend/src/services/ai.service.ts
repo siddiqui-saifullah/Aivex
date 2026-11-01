@@ -15,6 +15,10 @@ export interface AiUsage {
   used: number;
   remaining: number | null;
   resetsAt: string;
+  /** Which limit the numbers are: today's, or the month's when that runs out first. */
+  period?: "day" | "month";
+  monthLimit?: number | null;
+  monthUsed?: number;
 }
 
 export const getAiUsage = async (): Promise<AiUsage> => {
@@ -22,5 +26,10 @@ export const getAiUsage = async (): Promise<AiUsage> => {
   return data;
 };
 
-export const aiLimitMessage = (usage: AiUsage) =>
-  `You've used all ${usage.limit} Vex AI questions for today. They reset at ${new Date(usage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${usage.plan === "premium" ? "" : " Upgrade your plan in Settings for more."}`;
+export const aiLimitMessage = (usage: AiUsage) => {
+  const more = usage.plan === "premium" ? "" : " Upgrade your plan in Settings for more.";
+  if (usage.period === "month") {
+    return `You've used all ${usage.limit} Vex AI questions for this month. They reset on ${new Date(usage.resetsAt).toLocaleDateString([], { day: "numeric", month: "short" })}.${more}`;
+  }
+  return `You've used all ${usage.limit} Vex AI questions for today. They reset at ${new Date(usage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${more}`;
+};

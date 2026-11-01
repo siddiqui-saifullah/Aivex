@@ -62,6 +62,10 @@ const PublicHeader = () => {
 
         {/* Right actions (auth-aware) */}
         <div className="flex items-center gap-4">
+          {/* Phones have no nav row: keep Pricing reachable */}
+          <Link to="/pricing" className="md:hidden text-sm font-medium text-zinc-300 hover:text-white">
+            Pricing
+          </Link>
           {!user ? (
             <>
               <Link

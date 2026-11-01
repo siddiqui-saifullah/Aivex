@@ -136,7 +136,7 @@ describe("subscriptions", { skip: !canRun && "set TEST_MONGO_URL to run API test
         // 365 days + ~30 Student days worth 99/299 of Pro (~9.9 days)
         const days = (new Date(res.body.expiresAt).getTime() - Date.now()) / 86_400_000;
         assert.ok(days > 374 && days < 375.5, String(days));
-        assert.equal((await as(user).get("/ai/usage")).body.limit, 100);
+        assert.equal((await as(user).get("/ai/usage")).body.limit, 60);
     });
 
     it("can't buy a smaller plan while a bigger one is active", async () => {
@@ -156,7 +156,7 @@ describe("subscriptions", { skip: !canRun && "set TEST_MONGO_URL to run API test
         assert.equal(ok.status, 200);
         const me = (await as(buyer).get("/billing/me")).body;
         assert.equal(me.plan, "premium");
-        assert.equal(me.usage.limit, 400);
+        assert.equal(me.usage.limit, 200);
     });
 
     it("an expired plan falls back to Free", async () => {

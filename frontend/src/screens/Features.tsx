@@ -46,7 +46,7 @@ const FAQ = [
   },
   {
     q: "What can Vex AI do?",
-    a: "Vex reads your project, your open file and your selection, then writes or edits the files for you, explains code and fixes bugs. It remembers what your project is about, so you don't repeat yourself. Free accounts get 3 questions a day; Student, Pro and Premium plans give 30 to 400.",
+    a: "Vex reads your project, your open file and your selection, then writes or edits the files for you, explains code and fixes bugs. It remembers what your project is about, so you don't repeat yourself. Free accounts get 3 questions a day; Student, Pro and Premium plans give 30 to 200.",
   },
   {
     q: "Can I use Aivex to teach a class?",

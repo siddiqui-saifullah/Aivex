@@ -160,9 +160,13 @@ const MessageArea = ({
           className={`mx-3 -mb-1 text-[11px] ${aiUsage.remaining === 0 ? "text-amber-300" : "text-zinc-500"}`}
           title={`Resets at ${new Date(aiUsage.resetsAt).toLocaleString()}`}
         >
-          {aiUsage.remaining === 0
-            ? `Daily Vex limit reached · resets at ${new Date(aiUsage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-            : `${aiUsage.remaining} of ${aiUsage.limit} Vex questions left today`}
+          {aiUsage.period === "month"
+            ? aiUsage.remaining === 0
+              ? `Monthly Vex limit reached · resets on ${new Date(aiUsage.resetsAt).toLocaleDateString([], { day: "numeric", month: "short" })}`
+              : `${aiUsage.remaining} Vex questions left this month`
+            : aiUsage.remaining === 0
+              ? `Daily Vex limit reached · resets at ${new Date(aiUsage.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+              : `${aiUsage.remaining} of ${aiUsage.limit} Vex questions left today`}
           {aiUsage.plan !== "premium" && (aiUsage.remaining ?? 0) <= 1 && (
             <>
               {" · "}

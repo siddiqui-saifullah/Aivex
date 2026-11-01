@@ -18,6 +18,8 @@ export type FileTreeNode =
 
 export interface AiResponse {
     text?: string;
+    /** Which model answered (not shown to users). */
+    model?: string;
     fileTree?: Record<string, FileTreeNode>;
     /** Paths the AI wants removed from the project. */
     deletedFiles?: string[];

@@ -38,12 +38,6 @@ export const activePlan = async (userId: Id): Promise<ActivePlan> => {
     return paid ? { plan: user.plan, expiresAt: user.planExpiresAt, admin } : { plan: "free", expiresAt: null, admin };
 };
 
-/** Gemini settings for this user's plan (models undefined: the default order). */
-export const aiOptionsFor = async (userId: Id) => {
-    const plan = PLANS[(await activePlan(userId)).plan];
-    return { models: plan.models ?? undefined, thinkingBudget: plan.thinkingBudget };
-};
-
 const rank = (plan: PlanId) => ["free", "student", "pro", "premium"].indexOf(plan);
 
 const razorpay = async <T>(path: string, body: object): Promise<T> => {
@@ -198,5 +192,5 @@ export const billingSummary = async (userId: Id) => {
 /** Public plan list for the pricing page. */
 export const publicPlans = () => ({
     enabled: billingEnabled(),
-    plans: Object.values(PLANS).map(({ models: _models, thinkingBudget: _budget, ...p }) => p),
+    plans: Object.values(PLANS).map(({ route: _route, thinkingBudget: _budget, ...p }) => p),
 });

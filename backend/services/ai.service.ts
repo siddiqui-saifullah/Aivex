@@ -1,44 +1,89 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AiResponse } from "../types/index.js";
 
-/**
- * Models to try, in order (GEMINI_MODEL: one name or a comma list). On the
- * free tier each model has its own quota, so when one is rate limited,
- * missing or overloaded the next one answers instead.
+/* -------------------------------------------------------------------------- */
+/* AI ROUTER                                                                  */
+/* -------------------------------------------------------------------------- */
+/*
+ * Requests go through a route of model groups, best first, and fall back
+ * down it when a model is rate limited, missing, overloaded or answers badly:
+ * - free:  free models from OpenRouter and Groq (only when their keys are set)
+ * - lite:  Gemini 2.5 Flash-Lite, 2.0 Flash (cheap)
+ * - flash: Gemini 2.5 Flash
+ * - pro:   Gemini 2.5 Pro (best, most expensive)
+ * Each plan has its own route (config/plans.ts). Model lists can be changed
+ * without a deploy: OPENROUTER_FREE_MODELS, GROQ_MODELS (comma lists), and
+ * GEMINI_MODEL replaces every Gemini group.
  */
-const MODELS = (process.env.GEMINI_MODEL || "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash")
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
+export type ModelGroup = "free" | "lite" | "flash" | "pro";
+type Provider = "gemini" | "openrouter" | "groq";
+interface Target { provider: Provider; model: string }
+
+/** The route when none is given (the order used before plans existed). */
+const DEFAULT_ROUTE: ModelGroup[] = ["flash", "lite"];
+
+const DEFAULT_OPENROUTER = "deepseek/deepseek-chat-v3-0324:free,qwen/qwen-2.5-coder-32b-instruct:free,meta-llama/llama-3.3-70b-instruct:free";
+const DEFAULT_GROQ = "llama-3.3-70b-versatile,openai/gpt-oss-120b";
+
+const envList = (name: string, fallback = "") =>
+    (process.env[name] || fallback).split(",").map((m) => m.trim()).filter(Boolean);
+
+const GEMINI_GROUPS: Record<Exclude<ModelGroup, "free">, string[]> = {
+    lite: ["gemini-2.5-flash-lite", "gemini-2.0-flash"],
+    flash: ["gemini-2.5-flash"],
+    pro: ["gemini-2.5-pro"],
+};
+
+const targetsOf = (group: ModelGroup): Target[] => {
+    if (group === "free") {
+        return [
+            ...(process.env.OPENROUTER_API_KEY ? envList("OPENROUTER_FREE_MODELS", DEFAULT_OPENROUTER).map((model) => ({ provider: "openrouter" as const, model })) : []),
+            ...(process.env.GROQ_API_KEY ? envList("GROQ_MODELS", DEFAULT_GROQ).map((model) => ({ provider: "groq" as const, model })) : []),
+        ];
+    }
+    const models = process.env.GEMINI_MODEL ? envList("GEMINI_MODEL") : GEMINI_GROUPS[group];
+    return models.map((model) => ({ provider: "gemini" as const, model }));
+};
+
+/** Every model on the route, in order, without repeats. */
+const routeTargets = (route: ModelGroup[]) => {
+    const seen = new Set<string>();
+    return route.flatMap(targetsOf).filter((t) => {
+        const id = `${t.provider}:${t.model}`;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+    });
+};
 
 /** Rate-limited models are skipped for a minute. */
 const coolingUntil = new Map<string, number>();
 
-/** Errors where another model may still work (quota, missing model, overload). */
+/** Gemini errors where another model may still work (quota, missing model, overload). */
 const tryNextModel = (err: unknown) => {
     const status = (err as { status?: number }).status;
     const message = String((err as { message?: string }).message ?? "");
-    return status === 429 || status === 404 || status === 500 || status === 503
+    return status === 429 || status === 404 || status === 500 || status === 502 || status === 503
         || (status === 400 && /model|not (found|supported)|thinking/i.test(message));
 };
 
-/**
- * Run a Gemini call on the first model that works. Paid plans pass their own
- * order (better models first); GEMINI_MODEL, when set, still wins.
- */
-const withModels = async <T>(call: (model: string) => Promise<T>, preferred?: string[]): Promise<T> => {
-    const list = !process.env.GEMINI_MODEL && preferred?.length ? preferred : MODELS;
+/** Run the call on the first model of the route that works. */
+const withRoute = async <T>(call: (target: Target) => Promise<T>, route: ModelGroup[] = DEFAULT_ROUTE): Promise<T> => {
+    const targets = routeTargets(route.length ? route : DEFAULT_ROUTE);
+    if (!targets.length) targets.push(...routeTargets(DEFAULT_ROUTE));
     const now = Date.now();
-    const usable = list.filter((m) => (coolingUntil.get(m) ?? 0) <= now);
+    const usable = targets.filter((t) => (coolingUntil.get(`${t.provider}:${t.model}`) ?? 0) <= now);
     let lastError: unknown;
-    for (const model of usable.length ? usable : list) {
+    for (const target of usable.length ? usable : targets) {
         try {
-            return await call(model);
+            return await call(target);
         } catch (err) {
             lastError = err;
-            if ((err as { status?: number }).status === 429) coolingUntil.set(model, Date.now() + 60_000);
-            if (!tryNextModel(err)) throw err;
-            console.warn(`Gemini ${model} failed (${(err as { status?: number }).status ?? "error"}), trying the next model`);
+            const status = (err as { status?: number }).status;
+            if (status === 429) coolingUntil.set(`${target.provider}:${target.model}`, Date.now() + 60_000);
+            // Optional free providers never stop the route; Gemini config errors do
+            if (target.provider === "gemini" && !tryNextModel(err)) throw err;
+            console.warn(`AI ${target.provider} ${target.model} failed (${status ?? "error"}), trying the next model`);
         }
     }
     throw lastError;
@@ -48,6 +93,51 @@ const withModels = async <T>(call: (model: string) => Promise<T>, preferred?: st
 const thinking = (model: string, budget: number) => {
     if (!/2\.5/.test(model)) return {};
     return { thinkingConfig: { thinkingBudget: /pro/.test(model) ? Math.max(budget, 128) : budget } };
+};
+
+class ProviderError extends Error {
+    constructor(message: string, public status: number) {
+        super(message);
+    }
+}
+
+const COMPAT = {
+    openrouter: { base: () => process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1", key: () => process.env.OPENROUTER_API_KEY },
+    groq: { base: () => process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1", key: () => process.env.GROQ_API_KEY },
+};
+
+/** OpenAI-style chat completion (OpenRouter, Groq). */
+const chatCompletion = async (
+    provider: "openrouter" | "groq",
+    model: string,
+    system: string,
+    user: string,
+    { json = false, maxTokens }: { json?: boolean; maxTokens?: number } = {},
+): Promise<string> => {
+    const res = await fetch(`${COMPAT[provider].base()}/chat/completions`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${COMPAT[provider].key()}`,
+            ...(provider === "openrouter" ? { "HTTP-Referer": "https://aivex.in", "X-Title": "Aivex" } : {}),
+        },
+        body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: system }, { role: "user", content: user }],
+            temperature: 0.4,
+            ...(json ? { response_format: { type: "json_object" } } : {}),
+            ...(maxTokens ? { max_tokens: maxTokens } : {}),
+        }),
+        signal: AbortSignal.timeout(60_000),
+    }).catch((err) => {
+        throw new ProviderError(`${provider} unreachable: ${(err as Error).message}`, 503);
+    });
+    if (!res.ok) throw new ProviderError(`${provider} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
+    const data = await res.json().catch(() => null) as { choices?: { message?: { content?: string } }[] } | null;
+    // Reasoning models may show their thinking first
+    const text = (data?.choices?.[0]?.message?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    if (!text) throw new ProviderError(`${provider} returned an empty answer`, 502);
+    return text;
 };
 
 /**
@@ -223,7 +313,7 @@ export const generate = async ({
     focus = {},
     hintsOnly = false,
     task,
-    models,
+    route,
     thinkingBudget = 512,
 }: {
     prompt: string;
@@ -235,9 +325,9 @@ export const generate = async ({
     hintsOnly?: boolean;
     /** The assignment the student is working on. */
     task?: string;
-    /** Models to try first (from the user's plan). */
-    models?: string[];
-    /** Thinking tokens for 2.5 models (from the user's plan). */
+    /** Model groups to try, best first (from the user's plan). */
+    route?: ModelGroup[];
+    /** Thinking tokens for Gemini 2.5 models (from the user's plan). */
     thinkingBudget?: number;
 }): Promise<AiResponse> => {
     // Stable → variable order (helps prefix caching): task, memory, files, chat, focus, request
@@ -249,53 +339,67 @@ export const generate = async ({
         buildFocus(focus),
         `REQUEST:\n${prompt}`,
     ].filter(Boolean).join("\n\n");
+    const system = hintsOnly ? SYSTEM_INSTRUCTION + HINTS_INSTRUCTION : SYSTEM_INSTRUCTION;
 
-    const request = (model: string) => ai.models.generateContent({
-        model,
-        contents: [{ role: "user", parts: [{ text: context }] }],
-        config: {
-            systemInstruction: hintsOnly ? SYSTEM_INSTRUCTION + HINTS_INSTRUCTION : SYSTEM_INSTRUCTION,
-            responseMimeType: "application/json",
-            // A small thinking budget keeps answers fast (and within free-tier
-            // token limits) while still planning multi-file changes; Pro and
-            // Premium think longer
-            ...thinking(model, thinkingBudget),
-        },
-    });
+    const ask = async ({ provider, model }: Target): Promise<string> => {
+        if (provider !== "gemini") return chatCompletion(provider, model, system, context, { json: true, maxTokens: 8192 });
+        const response = await ai.models.generateContent({
+            model,
+            contents: [{ role: "user", parts: [{ text: context }] }],
+            config: {
+                systemInstruction: system,
+                responseMimeType: "application/json",
+                // A small thinking budget keeps answers fast while still
+                // planning multi-file changes; Pro and Premium think longer
+                ...thinking(model, thinkingBudget),
+            },
+        });
+        return response.text ?? "";
+    };
 
     try {
-        const response = await withModels(async (model) => {
+        return await withRoute(async (target) => {
+            let raw: string;
             try {
-                return await request(model);
+                raw = await ask(target);
             } catch (err) {
-                // One retry for transient overloads
-                if (!isRetryable(err)) throw err;
+                // One retry for transient Gemini overloads (free providers: next model)
+                if (target.provider !== "gemini" || !isRetryable(err)) throw err;
                 await new Promise((r) => setTimeout(r, 1500));
-                return request(model);
+                raw = await ask(target);
             }
-        }, models);
-
-        const raw = response.text ?? "";
-        if (!raw) return { text: "Vex AI couldn't answer that. Please try again." };
-
-        return parseJsonResponse(raw);
+            // A missing or broken answer goes to the next model
+            let parsed: AiResponse;
+            try {
+                if (!raw.includes("{")) throw new Error("not JSON");
+                parsed = parseJsonResponse(raw);
+            } catch {
+                throw new ProviderError(`${target.model} returned invalid JSON`, 502);
+            }
+            if (typeof parsed?.text !== "string" || (!parsed.text.trim() && !parsed.fileTree)) {
+                throw new ProviderError(`${target.model} returned no answer`, 502);
+            }
+            return { ...parsed, model: target.model };
+        }, route);
     } catch (err) {
-        console.error("Gemini Error:", err);
+        console.error("AI Error:", err);
         return { text: friendlyAiError(err) };
     }
 };
 
 /** Turn a rough idea into a precise prompt (no thinking: this must feel instant). */
-export const enhancePrompt = async (prompt: string, models?: string[]): Promise<string> => {
-    const response = await withModels((model) => ai.models.generateContent({
-        model,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: {
-            systemInstruction: ENHANCE_INSTRUCTION,
-            ...thinking(model, 0),
-            maxOutputTokens: 300,
-        },
-    }), models);
+export const enhancePrompt = async (prompt: string, route: ModelGroup[] = ["free", "lite"]): Promise<string> => {
+    const text = await withRoute(async ({ provider, model }) => {
+        const out = provider === "gemini"
+            ? (await ai.models.generateContent({
+                model,
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                config: { systemInstruction: ENHANCE_INSTRUCTION, ...thinking(model, 0), maxOutputTokens: 300 },
+            })).text ?? ""
+            : await chatCompletion(provider, model, ENHANCE_INSTRUCTION, prompt, { maxTokens: 300 });
+        if (!out.trim()) throw new ProviderError(`${model} returned an empty prompt`, 502);
+        return out;
+    }, route);
 
-    return (response.text ?? "").trim().replace(/^["']|["']$/g, "");
+    return text.trim().replace(/^["']|["']$/g, "");
 };
